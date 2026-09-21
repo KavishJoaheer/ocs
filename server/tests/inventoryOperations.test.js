@@ -930,7 +930,7 @@ test("extra counted stock waits for an incoming shipment instead of becoming a s
     token: adminToken,
   });
   assert.equal(applied.status, 409, JSON.stringify(applied.data));
-  assert.match(String(applied.data.error || ""), /shipment/i);
+  assert.match(String(applied.data.error || ""), /Receive Delivery/i);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 30);
 
   const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {

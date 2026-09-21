@@ -150,8 +150,8 @@ function InventoryCsvImport({ onImported }) {
       setOperationId(newShipmentOperationId());
       toast.success(
         summary.skipped
-          ? `${summary.imported} saved as incoming. ${summary.skipped} line${summary.skipped === 1 ? "" : "s"} need a fix.`
-          : `${summary.imported} saved. Add ${summary.imported === 1 ? "it" : "them"} to the shelf below.`,
+          ? `${summary.imported} saved. ${summary.skipped} line${summary.skipped === 1 ? "" : "s"} need a fix.`
+          : `${summary.imported} saved. Add ${summary.imported === 1 ? "it" : "them"} to stock below.`,
       );
       await onImported?.();
     } catch (error) {
@@ -176,7 +176,7 @@ function InventoryCsvImport({ onImported }) {
   return (
     <SectionCard
       title="Receive a delivery"
-      subtitle="Check the supplier file, then save it as incoming. Stock changes only when you add it to the shelf."
+      subtitle="Check delivery, then save delivery. Stock changes when you add it to stock."
     >
       <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm font-semibold text-slate-700">
@@ -259,7 +259,7 @@ function InventoryCsvImport({ onImported }) {
       <details className="mt-2">
         <summary className="cursor-pointer text-sm font-semibold text-slate-600">Paste a CSV instead</summary>
         <label htmlFor="shipment-csv-text" className="mt-2 block text-sm font-semibold text-slate-800">
-          CSV shipment data
+          CSV delivery data
         </label>
         <p id="shipment-csv-help" className="mt-1 text-xs text-slate-500">
           Columns: folder, item name, quantity, cost, expiry. Unit and selling price come from the catalogue.
@@ -301,7 +301,7 @@ function InventoryCsvImport({ onImported }) {
               : "bg-[#2d8f98] text-white hover:brightness-95"
           }`}
         >
-          {importing ? "Saving…" : "Save as incoming"}
+          {importing ? "Saving…" : "Save delivery"}
         </button>
       </div>
 

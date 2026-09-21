@@ -781,7 +781,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
       const countLabel = repeat.session_id ? `stock count #${repeat.session_id}` : "a stock count";
       throw HttpError(
         409,
-        `${match.catalogue.item_name}: ${repeat.quantity} from ${receiptIdentity.supplier_name} on ${receiptIdentity.received_date} was already added from ${countLabel}. Leave this line out of the shipment, or the shelf will count the same delivery twice.`,
+        `${match.catalogue.item_name}: ${repeat.quantity} from ${receiptIdentity.supplier_name} on ${receiptIdentity.received_date} was already added from ${countLabel}. Leave this line out of Receive Delivery, or the shelf will count the same delivery twice.`,
       );
     }
     const transactionId = createTransferTransactionId();
@@ -836,7 +836,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         previousQuantity: result.previous,
         nextQuantity: result.next,
         actionType: "add",
-        note: shipmentId ? `Released from shipment #${shipmentId}` : "Released from staging",
+        note: shipmentId ? `Added from Receive Delivery #${shipmentId}` : "Released from staging",
         userId,
         skipPublish: true,
         meta: {
@@ -848,7 +848,7 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
           performed_by_role: actor.role || "",
           reference_type: "shipment",
           reference_id: shipmentId,
-          source_location: "Incoming shipment",
+          source_location: "Receive Delivery",
           destination_location: "Master Stock",
         },
       });
@@ -1000,14 +1000,14 @@ function closeShipmentIfIdle(shipmentId, userId = null) {
 
 function excludeShipmentLines({ shipmentId, lines, userId, actor = {} }) {
   const shipment = getShipment(shipmentId);
-  if (!shipment) throw HttpError(404, "Shipment not found.");
+  if (!shipment) throw HttpError(404, "Receive Delivery record not found.");
   const entries = Array.isArray(lines) ? lines : [];
-  if (!entries.length) throw HttpError(400, "Select at least one shipment line to exclude.");
+  if (!entries.length) throw HttpError(400, "Select at least one Receive Delivery line to exclude.");
   db.transaction(() => {
     for (const entry of entries) {
       const reason = String(entry?.reason || "").trim();
       if (reason.length < 3) {
-        throw HttpError(400, "Excluded shipment lines require a reason.");
+        throw HttpError(400, "Excluded Receive Delivery lines require a reason.");
       }
       const updated = db
         .prepare(
@@ -1025,7 +1025,7 @@ function excludeShipmentLines({ shipmentId, lines, userId, actor = {} }) {
       if (!updated.changes) {
         const row = db.prepare("SELECT status FROM inventory_staging WHERE id = ?").get(Number(entry.id));
         if (row && String(row.status) === "excluded") continue;
-        throw HttpError(409, "Only pending shipment lines can be excluded.");
+        throw HttpError(409, "Only pending Receive Delivery lines can be excluded.");
       }
     }
     closeShipmentIfIdle(shipmentId, userId);
@@ -1127,7 +1127,7 @@ function originalReceiptForRowIds(shipment, ids) {
 
 function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelection = false }) {
   const shipment = getShipment(shipmentId);
-  if (!shipment) throw HttpError(404, "Shipment not found.");
+  if (!shipment) throw HttpError(404, "Receive Delivery record not found.");
   const summary = () => shipmentCumulativeSummary(getShipment(shipment.id) || shipment);
   if (shipment.status === "released" && !requireSelection) {
     const releasedIds = (shipment.lines || [])
@@ -1148,7 +1148,7 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
     .filter((id) => Number.isInteger(id) && id > 0);
   if (requireSelection) {
     if (!incomingIds.length) {
-      throw HttpError(400, "row_ids is required and must contain at least one shipment line.");
+      throw HttpError(400, "row_ids is required and must contain at least one Receive Delivery line.");
     }
     const invalid = incomingIds.filter((id) => !Number.isInteger(Number(id)) || Number(id) <= 0);
     if (invalid.length) {
@@ -1191,7 +1191,7 @@ function bulkReleaseShipment({ shipmentId, rowIds, userId, actor, requireSelecti
       selectedPending.push(line);
     }
     if (missing.length) {
-      throw HttpError(400, `Selected row(s) do not belong to shipment #${shipmentId}: ${missing.join(", ")}.`);
+      throw HttpError(400, `Selected row(s) do not belong to Receive Delivery #${shipmentId}: ${missing.join(", ")}.`);
     }
     if (ineligible.length) {
       throw HttpError(400, `Selected row(s) are not eligible for release: ${ineligible.join(", ")}.`);
@@ -2180,9 +2180,9 @@ function pendingShipmentHoldMessage(item, coverage) {
   const shipments = coverage?.shipments || [];
   const first = shipments[0];
   const where = shipments.length === 1 && first
-    ? `shipment #${first.shipment_id}`
-    : `${shipments.length} incoming shipments`;
-  return `${item.item_name} still has ${coverage.quantity} on ${where} that is not in stock yet. Add that shipment to stock, then recount. This extra is not a second delivery.`;
+    ? `Receive Delivery #${first.shipment_id}`
+    : `${shipments.length} Receive Delivery records`;
+  return `${item.item_name} still has ${coverage.quantity} on ${where} that is not in stock yet. Add it to stock, then recount. This extra is not a second delivery.`;
 }
 
 function countedLotRepeatingShipment(itemId, { supplierName, receivedDate, quantity }) {

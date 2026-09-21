@@ -90,7 +90,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       open={open}
       onClose={onClose}
       title={`Receive stock${item ? ` — ${item.item_name}` : ""}`}
-      description="Exception only. A normal supplier delivery is recorded under Shipments, then added to stock."
+      description="Exception only. A normal supplier delivery is recorded under Receive Delivery, then added to stock."
       size="sm"
       innerScroll={false}
     >

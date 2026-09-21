@@ -72,11 +72,12 @@ function shipmentHoldCopy(line) {
     .filter(Boolean)
     .join(", ");
   const lead = shipments.length === 1
-    ? `Shipment #${first.shipment_id} still has ${waiting} of this item waiting to be added to stock${detail ? ` (${detail})` : ""}.`
-    : `${shipments.length} incoming shipments still have ${waiting} of this item waiting to be added to stock.`;
+    ? `Receive Delivery #${first.shipment_id} still has ${waiting} of this item waiting to be added to stock${detail ? ` (${detail})` : ""}.`
+    : `${shipments.length} Receive Delivery records still have ${waiting} of this item waiting to be added to stock.`;
+  const addWord = shipments.length === 1 ? "it" : "them";
   const follow = extra > waiting
-    ? " Add that shipment to stock, then recount. Only what is still extra after that can be a new lot."
-    : " Add that shipment to stock, then recount this line.";
+    ? ` Add ${addWord} to stock, then recount. Only what is still extra after that can be a new lot.`
+    : ` Add ${addWord} to stock, then recount this line.`;
   return lead + follow;
 }
 
@@ -711,8 +712,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
               {surplusRows.length ? (
                 <p className="mt-2 text-sm text-amber-900">
                   {surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0)
-                    ? "Some of this extra is already on an incoming shipment. Add that shipment to stock, then recount. A new lot is only for stock that is not on a shipment."
-                    : `${surplusRows.length} ${surplusRows.length === 1 ? "line has" : "lines have"} more than expected. Open a line below only if that extra was counted here and was never received as a shipment.`}
+                    ? "Some of this extra is already under Receive Delivery. Add it to stock, then recount. A new lot is only for stock that was never received there."
+                    : `${surplusRows.length} ${surplusRows.length === 1 ? "line has" : "lines have"} more than expected. Open a line below only if that extra was counted here and was never received under Receive Delivery.`}
                 </p>
               ) : null}
             </div>
@@ -915,7 +916,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                   <div key={line.id} className="rounded-xl border border-amber-200 bg-white px-3 py-3">
                     <p className="font-semibold text-slate-900">{line.item_name}</p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Extra {Number(line.variance || 0)} is not on a shipment yet.
+                      Extra {Number(line.variance || 0)} is not under Receive Delivery yet.
                     </p>
                     {canEditNewLots ? (
                       <button

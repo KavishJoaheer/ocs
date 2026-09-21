@@ -25,7 +25,7 @@ const QUEUE_DEFS = [
   { id: "new_requests", label: "New requests", key: "new_requests" },
   { id: "pick_today", label: "Pick today", key: "pick_today" },
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
-  { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
+  { id: "incoming_shipments", label: "Receive Delivery", key: "incoming_shipments", kind: "shipments" },
   { id: "count_variances", label: "Stock count variances", key: "count_variances", kind: "variances" },
   { id: "needs_expiry", label: "Needs expiry", key: "needs_expiry", kind: "needs_expiry" },
   { id: "history", label: "History", key: "history", kind: "history" },
@@ -286,7 +286,7 @@ export default function OperatorWorkQueuesPanel({
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             <Package className="mr-2 inline size-4 text-[#2d8f98]" />
-            Open {rows.length} incoming shipment{rows.length === 1 ? "" : "s"}
+            Open {rows.length} in Receive Delivery
           </button>
         ) : active === "count_variances" ? (
           <button

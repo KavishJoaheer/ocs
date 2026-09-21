@@ -543,7 +543,7 @@ test.describe("Inventory workflow", () => {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
       await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("button", { name: /queues|stock|shipments|count/i }).first()).toBeVisible();
+      await expect(page.getByRole("button", { name: /queues|stock|receive delivery|count/i }).first()).toBeVisible();
       if (width === 1440) {
         await page.getByRole("tab", { name: "Stock", exact: true }).click();
         await expect(page.getByRole("button", { name: /^Low stock:/i })).toBeVisible();
@@ -573,9 +573,9 @@ test.describe("Inventory workflow", () => {
     ]) {
       await page.setViewportSize(size);
       await page.goto(`${STAFF_BASE}/inventory`);
-      await expect(page.getByRole("tab", { name: "Shipments" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("tab", { name: "Receive Delivery" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("tab", { name: "Stock Count" })).toBeVisible();
-      const box = await page.getByRole("tab", { name: "Shipments" }).boundingBox();
+      const box = await page.getByRole("tab", { name: "Receive Delivery" }).boundingBox();
       expect(box?.width || 0).toBeGreaterThan(44);
     }
   });
@@ -1169,7 +1169,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Shipments/i }).click();
+    await page.getByRole("tab", { name: "Receive Delivery" }).click();
     await expect(page.getByRole("button", { name: "Check delivery" })).toBeVisible({ timeout: 20_000 });
     const validate = await page.getByRole("button", { name: "Check delivery" }).boundingBox();
     expect(validate?.width || 0).toBeGreaterThan(200);
@@ -1412,7 +1412,7 @@ test.describe("Inventory workflow", () => {
       "New requests",
       "Pick today",
       "Awaiting collection",
-      "Incoming shipments",
+      "Receive Delivery",
       "Stock count variances",
     ];
     const counts = body.counts;
@@ -1435,11 +1435,12 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Shipments/i }).click();
+    await page.getByRole("tab", { name: "Receive Delivery" }).click();
     await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i)).toBeVisible();
     await expect(page.getByText(/Received this month/i)).toBeVisible();
     await expect(page.getByLabel("Delivery file")).toBeAttached({ timeout: 20_000 });
-    const importButton = page.getByRole("button", { name: "Save as incoming" });
+    await expect(page.getByText("Check delivery, then save delivery. Stock changes when you add it to stock.")).toBeVisible();
+    const importButton = page.getByRole("button", { name: "Save delivery" });
     await expect(importButton).toBeDisabled();
   });
 

@@ -161,7 +161,7 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
   return (
     <SectionCard
       title="Add to the shelf"
-      subtitle="These deliveries are saved. Adding them makes the stock available."
+      subtitle="These deliveries are saved. Add to stock when the goods are on the shelf."
     >
       {grouped.length ? (
         <div className="space-y-4">
@@ -255,7 +255,7 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
           ) : null}
         </div>
       ) : (
-        <p className="text-sm text-slate-500">No deliveries waiting. Receive one above, then add it here.</p>
+        <p className="text-sm text-slate-500">No deliveries waiting. Save a delivery above, then add it to stock.</p>
       )}
 
       {history.length ? (

@@ -4244,7 +4244,7 @@ router.post("/restock/my-inventory", (req, res) => {
 router.get("/staging/csv-template", (req, res) => {
   ensureInfrastructure();
   if (!isWarehouseViewer(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can download the shipment template." });
+    return res.status(403).json({ error: "Only admin/operator can download the Receive Delivery template." });
   }
   const csv = csvShipmentTemplate();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -4255,7 +4255,7 @@ router.get("/staging/csv-template", (req, res) => {
 router.post("/staging/preview-csv", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Preview shipment import");
+    assertRoutineOperatorAction(req.auth, req.body, "Preview Receive Delivery");
   } catch (error) {
     if (req.auth.role !== "admin" && req.auth.role !== "operator") {
       return res.status(error.status || 403).json({ error: error.message });
@@ -4277,7 +4277,7 @@ router.post("/staging/preview-csv", (req, res) => {
 router.post("/staging/import-csv", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Import shipments");
+    assertRoutineOperatorAction(req.auth, req.body, "Save a Receive Delivery");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4286,7 +4286,7 @@ router.post("/staging/import-csv", (req, res) => {
   const importOperationId = String(req.body.operation_id || req.get("Idempotency-Key") || "").trim();
   if (supplier.length < 2 || deliveryNote.length < 2) {
     return res.status(400).json({
-      error: "Supplier and delivery-note reference are required for shipment traceability.",
+      error: "Supplier and delivery-note reference are required for Receive Delivery.",
       code: "SHIPMENT_REFERENCE_REQUIRED",
     });
   }
@@ -4298,7 +4298,7 @@ router.post("/staging/import-csv", (req, res) => {
   }
   if (!importOperationId) {
     return res.status(400).json({
-      error: "A stable shipment import reference is required.",
+      error: "A stable Receive Delivery reference is required.",
       code: "SHIPMENT_OPERATION_ID_REQUIRED",
     });
   }
@@ -4427,7 +4427,7 @@ router.post("/staging/import-csv", (req, res) => {
 router.post("/staging/:id/release", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Release shipments");
+    assertRoutineOperatorAction(req.auth, req.body, "Add Receive Delivery to stock");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4463,7 +4463,7 @@ router.post("/staging/:id/release", (req, res) => {
 router.get("/shipments", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view shipments." });
+    return res.status(403).json({ error: "Only admin/operator can view Receive Delivery." });
   }
   return res.json({ shipments: listShipments() });
 });
@@ -4471,17 +4471,17 @@ router.get("/shipments", (req, res) => {
 router.get("/shipments/:id", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view shipments." });
+    return res.status(403).json({ error: "Only admin/operator can view Receive Delivery." });
   }
   const shipment = getShipment(req.params.id);
-  if (!shipment) return res.status(404).json({ error: "Shipment not found." });
+  if (!shipment) return res.status(404).json({ error: "Receive Delivery record not found." });
   return res.json({ shipment });
 });
 
 router.post("/shipments/:id/exclude", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Exclude shipment lines");
+    assertRoutineOperatorAction(req.auth, req.body, "Leave Receive Delivery lines out");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4504,7 +4504,7 @@ router.post("/shipments/:id/exclude", (req, res) => {
 router.post("/shipments/:id/release", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Release shipments");
+    assertRoutineOperatorAction(req.auth, req.body, "Add Receive Delivery to stock");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4512,7 +4512,7 @@ router.post("/shipments/:id/release", (req, res) => {
   const mode = String(req.body?.mode || "all_valid");
   if (mode === "selected") {
     if (!Array.isArray(req.body?.row_ids) || !req.body.row_ids.length) {
-      return res.status(400).json({ error: "row_ids is required and must contain at least one shipment line." });
+      return res.status(400).json({ error: "row_ids is required and must contain at least one Receive Delivery line." });
     }
   }
   const rowIds = mode === "selected" ? req.body.row_ids.map(Number) : [];
@@ -4550,7 +4550,7 @@ router.post("/shipments/:id/release", (req, res) => {
     });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
-    return res.status(400).json({ error: error.message || "Unable to release shipment." });
+    return res.status(400).json({ error: error.message || "Unable to add this Receive Delivery to stock." });
   }
 });
 
