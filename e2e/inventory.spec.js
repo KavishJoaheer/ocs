@@ -1413,7 +1413,7 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByText(/Completed in 7 days/i)).toBeVisible();
     const start = page.getByRole("button", { name: "Start Stock Count" });
     await expect(start).toBeDisabled();
-    await page.getByLabel(/Folder \/ category/i).selectOption({ label: "All OCS folders" });
+    await page.getByRole("combobox", { name: "Location" }).selectOption({ label: "All OCS folders" });
     await expect(start).toBeEnabled();
     await start.click();
     await expect(page.getByRole("dialog").getByText(/blind stock count/i)).toBeVisible();
