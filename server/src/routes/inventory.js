@@ -30,6 +30,7 @@ const { getBillingCutoverDate } = require("../lib/billingCutover");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
   applyStocktakeSession,
+  cancelStocktakeSession,
   bulkReleaseShipment,
   closeShipmentIfIdle,
   consumeAllocatedBatches,
@@ -4654,7 +4655,9 @@ router.post("/stocktake/sessions/:id/submit", (req, res) => {
   ensureInfrastructure();
   try {
     assertRoutineOperatorAction(req.auth, req.body, "Submit a stock count session");
-    const session = submitStocktakeSession(Number(req.params.id), req.auth.id);
+    const session = submitStocktakeSession(Number(req.params.id), req.auth.id, {
+      finishCounted: Boolean(req.body?.finish_counted),
+    });
     return res.json({ session });
   } catch (error) {
     if (error.status) {
@@ -4664,6 +4667,20 @@ router.post("/stocktake/sessions/:id/submit", (req, res) => {
         session: error.session || undefined,
       });
     }
+    throw error;
+  }
+});
+
+router.post("/stocktake/sessions/:id/cancel", (req, res) => {
+  ensureInfrastructure();
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only an operator or administrator can cancel a stock count." });
+  }
+  try {
+    const session = cancelStocktakeSession(Number(req.params.id), req.auth.id);
+    return res.json({ session });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     throw error;
   }
 });
@@ -4749,16 +4766,20 @@ router.get("/stocktake/sessions/:id/export.csv", (req, res) => {
             row.movement_since_quantity ?? "",
             JSON.stringify((row.movements_since || []).map((entry) => entry.summary).join("; ")),
             row.expected_quantity ?? row.system_quantity,
-            row.physical_quantity,
-            row.variance,
-            JSON.stringify(row.reason || ""),
+            row.left_unchanged ? "" : row.physical_quantity,
+            row.left_unchanged ? "" : row.variance,
+            JSON.stringify(row.left_unchanged ? "Left unchanged" : row.reason || ""),
           ].join(","),
         ),
       ]
     : [
         ["Item", "Physical qty", "Reason"].join(","),
         ...(session.items || []).map((row) =>
-          [row.item_name, row.physical_quantity, JSON.stringify(row.reason || "")].join(","),
+          [
+            row.item_name,
+            row.left_unchanged ? "" : row.physical_quantity,
+            JSON.stringify(row.left_unchanged ? "Left unchanged" : row.reason || ""),
+          ].join(","),
         ),
       ];
   res.setHeader("Content-Type", "text/csv; charset=utf-8");

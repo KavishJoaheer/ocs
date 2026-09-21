@@ -1881,7 +1881,8 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
     : new Map();
   const items = itemRows
     .map((row) => {
-      const counted = row.physical_quantity !== null && row.physical_quantity !== undefined;
+      const leftUnchanged = Number(row.left_unchanged || 0) === 1;
+      const counted = !leftUnchanged && row.physical_quantity !== null && row.physical_quantity !== undefined;
       const expectedQty = Number(row.expected_quantity ?? row.system_quantity ?? 0);
       const previousQty = row.previous_count_quantity == null ? null : Number(row.previous_count_quantity);
       const movementSince = previousQty == null ? null : expectedQty - previousQty;
@@ -1892,6 +1893,7 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
       return {
         ...row,
         counted,
+        left_unchanged: leftUnchanged,
         system_quantity: showSystem ? Number(row.system_quantity || 0) : null,
         expected_row_version: showSystem ? Number(row.expected_row_version || 0) : null,
         expected_quantity: showSystem ? expectedQty : null,
@@ -1923,8 +1925,9 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
         pending_shipments: showSystem ? pending.shipments : [],
       };
     });
-  const counted = items.filter((row) => row.counted).length;
-  const discrepancyItems = items.filter((row) => Number(row.variance || 0) !== 0);
+  const comparable = items.filter((row) => !row.left_unchanged);
+  const counted = comparable.filter((row) => row.counted).length;
+  const discrepancyItems = comparable.filter((row) => Number(row.variance || 0) !== 0);
   const openVarianceQty = discrepancyItems.reduce((sum, row) => sum + Math.abs(Number(row.variance || 0)), 0);
   const openVarianceValue = roundCurrency(
     discrepancyItems.reduce((sum, row) => sum + Number(row.variance_value || 0), 0),
@@ -1934,10 +1937,11 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
     items,
     item_count: items.length,
     counted_count: counted,
-    progress_percent: items.length ? Math.round((counted / items.length) * 100) : 0,
+    left_unchanged_count: items.length - comparable.length,
+    progress_percent: comparable.length ? Math.round((counted / comparable.length) * 100) : 0,
     last_saved_at: session.updated_at || session.started_at || session.created_at,
     discrepancy_count: discrepancyItems.length,
-    conflict_count: items.filter((row) => row.conflict_status === "recount_required").length,
+    conflict_count: comparable.filter((row) => row.conflict_status === "recount_required").length,
     open_variance_qty: ["submitted", "approved", "applied", "recount_required"].includes(session.status)
       ? openVarianceQty
       : null,
@@ -1973,6 +1977,7 @@ function listStocktakeSessions() {
         d.full_name AS doctor_name,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS item_count,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id AND si.physical_quantity IS NOT NULL) AS counted_count,
+        (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id AND COALESCE(si.left_unchanged, 0) = 1) AS left_unchanged_count,
         (SELECT COALESCE(SUM(ABS(si.variance)), 0) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS open_variance_qty,
         (SELECT COALESCE(SUM(ABS(si.variance) * COALESCE(i.cost_price, 0)), 0)
            FROM inventory_stocktake_session_items si
@@ -1994,8 +1999,13 @@ function listStocktakeSessions() {
       folder_name: row.owner_doctor_id
         ? `${String(row.doctor_name || "Doctor").trim()}'s bag`
         : row.folder_name || (row.folder_id ? "Folder" : "All OCS folders"),
-      progress_percent: Number(row.item_count || 0)
-        ? Math.round((Number(row.counted_count || 0) / Number(row.item_count || 1)) * 100)
+      left_unchanged_count: Number(row.left_unchanged_count || 0),
+      progress_percent: (Number(row.item_count || 0) - Number(row.left_unchanged_count || 0))
+        ? Math.round(
+            (Number(row.counted_count || 0) /
+              (Number(row.item_count || 0) - Number(row.left_unchanged_count || 0))) *
+              100,
+          )
         : 0,
       last_saved_at: row.updated_at || row.started_at || row.created_at,
       open_variance_qty: ["submitted", "approved", "applied"].includes(row.status)
@@ -2508,18 +2518,91 @@ function persistRecountRequired(sessionId, conflicts) {
   })();
 }
 
-function submitStocktakeSession(sessionId, userId) {
+function appendStocktakeNote(existing, addition) {
+  const next = String(addition || "").trim();
+  const base = String(existing || "").trim();
+  if (!next || base.includes(next)) return base;
+  return base ? `${base}\n${next}` : next;
+}
+
+const CANCELLABLE_STOCKTAKE_STATUSES = ["draft", "in_progress", "recount_required", "submitted", "approved"];
+
+function cancelStocktakeSession(sessionId, userId) {
+  const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
+  if (!session) throw HttpError(404, "Stock count session not found.");
+  if (session.status === "cancelled") return getStocktakeSession(sessionId, { role: "operator" });
+  if (session.status === "applied") {
+    throw HttpError(400, "This count is already the official stock count.");
+  }
+  if (!CANCELLABLE_STOCKTAKE_STATUSES.includes(session.status)) {
+    throw HttpError(400, "This count is already closed.");
+  }
+  const note = "Cancelled. Saved counts were not applied to stock.";
+  db.prepare(`
+    UPDATE inventory_stocktake_sessions
+    SET
+      status = 'cancelled',
+      notes = ?,
+      review_reason = ?,
+      reviewed_by_user_id = ?,
+      reviewed_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(appendStocktakeNote(session.notes, note), note, userId, sessionId);
+  return getStocktakeSession(sessionId, { role: "operator" });
+}
+
+function submitStocktakeSession(sessionId, userId, { finishCounted = false } = {}) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stock count session not found.");
   if (!["draft", "in_progress", "recount_required"].includes(session.status)) {
     throw HttpError(409, "This session has already been submitted.");
+  }
+  let notes = session.notes;
+  if (finishCounted) {
+    const counted = Number(
+      db
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM inventory_stocktake_session_items
+          WHERE session_id = ? AND physical_quantity IS NOT NULL AND COALESCE(left_unchanged, 0) = 0
+        `)
+        .get(sessionId)?.count || 0,
+    );
+    if (counted < 1) {
+      throw HttpError(400, "Count at least one item, or cancel this count.");
+    }
+    const skipped = Number(
+      db
+        .prepare(`
+          SELECT COUNT(*) AS count
+          FROM inventory_stocktake_session_items
+          WHERE session_id = ? AND physical_quantity IS NULL AND COALESCE(left_unchanged, 0) = 0
+        `)
+        .get(sessionId)?.count || 0,
+    );
+    if (skipped > 0) {
+      db.prepare(`
+        UPDATE inventory_stocktake_session_items
+        SET
+          left_unchanged = 1,
+          conflict_status = '',
+          conflict_reason = '',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = ? AND physical_quantity IS NULL AND COALESCE(left_unchanged, 0) = 0
+      `).run(sessionId);
+      notes = appendStocktakeNote(
+        notes,
+        `Finished with ${counted} of ${counted + skipped} items. ${skipped} were not counted and were left unchanged.`,
+      );
+    }
   }
   const missing = Number(
     db
       .prepare(`
         SELECT COUNT(*) AS count
         FROM inventory_stocktake_session_items
-        WHERE session_id = ? AND physical_quantity IS NULL
+        WHERE session_id = ? AND physical_quantity IS NULL AND COALESCE(left_unchanged, 0) = 0
       `)
       .get(sessionId)?.count || 0,
   );
@@ -2529,7 +2612,9 @@ function submitStocktakeSession(sessionId, userId) {
   const items = db
     .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
     .all(sessionId);
-  const openConflicts = items.filter((row) => String(row.conflict_status || "") === "recount_required");
+  const openConflicts = items.filter(
+    (row) => String(row.conflict_status || "") === "recount_required" && Number(row.left_unchanged || 0) !== 1,
+  );
   if (openConflicts.length) {
     const error = HttpError(
       409,
@@ -2558,11 +2643,12 @@ function submitStocktakeSession(sessionId, userId) {
     UPDATE inventory_stocktake_sessions
     SET
       status = 'submitted',
+      notes = ?,
       submitted_at = CURRENT_TIMESTAMP,
       submitted_by_user_id = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(userId, sessionId);
+  `).run(notes, userId, sessionId);
   return getStocktakeSession(sessionId, { role: "operator" });
 }
 
@@ -2603,7 +2689,9 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
   `).run(decision === "approved" ? "approved" : "rejected", userId, String(reason || "").slice(0, 500), sessionId);
   if (decision === "approved") {
     const items = db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId);
-    const hasVariance = items.some((row) => Number(row.variance) !== 0);
+    const hasVariance = items.some(
+      (row) => Number(row.left_unchanged || 0) !== 1 && Number(row.variance) !== 0,
+    );
     if (!hasVariance) {
       return applyStocktakeSession(sessionId, userId, { role: "admin" }).session;
     }
@@ -2664,6 +2752,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
       .all(sessionId);
     for (const line of applyItems) {
+      if (Number(line.left_unchanged || 0) === 1) continue;
       const variance = Number(line.variance);
       if (!Number.isFinite(variance) || variance === 0) continue;
       const item = db.prepare("SELECT * FROM inventory WHERE id = ?").get(line.inventory_id);
@@ -2834,6 +2923,7 @@ module.exports = {
   consumeAllocatedBatches,
   consumeFefo,
   createShipmentFromImport,
+  cancelStocktakeSession,
   createStocktakeSession,
   previewStocktakeScope,
   csvShipmentTemplate,

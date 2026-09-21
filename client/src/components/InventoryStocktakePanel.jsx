@@ -187,6 +187,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmFullOpen, setConfirmFullOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [finishOpen, setFinishOpen] = useState(false);
   const [mobileIndex, setMobileIndex] = useState(0);
   const [reviewUncounted, setReviewUncounted] = useState(false);
   const [reviewMismatchesOnly, setReviewMismatchesOnly] = useState(false);
@@ -279,7 +281,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       setLastSavedAt(payload.session?.last_saved_at || "");
       setConfirmFullOpen(false);
       setMobileIndex(0);
-      setReviewUncounted(true);
+      setReviewUncounted(isMobile);
       setRejectOpen(false);
       setSurplusOpen({});
       setEditedIds({});
@@ -301,7 +303,9 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       setActive(payload.session);
       setLastSavedAt(payload.session?.last_saved_at || "");
       setMobileIndex(0);
-      setReviewUncounted(["draft", "in_progress", "recount_required"].includes(payload.session?.status));
+      setReviewUncounted(
+        isMobile && ["draft", "in_progress", "recount_required"].includes(payload.session?.status),
+      );
       setRejectOpen(false);
       setSurplusOpen({});
       setEditedIds({});
@@ -405,6 +409,54 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         setActive(error.data.session);
       }
       toast.error(error.message || "Could not submit this session.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function finishCountedItems() {
+    if (!active) return;
+    const countedNow = (active.items || []).filter((line) => !line.left_unchanged && !isBlankCount(line.physical_quantity)).length;
+    if (countedNow < 1) {
+      toast.error("Count at least one item, or cancel this count.");
+      setFinishOpen(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      if (Object.keys(editedIds).length) {
+        await persistEditedLines();
+      }
+      const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`, {
+        finish_counted: true,
+      });
+      setActive(payload.session);
+      setEditedIds({});
+      setFinishOpen(false);
+      toast.success("Counted items submitted. Items you did not count were left unchanged.");
+      await onApplied?.();
+    } catch (error) {
+      if (error.status === 409 && error.data?.session) {
+        setActive(error.data.session);
+      }
+      toast.error(error.message || "Could not finish this count.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function cancelSession() {
+    if (!active) return;
+    setSaving(true);
+    try {
+      await api.post(`/inventory/stocktake/sessions/${active.id}/cancel`);
+      setActive(null);
+      setEditedIds({});
+      setCancelOpen(false);
+      toast.success("Stock count cancelled. Stock was not changed.");
+      await onApplied?.();
+    } catch (error) {
+      toast.error(error.message || "Could not cancel this count.");
     } finally {
       setSaving(false);
     }
@@ -539,21 +591,28 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const submitted = ["submitted", "approved", "rejected", "applied"].includes(active?.status);
   const recountRequired = active?.status === "recount_required";
   const remainingUncounted = active && (!submitted || recountRequired) ? uncountedLines().length : 0;
+  const countedNow = (active?.items || []).filter((line) => !line.left_unchanged && !isBlankCount(line.physical_quantity)).length;
+  const leftUnchangedCount = (active?.items || []).filter((line) => line.left_unchanged).length;
+  const canCancelCount = Boolean(
+    (canCount || canReview) &&
+      active &&
+      ["draft", "in_progress", "recount_required", "submitted", "approved"].includes(active.status),
+  );
   const canEditCounts = Boolean(canCount && active && ["draft", "in_progress", "recount_required"].includes(active.status));
-  const counted = Number(active?.counted_count || rows.filter((row) => !isBlankCount(row.physical_quantity)).length);
   const total = Number(active?.item_count || rows.length);
-  const progress = total ? Math.round((counted / total) * 100) : 0;
+  const countingTotal = Math.max(total - leftUnchangedCount, countedNow);
+  const progress = countingTotal ? Math.round((countedNow / countingTotal) * 100) : 0;
   const surplusRows = submitted ? rows.filter((line) => isSurplusCount(line)) : [];
   const canEditNewLots = Boolean(
     (canCount || canReview) && active && ["submitted", "approved"].includes(active.status),
   );
   const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
   const surplusHeldByShipment = surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0);
-  const mismatchRows = rows.filter((line) => isCountMismatch(line) || hasUnexplainedMovement(line));
+  const mismatchRows = rows.filter((line) => !line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)));
   const visibleRows = submitted && reviewMismatchesOnly
     ? mismatchRows
-    : reviewUncounted && canEditCounts
-      ? uncountedLines()
+    : reviewUncounted && canEditCounts && isMobile
+      ? rows.filter((line) => isBlankCount(line.physical_quantity) || editedIds[line.id])
       : rows;
   const mobileRows = reviewUncounted ? uncountedLines() : rows;
   const mobileLine = mobileRows[mobileIndex] || null;
@@ -682,6 +741,12 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       </>
       )}
 
+      {active?.status === "cancelled" ? (
+        <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          This count was cancelled. Saved numbers were kept for the record and stock was not changed.
+        </div>
+      ) : null}
+
       {recountRequired ? (
         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p className="font-semibold">Recount required</p>
@@ -695,7 +760,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       {active ? (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Count #{active.id} · {countStatusLabel(active.status)} · {counted} of {total} ({progress}%)
+            Count #{active.id} · {countStatusLabel(active.status)} · {countedNow} of {countingTotal} ({progress}%)
+            {leftUnchangedCount > 0 ? ` · ${leftUnchangedCount} left unchanged` : ""}
             {lastSavedAt ? ` · saved ${formatSavedAt(lastSavedAt)}` : ""}
           </p>
           {saving ? <p className="text-xs text-slate-500" aria-live="polite">Saving progress…</p> : null}
@@ -709,6 +775,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
               <p className="mt-1">Matches expected: <strong>{Math.max(0, (active.counted_count || 0) - (active.discrepancy_count || 0))}</strong></p>
               <p>Does not match: <strong className={Number(active.discrepancy_count || 0) > 0 ? "text-rose-700" : ""}>{active.discrepancy_count ?? 0}</strong></p>
               <p>Total quantity difference: <strong>{formatSignedCount(active.open_variance_qty)}</strong></p>
+              {leftUnchangedCount > 0 ? (
+                <p className="mt-2">
+                  {leftUnchangedCount} item{leftUnchangedCount === 1 ? " was" : "s were"} not counted and {leftUnchangedCount === 1 ? "was" : "were"} left unchanged.
+                </p>
+              ) : null}
               {surplusRows.length ? (
                 <p className="mt-2 text-sm text-amber-900">
                   {surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0)
@@ -725,12 +796,15 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 <div key={line.id} className="rounded-2xl border border-slate-200 px-3 py-3 text-sm">
                   <p className="font-semibold text-slate-900">{line.item_name}</p>
                   <p className="text-xs text-slate-500">
-                    This count {formatCountValue(line.physical_quantity)}
-                    {submitted
-                      ? ` · Last count ${formatCountValue(line.previous_count_quantity)}${
-                          line.previous_count_at ? ` (${formatCountDate(line.previous_count_at)})` : ""
-                        } · Since then ${formatSignedCount(line.movement_since_quantity)} · Expected ${formatCountValue(line.expected_quantity ?? line.system_quantity)} · Difference ${formatSignedCount(line.variance)}`
-                      : ""}
+                    {line.left_unchanged
+                      ? "Not counted. Left unchanged."
+                      : `This count ${formatCountValue(line.physical_quantity)}${
+                          submitted
+                            ? ` · Last count ${formatCountValue(line.previous_count_quantity)}${
+                                line.previous_count_at ? ` (${formatCountDate(line.previous_count_at)})` : ""
+                              } · Since then ${formatSignedCount(line.movement_since_quantity)} · Expected ${formatCountValue(line.expected_quantity ?? line.system_quantity)} · Difference ${formatSignedCount(line.variance)}`
+                            : ""
+                        }`}
                   </p>
                   {submitted && lineMovements(line).length ? (
                     <ul className="mt-2 space-y-1 text-xs text-slate-600">
@@ -741,7 +815,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                       ))}
                     </ul>
                   ) : null}
-                  {submitted && isCountMismatch(line) ? (
+                  {submitted && !line.left_unchanged && isCountMismatch(line) ? (
                     <p className="mt-2 text-xs font-semibold text-rose-700">This physical count does not match expected.</p>
                   ) : null}
                 </div>
@@ -813,7 +887,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                   {visibleRows.map((line) => (
                     <tr
                       key={line.id}
-                      className={isCountMismatch(line) || hasUnexplainedMovement(line) ? "bg-rose-50" : ""}
+                      className={!line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)) ? "bg-rose-50" : ""}
                     >
                       <td className="px-3 py-2 font-semibold text-slate-800">{line.item_name}</td>
                       {submitted ? (
@@ -856,25 +930,31 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                         <td className="px-3 py-2 text-right tabular-nums">{formatCountValue(line.expected_quantity ?? line.system_quantity)}</td>
                       ) : null}
                       <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          min="0"
-                          disabled={!canEditCounts}
-                          value={line.physical_quantity ?? ""}
-                          onChange={(event) => updateLine(line.id, event.target.value)}
-                          onBlur={() => {
-                            if (skipBlurSave.current) {
-                              skipBlurSave.current = false;
-                              return;
-                            }
-                            if (editedIds[line.id]) void saveProgress({ silent: true });
-                          }}
-                          className="min-h-11 w-24 rounded-lg border border-slate-200 px-2 py-1 text-right"
-                        />
+                        {line.left_unchanged ? (
+                          <span className="text-xs font-semibold text-slate-500">Left unchanged</span>
+                        ) : (
+                          <input
+                            type="number"
+                            min="0"
+                            disabled={!canEditCounts}
+                            value={line.physical_quantity ?? ""}
+                            data-count-line={line.id}
+                            onWheel={(event) => event.currentTarget.blur()}
+                            onChange={(event) => updateLine(line.id, event.target.value)}
+                            onBlur={() => {
+                              if (skipBlurSave.current) {
+                                skipBlurSave.current = false;
+                                return;
+                              }
+                              if (editedIds[line.id]) void saveProgress({ silent: true });
+                            }}
+                            className="min-h-11 w-24 rounded-lg border border-slate-200 px-2 py-1 text-right"
+                          />
+                        )}
                       </td>
                       {submitted ? (
-                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${isCountMismatch(line) ? "text-rose-700" : "text-slate-800"}`}>
-                          {formatSignedCount(line.variance)}
+                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${!line.left_unchanged && isCountMismatch(line) ? "text-rose-700" : "text-slate-800"}`}>
+                          {line.left_unchanged ? "—" : formatSignedCount(line.variance)}
                         </td>
                       ) : null}
                       {recountRequired ? (
@@ -951,6 +1031,9 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 {remainingUncounted > 0 ? (
                   <p className="w-full text-xs font-semibold text-amber-700">
                     {remainingUncounted} line{remainingUncounted === 1 ? "" : "s"} still uncounted. Blank is not zero.
+                    {countedNow > 0
+                      ? " Finish the items you counted, or cancel this count."
+                      : " Cancel this count if you do not want to continue."}
                   </p>
                 ) : null}
                 <button
@@ -970,10 +1053,23 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 </button>
                 <button
                   type="button"
-                  onClick={() => setReviewUncounted((value) => !value)}
+                  onClick={() => {
+                    if (isMobile) {
+                      setReviewUncounted((value) => !value);
+                      return;
+                    }
+                    const next = (active?.items || []).find((line) => isBlankCount(line.physical_quantity) && !line.left_unchanged);
+                    const input = next ? document.querySelector(`[data-count-line="${next.id}"]`) : null;
+                    if (!input) {
+                      toast.success("Every line has a count.");
+                      return;
+                    }
+                    input.scrollIntoView({ block: "center" });
+                    input.focus();
+                  }}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold"
                 >
-                  {reviewUncounted ? "Show all lines" : "Review uncompleted"}
+                  {isMobile && reviewUncounted ? "Show all lines" : "Review uncompleted"}
                 </button>
                 <button
                   type="button"
@@ -983,6 +1079,22 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 >
                   Submit counts
                 </button>
+                {remainingUncounted > 0 && countedNow > 0 ? (
+                  <button
+                    type="button"
+                    disabled={saving || !canEditCounts}
+                    onMouseDown={() => {
+                      skipBlurSave.current = true;
+                    }}
+                    onClick={() => {
+                      skipBlurSave.current = false;
+                      setFinishOpen(true);
+                    }}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold"
+                  >
+                    Finish counted items
+                  </button>
+                ) : null}
               </>
             ) : null}
             {canReview && active.status === "submitted" ? (
@@ -1042,6 +1154,16 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 {applying ? "Recording…" : Number(active.discrepancy_count || 0) > 0 ? "Apply count differences" : "Record this count"}
               </button>
             ) : null}
+            {canCancelCount ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setCancelOpen(true)}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold text-rose-700"
+              >
+                Cancel count
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -1055,6 +1177,28 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         <p className="text-sm text-slate-500">Start a Stock Count or open an earlier count from the list.</p>
       )}
     </SectionCard>
+    <ConfirmDialog
+      open={cancelOpen}
+      onClose={() => setCancelOpen(false)}
+      onConfirm={() => void cancelSession()}
+      title="Cancel this stock count?"
+      description="Saved numbers stay on the record. Stock will not change, and you can start another count."
+      confirmLabel="Cancel count"
+      cancelLabel="Keep counting"
+      tone="danger"
+      busy={saving}
+    />
+    <ConfirmDialog
+      open={finishOpen}
+      onClose={() => setFinishOpen(false)}
+      onConfirm={() => void finishCountedItems()}
+      title="Finish the items you counted?"
+      description={`${remainingUncounted} item${remainingUncounted === 1 ? "" : "s"} were not counted and will stay as they are. ${countedNow} counted item${countedNow === 1 ? "" : "s"} will be sent for approval.`}
+      confirmLabel="Finish counted items"
+      cancelLabel="Keep counting"
+      tone="primary"
+      busy={saving}
+    />
     <ConfirmDialog
       open={confirmFullOpen}
       onClose={() => setConfirmFullOpen(false)}

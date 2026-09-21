@@ -606,6 +606,57 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByText("2028-01-15")).toBeVisible();
   });
 
+  test("a stock count can be finished or cancelled without counting every item", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const countedItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Partial Count ${Date.now()}`,
+      quantity: 3,
+    });
+    const skippedItem = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Left Unchanged ${Date.now()}`,
+      quantity: 5,
+    });
+    const created = await startStocktakeSession(request, operator.token, {
+      itemIds: [countedItem.id, skippedItem.id],
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const session = (await apiJson(created)).session;
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: "Stock Count" }).click();
+    await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
+    await expect(page.getByRole("button", { name: "Cancel count" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit counts" })).toBeDisabled();
+    const countedRow = page.locator("tr", { hasText: countedItem.item_name });
+    await countedRow.locator("input[type='number']").fill("3");
+    await expect(countedRow.locator("input[type='number']")).toHaveValue("3");
+    await expect(countedRow).toBeVisible();
+    await page.getByRole("button", { name: "Finish counted items" }).click();
+    const finishDialog = page.getByRole("dialog", { name: "Finish the items you counted?" });
+    await expect(finishDialog).toBeVisible();
+    await finishDialog.getByRole("button", { name: "Finish counted items" }).click();
+    await expect(page.getByText("Counted items submitted. Items you did not count were left unchanged.")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText("Left unchanged", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Cancel count" }).click();
+    const cancelDialog = page.getByRole("dialog", { name: "Cancel this stock count?" });
+    await expect(cancelDialog).toBeVisible();
+    await cancelDialog.getByRole("button", { name: "Cancel count" }).click();
+    await expect(page.getByText("Stock count cancelled. Stock was not changed.")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("button", { name: new RegExp(`#${session.id}.*Cancelled`) })).toBeVisible();
+  });
+
   test("stock counting is completed through the inventory Stock Count UI", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");

@@ -2677,6 +2677,11 @@ function ensureInventoryOperationsSchema() {
   if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("previous_count_session_id")) {
     db.exec("ALTER TABLE inventory_stocktake_session_items ADD COLUMN previous_count_session_id INTEGER");
   }
+  if (tableExists("inventory_stocktake_session_items") && !stocktakeItemCols.includes("left_unchanged")) {
+    db.exec(
+      "ALTER TABLE inventory_stocktake_session_items ADD COLUMN left_unchanged INTEGER NOT NULL DEFAULT 0",
+    );
+  }
   migrateStocktakeRecountStatus();
 
   db.exec(`
@@ -2818,6 +2823,7 @@ function ensureInventoryOperationsSchema() {
       previous_count_quantity INTEGER,
       previous_count_at TEXT,
       previous_count_session_id INTEGER,
+      left_unchanged INTEGER NOT NULL DEFAULT 0,
       surplus_expiry_date TEXT,
       surplus_is_non_expiring INTEGER NOT NULL DEFAULT 0,
       surplus_unit_cost REAL,

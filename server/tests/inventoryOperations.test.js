@@ -4518,3 +4518,65 @@ test("a completed batch expiry and cost can be corrected", async () => {
   assert.equal(String(meta.previous_expiry_date || "").slice(0, 10), "2027-03-21");
   assert.equal(String(meta.verified_expiry_date || "").slice(0, 10), "2028-01-01");
 });
+
+test("an open stock count can be cancelled or finished without counting every item", async () => {
+  const keep = insertOcsItem({ name: `Partial keep ${Date.now()}`, qty: 4 });
+  const skip = insertOcsItem({ name: `Partial skip ${Date.now()}`, qty: 7 });
+  const started = await startStocktakeSession({ item_ids: [keep, skip] });
+  assert.equal(started.status, 201, JSON.stringify(started.data));
+  const sessionId = started.data.session.id;
+  const keepLine = started.data.session.items.find((line) => Number(line.inventory_id) === keep);
+
+  const blocked = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(blocked.status, 400);
+
+  const emptyFinish = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+    body: { finish_counted: true },
+  });
+  assert.equal(emptyFinish.status, 400);
+
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: keepLine.id, physical_quantity: 4 }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const finished = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+    body: { finish_counted: true },
+  });
+  assert.equal(finished.status, 200, JSON.stringify(finished.data));
+  assert.equal(finished.data.session.status, "submitted");
+  assert.equal(finished.data.session.left_unchanged_count, 1);
+  const skippedLine = finished.data.session.items.find((line) => Number(line.inventory_id) === skip);
+  assert.equal(skippedLine.left_unchanged, true);
+  assert.equal(skippedLine.physical_quantity, null);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(skip).quantity), 7);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(keep).quantity), 4);
+
+  const otherA = insertOcsItem({ name: `Cancel A ${Date.now()}`, qty: 2 });
+  const otherB = insertOcsItem({ name: `Cancel B ${Date.now()}`, qty: 9 });
+  const open = await startStocktakeSession({ item_ids: [otherA, otherB] });
+  assert.equal(open.status, 201, JSON.stringify(open.data));
+  const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${open.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  assert.equal(cancelled.data.session.status, "cancelled");
+  assert.match(String(cancelled.data.session.review_reason || ""), /not applied to stock/i);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(otherA).quantity), 2);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(otherB).quantity), 9);
+  const again = await api("POST", `/api/inventory/stocktake/sessions/${open.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(again.status, 200);
+  assert.equal(again.data.session.status, "cancelled");
+
+  db.prepare("UPDATE inventory_stocktake_sessions SET status = 'applied' WHERE id = ?").run(open.data.session.id);
+  const late = await api("POST", `/api/inventory/stocktake/sessions/${open.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(late.status, 400);
+});
