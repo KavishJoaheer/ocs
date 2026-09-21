@@ -111,11 +111,9 @@ export default function InventoryTabSummaries({
           secondLabel="Last received"
           secondValue={formatActivityDate(data.last_received_at)}
         />
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          <Card title="Incoming shipments" value={data.incoming_shipments || 0} onClick={onOpenIncoming} />
-          <Card title="Pending lines" value={data.pending_lines || 0} />
-          <Card title="Invalid / excluded" value={data.invalid_excluded_lines || 0} tone="amber" />
-          <Card title="Pending shipment value" value={formatRupees(data.pending_shipment_value || 0)} />
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
+          <Card title="Waiting to add" value={data.incoming_shipments || 0} onClick={onOpenIncoming} />
+          <Card title="Value waiting" value={formatRupees(data.pending_shipment_value || 0)} />
         </div>
       </div>
     );

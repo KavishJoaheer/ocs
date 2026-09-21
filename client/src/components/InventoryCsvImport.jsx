@@ -16,6 +16,7 @@ function newShipmentOperationId() {
 function InventoryCsvImport({ onImported }) {
   const { user } = useAuth();
   const [csvText, setCsvText] = useState("");
+  const [fileName, setFileName] = useState("");
   const [supplier, setSupplier] = useState("");
   const [deliveryNote, setDeliveryNote] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -36,7 +37,9 @@ function InventoryCsvImport({ onImported }) {
     const reader = new FileReader();
     reader.onload = () => {
       setCsvText(String(reader.result || ""));
+      setFileName(file.name || "delivery.csv");
       setPreview(null);
+      setLastResult(null);
     };
     reader.readAsText(file);
   }
@@ -55,12 +58,20 @@ function InventoryCsvImport({ onImported }) {
     }
   }
 
-  async function handlePreview() {
-    if (!csvText.trim() || previewing) return;
-    if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
-      toast.error("Enter the supplier and delivery-note reference before validating the shipment.");
-      return;
+  function readyToCheck() {
+    if (!csvText.trim()) {
+      toast.error("Choose the supplier file first.");
+      return false;
     }
+    if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
+      toast.error("Enter the supplier and the delivery note.");
+      return false;
+    }
+    return true;
+  }
+
+  async function handlePreview() {
+    if (previewing || !readyToCheck()) return;
     setPreviewing(true);
     try {
       const payload = await api.post("/inventory/staging/preview-csv", {
@@ -70,7 +81,7 @@ function InventoryCsvImport({ onImported }) {
       });
       setPreview(payload);
     } catch (error) {
-      toast.error(error.message || "Could not validate this CSV.");
+      toast.error(error.message || "Could not check this delivery.");
       setPreview(null);
     } finally {
       setPreviewing(false);
@@ -78,11 +89,8 @@ function InventoryCsvImport({ onImported }) {
   }
 
   async function handleImport() {
-    if (importing) return;
-    if (supplier.trim().length < 2 || deliveryNote.trim().length < 2) {
-      toast.error("Supplier and delivery-note reference are required.");
-      return;
-    }
+    if (importing || !preview) return;
+    if (!readyToCheck()) return;
     if (requiresOperationalOverride(user) && String(overrideReason).trim().length < 10) {
       toast.error("Administrators must enter an operational override reason.");
       return;
@@ -109,12 +117,16 @@ function InventoryCsvImport({ onImported }) {
       };
       setLastResult(summary);
       setCsvText("");
+      setFileName("");
       setPreview(null);
       setSupplier("");
       setDeliveryNote("");
       setOperationId(newShipmentOperationId());
-      const skipBit = summary.skipped ? `, ${summary.skipped} skipped` : "";
-      toast.success(`${summary.imported} imported${skipBit}.`);
+      toast.success(
+        summary.skipped
+          ? `${summary.imported} saved as incoming. ${summary.skipped} line${summary.skipped === 1 ? "" : "s"} need a fix.`
+          : `${summary.imported} saved. Add ${summary.imported === 1 ? "it" : "them"} to the shelf below.`,
+      );
       await onImported?.();
     } catch (error) {
       const summary = error instanceof ApiError ? error.data?.import_summary || error.data : null;
@@ -125,44 +137,43 @@ function InventoryCsvImport({ onImported }) {
           skipped_rows: summary.skipped_rows,
         });
       }
-      toast.error(error.message || "Could not import this CSV.");
+      toast.error(error.message || "Could not save this delivery.");
     } finally {
       setImporting(false);
     }
   }
 
   const summary = preview?.preview || preview?.summary;
+  const problemRows = (preview?.rows || []).filter((row) => row.errors?.length);
+  const canSave = Boolean(preview && Number(summary?.valid_rows || 0) > 0);
 
   return (
     <SectionCard
-      title="Import CSV shipment"
-      subtitle="Validate the file, then import into Incoming shipments. Release posts warehouse stock."
+      title="Receive a delivery"
+      subtitle="Check the supplier file, then save it as incoming. Stock changes only when you add it to the shelf."
     >
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={downloadTemplate}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700"
-        >
-          <Download className="size-4" />
-          Download CSV template
-        </button>
-      </div>
-
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         <label className="space-y-1 text-sm font-semibold text-slate-700">
-          Supplier <span className="text-rose-600">*</span>
+          Supplier
           <input
             value={supplier}
-            onChange={(event) => setSupplier(event.target.value)}
+            onChange={(event) => {
+              setSupplier(event.target.value);
+              setPreview(null);
+            }}
+            placeholder="Who delivered this?"
             className="w-full min-h-11 rounded-xl border border-slate-200 px-3 py-2 font-normal"
           />
         </label>
         <label className="space-y-1 text-sm font-semibold text-slate-700">
-          Delivery note <span className="text-rose-600">*</span>
+          Delivery note
           <input
             value={deliveryNote}
-            onChange={(event) => setDeliveryNote(event.target.value)}
+            onChange={(event) => {
+              setDeliveryNote(event.target.value);
+              setPreview(null);
+            }}
+            placeholder="Note or invoice number"
             className="w-full min-h-11 rounded-xl border border-slate-200 px-3 py-2 font-normal"
           />
         </label>
@@ -179,15 +190,17 @@ function InventoryCsvImport({ onImported }) {
           setDragActive(false);
           readFile(event.dataTransfer.files?.[0]);
         }}
-        className={`mt-3 flex min-h-[8rem] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center text-sm font-semibold ${
-          dragActive ? "border-[#2d8f98] bg-[#ecf8f7] text-[#2d8f98]" : "border-slate-200 text-[#2d8f98]"
+        className={`mt-3 flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed px-4 py-5 text-center ${
+          dragActive ? "border-[#2d8f98] bg-[#ecf8f7] text-[#2d8f98]" : "border-slate-200 text-slate-700"
         }`}
       >
-        <Upload className="size-5" />
-        Drop a CSV here or choose a file
+        <Upload className="size-5 text-[#2d8f98]" />
+        <span className="text-sm font-semibold">{fileName || "Drop the supplier file here, or choose it"}</span>
+        <span className="text-xs font-medium text-slate-500">CSV from the template</span>
         <input
           type="file"
           accept=".csv,text/csv"
+          aria-label="Delivery file"
           className="sr-only"
           onChange={(event) => {
             readFile(event.target.files?.[0]);
@@ -195,32 +208,38 @@ function InventoryCsvImport({ onImported }) {
           }}
         />
       </label>
+      <button
+        type="button"
+        onClick={downloadTemplate}
+        className="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[#2d8f98]"
+      >
+        <Download className="size-4" />
+        Download the template
+      </button>
 
-      <p className="mt-2 text-xs text-slate-500">
-        Supported columns include folder, item name, quantity, minimum quantity, unit, cost, selling price, expiry and an optional non-expiring flag.
-      </p>
-
-      <label htmlFor="shipment-csv-text" className="mt-4 block text-sm font-semibold text-slate-800">
-        CSV shipment data
-      </label>
-      <p id="shipment-csv-help" className="mt-1 text-xs text-slate-500">
-        Required columns: folder, item_name, quantity, minimum_quantity, unit, cost_price, selling_price, expiry_date.
-        Example: Consumable,Lidocaine gel,10,2,unit,25,40,2027-06-30
-      </p>
-      <div className="mt-2 grid gap-4">
+      <details className="mt-2">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-600">Paste the file instead</summary>
+        <label htmlFor="shipment-csv-text" className="mt-2 block text-sm font-semibold text-slate-800">
+          CSV shipment data
+        </label>
+        <p id="shipment-csv-help" className="mt-1 text-xs text-slate-500">
+          Columns: folder, item name, quantity, minimum, unit, cost, selling price, expiry.
+        </p>
         <textarea
           id="shipment-csv-text"
           value={csvText}
           onChange={(event) => {
             setCsvText(event.target.value);
+            setFileName(event.target.value.trim() ? "Pasted delivery" : "");
             setPreview(null);
           }}
-          rows={6}
-          aria-describedby={`shipment-csv-help${preview?.rows?.some((row) => row.errors?.length) || lastResult?.skipped_rows?.length ? " shipment-csv-errors" : ""}`}
-          className="block w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
+          rows={5}
+          aria-describedby={`shipment-csv-help${problemRows.length || lastResult?.skipped_rows?.length ? " shipment-csv-errors" : ""}`}
+          className="mt-2 block w-full rounded-2xl border border-slate-200 px-3 py-2 font-mono text-xs text-slate-700"
         />
-        <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
-      </div>
+      </details>
+
+      <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <button
@@ -229,63 +248,56 @@ function InventoryCsvImport({ onImported }) {
           onClick={handlePreview}
           className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50 sm:w-auto"
         >
-          {previewing ? "Validating…" : "Validate preview"}
+          {previewing ? "Checking…" : "Check delivery"}
         </button>
         <button
           type="button"
-          disabled={importing || !csvText.trim() || !preview}
-          aria-disabled={importing || !csvText.trim() || !preview}
+          disabled={importing || !canSave}
+          aria-disabled={importing || !canSave}
           onClick={handleImport}
           className={`inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 text-sm font-semibold sm:w-auto ${
-            importing || !csvText.trim() || !preview
+            importing || !canSave
               ? "cursor-not-allowed bg-slate-200 text-slate-600"
               : "bg-[#2d8f98] text-white hover:brightness-95"
           }`}
         >
-          {importing ? "Importing…" : "Import to staging"}
+          {importing ? "Saving…" : "Save as incoming"}
         </button>
       </div>
 
       {summary ? (
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-700 md:grid-cols-3">
-          <p>Total rows: <strong>{summary.total_rows}</strong></p>
-          <p>Valid: <strong>{summary.valid_rows}</strong></p>
-          <p>Invalid: <strong>{summary.invalid_rows}</strong></p>
-          <p>Duplicate: <strong>{summary.duplicate_rows}</strong></p>
-          <p>Missing expiry: <strong>{summary.missing_expiry}</strong></p>
-          <p>Quantity: <strong>{summary.total_quantity}</strong></p>
-          <p className="col-span-2 md:col-span-3">Value: <strong>{formatRupees(summary.total_value || 0)}</strong></p>
-        </div>
+        <p className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <strong>{summary.valid_rows}</strong> ready
+          {Number(summary.invalid_rows || 0) > 0 ? (
+            <>
+              {" "}
+              · <strong className="text-rose-700">{summary.invalid_rows}</strong>{" "}
+              {Number(summary.invalid_rows) === 1 ? "needs a fix" : "need a fix"}
+            </>
+          ) : null}
+          {" "}
+          · {summary.total_quantity} units · {formatRupees(summary.total_value || 0)}
+        </p>
       ) : null}
 
-      {(preview?.rows || []).some((row) => row.errors?.length) ? (
-        <ul id="shipment-csv-errors" role="alert" className="mt-3 space-y-1 text-xs text-rose-700">
-          {preview.rows
-            .filter((row) => row.errors?.length)
-            .map((row) => (
-              <li key={row.line}>
-                Line {row.line}: {row.errors.join("; ")}
-              </li>
-            ))}
+      {problemRows.length ? (
+        <ul id="shipment-csv-errors" role="alert" className="mt-3 space-y-1 text-sm text-rose-700">
+          {problemRows.map((row) => (
+            <li key={row.line}>
+              Line {row.line}: {row.errors.join("; ")}
+            </li>
+          ))}
         </ul>
       ) : null}
 
-      {lastResult ? (
-        <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-          <p className="text-sm font-semibold text-slate-800">
-            {lastResult.imported} imported
-            {lastResult.skipped ? `, ${lastResult.skipped} skipped` : ""}
-          </p>
-          {lastResult.skipped_rows?.length ? (
-            <ul className="mt-2 space-y-1 text-xs text-slate-600">
-              {lastResult.skipped_rows.map((row) => (
-                <li key={`${row.line}-${row.reason}`}>
-                  Line {row.line}: {row.reason}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+      {lastResult?.skipped_rows?.length ? (
+        <ul className="mt-3 space-y-1 text-sm text-slate-600">
+          {lastResult.skipped_rows.map((row) => (
+            <li key={`${row.line}-${row.reason}`}>
+              Line {row.line}: {row.reason}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </SectionCard>
   );

@@ -1,12 +1,23 @@
 import { useMemo, useState } from "react";
-import { Package } from "lucide-react";
 import toast from "react-hot-toast";
 import SectionCard from "./SectionCard.jsx";
+import ConfirmDialog from "./ConfirmDialog.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
 import { formatRupees } from "../lib/format.js";
 import { requiresOperationalOverride, withOperationalOverride } from "../lib/inventoryAccess.js";
 import OperationalOverrideFields from "./inventory/OperationalOverrideFields.jsx";
+
+function lineExpiry(line) {
+  if (line?.is_non_expiring) return "Does not expire";
+  return line?.expiry_date || "Expiry missing";
+}
+
+function historyLabel(status) {
+  if (status === "released") return "Added to stock";
+  if (status === "cancelled") return "Cancelled";
+  return status || "Closed";
+}
 
 function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, onReleased }) {
   const { user } = useAuth();
@@ -65,91 +76,83 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
   const pendingLines = (openShipment?.lines || []).filter((line) => line.status === "pending");
   const validPending = pendingLines.filter((line) => !(line.validation_errors || []).length);
   const invalidPending = pendingLines.filter((line) => (line.validation_errors || []).length);
-  const excludedLines = (openShipment?.lines || []).filter((line) => line.status === "excluded");
   const selectedValid = validPending.filter((line) => selected[line.id]);
   const selectedQty = selectedValid.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
   const selectedValue = selectedValid.reduce(
     (sum, line) => sum + Number(line.quantity || 0) * Number(line.cost_price || 0),
     0,
   );
-  const allValidQty = validPending.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
-  const allValidValue = validPending.reduce(
-    (sum, line) => sum + Number(line.quantity || 0) * Number(line.cost_price || 0),
-    0,
-  );
+  const partial = selectedValid.length > 0 && selectedValid.length < validPending.length;
+  const supplierName = openShipment?.supplier || "This supplier";
+  const note = openShipment?.delivery_note ? ` · ${openShipment.delivery_note}` : "";
 
   function overridePayload(body) {
     return withOperationalOverride(user, body, overrideReason);
   }
 
-  async function excludeSelectedInvalid() {
+  async function leaveOutProblems() {
     if (!openShipment || openShipment.id === "ungrouped") return;
-    const lines = pendingLines
-      .filter((line) => excludeReason[line.id]?.trim())
+    const lines = invalidPending
+      .filter((line) => String(excludeReason[line.id] || "").trim().length >= 3)
       .map((line) => ({ id: line.id, reason: excludeReason[line.id].trim() }));
     if (!lines.length) {
-      toast.error("Enter an exclusion reason for each line you want to exclude.");
+      toast.error("Write a short reason for each line you are leaving out.");
+      return;
+    }
+    if (requiresOperationalOverride(user) && String(overrideReason).trim().length < 10) {
+      toast.error("Administrators must enter an operational override reason.");
       return;
     }
     setReleasing(true);
     try {
       await api.post(`/inventory/shipments/${openShipment.id}/exclude`, overridePayload({ lines }));
-      toast.success("Selected lines excluded.");
+      toast.success("Those lines were left out.");
       await onReleased?.();
     } catch (error) {
-      toast.error(error.message || "Could not exclude these lines.");
+      toast.error(error.message || "Could not leave these lines out.");
     } finally {
       setReleasing(false);
     }
   }
 
-  async function release(mode) {
+  async function addToStock() {
     if (requiresOperationalOverride(user) && String(overrideReason).trim().length < 10) {
       toast.error("Administrators must enter an operational override reason.");
       return;
     }
-    if (!openShipment || openShipment.id === "ungrouped") {
-      const line = pendingLines[0];
-      if (!line) return;
+    if (!openShipment || !selectedValid.length) {
+      toast.error("Choose at least one line to add.");
+      return;
+    }
+    if (!openShipment.id || openShipment.id === "ungrouped") {
+      const line = selectedValid[0];
       setReleasing(true);
       try {
         await api.post(`/inventory/staging/${line.id}/release`, overridePayload({}));
-        toast.success("Row released.");
+        toast.success("Added to stock.");
         setConfirmMode(null);
         await onReleased?.();
       } catch (error) {
-        toast.error(error.message || "Could not release this row.");
+        toast.error(error.message || "Could not add this to stock.");
       } finally {
         setReleasing(false);
       }
       return;
     }
-    if (mode === "selected" && !selectedValid.length) {
-      toast.error("Select at least one valid row to release.");
-      return;
-    }
-    if (confirmMode !== mode) {
-      setConfirmMode(mode);
-      return;
-    }
     setReleasing(true);
     try {
-      const exclude = pendingLines
-        .filter((line) => excludeReason[line.id]?.trim())
-        .map((line) => ({ id: line.id, reason: excludeReason[line.id].trim() }));
       const payload = await api.post(
         `/inventory/shipments/${openShipment.id}/release`,
         overridePayload({
-          mode,
-          exclude,
-          row_ids: mode === "selected" ? selectedValid.map((line) => line.id) : [],
+          mode: partial ? "selected" : "all_valid",
+          row_ids: partial ? selectedValid.map((line) => line.id) : [],
         }),
       );
-      toast.success(payload.idempotent ? "Shipment already released." : "Shipment lines released.");
+      toast.success(payload.idempotent ? "This delivery was already added." : "Added to stock.");
       setConfirmMode(null);
       await onReleased?.();
     } catch (error) {
-      toast.error(error.message || "Could not release this shipment.");
+      toast.error(error.message || "Could not add this delivery to stock.");
     } finally {
       setReleasing(false);
     }
@@ -157,154 +160,128 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
 
   return (
     <SectionCard
-      title="Incoming shipments"
-      subtitle="Exclude invalid lines, then release selected or all valid rows into OCS stock."
-      actions={
-        <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
-          <Package className="size-3.5" />
-          Shipments
-        </span>
-      }
+      title="Add to the shelf"
+      subtitle="These deliveries are saved. Adding them makes the stock available."
     >
       {grouped.length ? (
         <div className="space-y-4">
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {grouped.map((shipment) => (
-              <button
-                key={shipment.id}
-                type="button"
-                aria-current={String(openShipment?.id) === String(shipment.id) ? "true" : undefined}
-                onClick={() => setOpenId(shipment.id)}
-                className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-semibold ${
-                  String(openShipment?.id) === String(shipment.id)
-                    ? "bg-[#2d8f98] text-white"
-                    : "border border-slate-200 text-slate-600"
-                }`}
-              >
-                {shipment.supplier || shipment.delivery_note || `Shipment #${shipment.id}`}
-              </button>
-            ))}
-          </div>
+          {grouped.length > 1 ? (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {grouped.map((shipment) => (
+                <button
+                  key={shipment.id}
+                  type="button"
+                  aria-current={String(openShipment?.id) === String(shipment.id) ? "true" : undefined}
+                  onClick={() => setOpenId(shipment.id)}
+                  className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-semibold ${
+                    String(openShipment?.id) === String(shipment.id)
+                      ? "bg-[#2d8f98] text-white"
+                      : "border border-slate-200 text-slate-600"
+                  }`}
+                >
+                  {shipment.supplier || shipment.delivery_note || `Delivery #${shipment.id}`}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {openShipment ? (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-700 md:grid-cols-4">
-                <p>Valid pending: <strong>{validPending.length}</strong></p>
-                <p>Invalid: <strong>{invalidPending.length}</strong></p>
-                <p>Excluded: <strong>{excludedLines.length}</strong></p>
-                <p>Value of valid: <strong>{formatRupees(allValidValue)}</strong></p>
-              </div>
-              <p className="text-xs text-slate-500">
-                {(openShipment.total_rows || openShipment.lines?.length || 0)} rows
-                {openShipment.imported_by_name ? ` · imported by ${openShipment.imported_by_name}` : ""}
-                {` · ${selectedValid.length} selected · ${selectedQty} units · ${formatRupees(selectedValue)}`}
+              <p className="text-sm font-semibold text-slate-800">
+                {supplierName}
+                {note}
               </p>
               <div className="space-y-2">
-                {(openShipment.lines || []).map((line) => {
-                  const errors = line.validation_errors || [];
-                  const selectable = line.status === "pending" && !errors.length;
-                  return (
-                    <div key={line.id} className="rounded-2xl border border-slate-100 px-4 py-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <label className="flex min-w-0 items-start gap-3">
-                          {selectable ? (
-                            <input
-                              type="checkbox"
-                              className="mt-1 size-5"
-                              checked={Boolean(selected[line.id])}
-                              onChange={(event) =>
-                                setSelected((current) => ({ ...current, [line.id]: event.target.checked }))
-                              }
-                            />
-                          ) : null}
-                          <span>
-                            <span className="block text-sm font-semibold text-slate-900">{line.item_name}</span>
-                            <span className="block text-xs text-slate-500">
-                              Qty {line.quantity}
-                              {line.expiry_date
-                                ? ` · Exp ${line.expiry_date}`
-                                : line.is_non_expiring
-                                  ? " · Non-expiring"
-                                  : " · Missing expiry"}
-                              {` · ${line.status}`}
-                            </span>
-                            {errors.length ? (
-                              <span className="mt-1 block text-xs text-rose-600">{errors.join("; ")}</span>
-                            ) : null}
-                            {line.exclude_reason ? (
-                              <span className="mt-1 block text-xs text-slate-500">Excluded: {line.exclude_reason}</span>
-                            ) : null}
-                          </span>
-                        </label>
-                        {line.status === "pending" ? (
-                          <label className="space-y-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                            Exclusion reason
-                            <input
-                              value={excludeReason[line.id] || ""}
-                              onChange={(event) =>
-                                setExcludeReason((current) => ({ ...current, [line.id]: event.target.value }))
-                              }
-                              className="w-40 min-h-11 rounded-lg border border-slate-200 px-2 py-1 text-xs font-normal normal-case"
-                            />
-                          </label>
-                        ) : null}
-                      </div>
+                {validPending.map((line) => (
+                  <label key={line.id} className="flex items-start gap-3 rounded-2xl border border-slate-100 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-5"
+                      checked={Boolean(selected[line.id])}
+                      onChange={(event) =>
+                        setSelected((current) => ({ ...current, [line.id]: event.target.checked }))
+                      }
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">{line.item_name}</span>
+                      <span className="block text-xs text-slate-500">
+                        {line.quantity} · {lineExpiry(line)} · {formatRupees(line.cost_price || 0)} each
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {invalidPending.length ? (
+                <div className="space-y-2 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-rose-900">These lines cannot be added yet</p>
+                  {invalidPending.map((line) => (
+                    <div key={line.id} className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-900">{line.item_name}</p>
+                      <p className="text-xs text-rose-700">{(line.validation_errors || []).join("; ")}</p>
+                      <input
+                        value={excludeReason[line.id] || ""}
+                        onChange={(event) =>
+                          setExcludeReason((current) => ({ ...current, [line.id]: event.target.value }))
+                        }
+                        placeholder="Why leave this out?"
+                        aria-label={`Reason for leaving out ${line.item_name}`}
+                        className="w-full min-h-11 rounded-lg border border-rose-200 bg-white px-3 text-sm"
+                      />
                     </div>
-                  );
-                })}
-              </div>
-              <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
-              {confirmMode ? (
-                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                  Confirm {confirmMode === "selected" ? "selected" : "all valid"} release:{" "}
-                  {confirmMode === "selected" ? selectedQty : allValidQty} units ·{" "}
-                  {formatRupees(confirmMode === "selected" ? selectedValue : allValidValue)}. Press the same button again to post.
-                </p>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={releasing}
+                    onClick={leaveOutProblems}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-700 disabled:opacity-60"
+                  >
+                    Leave these out
+                  </button>
+                </div>
               ) : null}
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <button
-                  type="button"
-                  disabled={releasing || !selectedValid.length}
-                  onClick={() => release("selected")}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  {confirmMode === "selected" ? "Confirm release selected" : "Release selected"}
-                </button>
-                <button
-                  type="button"
-                  disabled={releasing || !validPending.length}
-                  onClick={() => release("all_valid")}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-60"
-                >
-                  {confirmMode === "all_valid" ? "Confirm release all valid" : "Release all valid"}
-                </button>
-                <button
-                  type="button"
-                  disabled={releasing}
-                  onClick={excludeSelectedInvalid}
-                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 px-3 text-sm font-semibold text-rose-700 disabled:opacity-60"
-                >
-                  Exclude lines with reasons
-                </button>
-              </div>
+
+              <OperationalOverrideFields user={user} reason={overrideReason} onChange={setOverrideReason} />
+
+              <button
+                type="button"
+                disabled={releasing || !selectedValid.length}
+                onClick={() => setConfirmMode(partial ? "selected" : "all_valid")}
+                className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto"
+              >
+                {partial ? `Add ${selectedValid.length} selected to stock` : "Add to stock"}
+              </button>
             </div>
           ) : null}
         </div>
       ) : (
-        <p className="text-sm text-slate-500">No incoming shipments waiting.</p>
+        <p className="text-sm text-slate-500">No deliveries waiting. Receive one above, then add it here.</p>
       )}
 
       {history.length ? (
-        <div className="mt-6 border-t border-slate-100 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Shipment history</h3>
+        <details className="mt-6 border-t border-slate-100 pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-600">Earlier deliveries</summary>
           <ul className="mt-2 space-y-1 text-sm text-slate-600">
-            {history.slice(0, 8).map((shipment) => (
+            {history.slice(0, 6).map((shipment) => (
               <li key={shipment.id}>
-                #{shipment.id} · {shipment.supplier || "Shipment"} · {shipment.status}
+                {shipment.supplier || "Supplier"}
+                {shipment.delivery_note ? ` · ${shipment.delivery_note}` : ""} · {historyLabel(shipment.status)}
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(confirmMode)}
+        onClose={() => setConfirmMode(null)}
+        onConfirm={addToStock}
+        title="Add this delivery to stock?"
+        description={`${selectedQty} units from ${supplierName} will be available to dispatch. Value ${formatRupees(selectedValue)}.`}
+        confirmLabel={releasing ? "Adding…" : "Add to stock"}
+        tone="primary"
+        busy={releasing}
+      />
     </SectionCard>
   );
 }

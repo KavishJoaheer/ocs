@@ -1116,22 +1116,8 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: /Shipments/i }).click();
-    const paste = page.getByLabel(/CSV shipment data/i);
-    await expect(paste).toBeVisible({ timeout: 20_000 });
-    const override = page.getByText("Operational override reason");
-    if (await override.count()) {
-      const gap = await paste.evaluate((element) => {
-        const overrideContainer = element.nextElementSibling;
-        if (!overrideContainer) return null;
-        const pasteBox = element.getBoundingClientRect();
-        const overrideBox = overrideContainer.getBoundingClientRect();
-        return overrideBox.top - pasteBox.bottom;
-      });
-      expect(gap).not.toBeNull();
-      expect(gap).toBeGreaterThanOrEqual(4);
-    }
-    await expect(page.getByRole("button", { name: "Validate preview" })).toBeVisible();
-    const validate = await page.getByRole("button", { name: "Validate preview" }).boundingBox();
+    await expect(page.getByRole("button", { name: "Check delivery" })).toBeVisible({ timeout: 20_000 });
+    const validate = await page.getByRole("button", { name: "Check delivery" }).boundingBox();
     expect(validate?.width || 0).toBeGreaterThan(200);
   });
 
@@ -1398,8 +1384,8 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("tab", { name: /Shipments/i }).click();
     await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i)).toBeVisible();
     await expect(page.getByText(/Received this month/i)).toBeVisible();
-    await expect(page.getByLabel(/CSV shipment data/i)).toBeVisible({ timeout: 20_000 });
-    const importButton = page.getByRole("button", { name: "Import to staging" });
+    await expect(page.getByLabel("Delivery file")).toBeAttached({ timeout: 20_000 });
+    const importButton = page.getByRole("button", { name: "Save as incoming" });
     await expect(importButton).toBeDisabled();
   });
 
