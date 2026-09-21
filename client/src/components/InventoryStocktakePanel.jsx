@@ -68,7 +68,7 @@ function countStatusLabel(status) {
   }[status] || status;
 }
 
-function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions = [], requestedStatus = "" }) {
+function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApplied, sessions = [], requestedStatus = "" }) {
   const { user } = useAuth();
   const canCount = canCountStocktake(user);
   const canReview = canReviewStocktake(user);
@@ -94,16 +94,27 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     return () => setUnsavedWork("stocktake", false);
   }, [editedIds]);
 
-  const scopedItems = useMemo(
-    () => (scope && scope !== "all" ? items.filter((item) => String(item.folder_id) === String(scope)) : items),
-    [items, scope],
+  const bagDoctors = useMemo(
+    () => (Array.isArray(doctors) ? doctors.filter((doctor) => doctor?.id) : []),
+    [doctors],
   );
+  const isBagScope = String(scope).startsWith("bag:");
+  const bagDoctorId = isBagScope ? Number(String(scope).slice(4)) || null : null;
+  const selectedBagDoctor = bagDoctorId
+    ? bagDoctors.find((doctor) => Number(doctor.id) === bagDoctorId)
+    : null;
+  const scopedItems = useMemo(() => {
+    if (isBagScope) return [];
+    return scope && scope !== "all" ? items.filter((item) => String(item.folder_id) === String(scope)) : items;
+  }, [items, scope, isBagScope]);
   const selectedFolderName = !scope
-    ? "No folder selected"
-    : scope === "all"
-      ? "All OCS folders"
-      : folders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
-  const fullCatalogue = scope === "all";
+    ? "No location selected"
+    : isBagScope
+      ? `${String(selectedBagDoctor?.full_name || "Doctor").trim()}'s bag`
+      : scope === "all"
+        ? "All OCS folders"
+        : folders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
+  const fullCatalogue = scope === "all" || isBagScope;
   const scopeChosen = Boolean(scope);
 
   useEffect(() => {
@@ -112,9 +123,15 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       return undefined;
     }
     let cancelled = false;
-    const params = fullCatalogue ? "" : `?folder_id=${encodeURIComponent(scope)}`;
+    const params = new URLSearchParams();
+    if (isBagScope && bagDoctorId) {
+      params.set("doctor_id", String(bagDoctorId));
+    } else if (!fullCatalogue && scope) {
+      params.set("folder_id", String(scope));
+    }
+    const suffix = params.toString() ? `?${params.toString()}` : "";
     api
-      .get(`/inventory/stocktake/scope${params}`)
+      .get(`/inventory/stocktake/scope${suffix}`)
       .then((payload) => {
         if (!cancelled) setScopePreview(payload);
       })
@@ -124,7 +141,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     return () => {
       cancelled = true;
     };
-  }, [scope, fullCatalogue, scopeChosen]);
+  }, [scope, fullCatalogue, scopeChosen, isBagScope, bagDoctorId]);
 
   useEffect(() => {
     if (!requestedStatus) return;
@@ -143,8 +160,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     setCreating(true);
     try {
       const payload = await api.post("/inventory/stocktake/sessions", {
-        folder_id: fullCatalogue ? null : Number(scope),
-        confirm_all: fullCatalogue,
+        folder_id: isBagScope || fullCatalogue ? null : Number(scope),
+        doctor_id: bagDoctorId,
+        confirm_all: fullCatalogue || isBagScope,
         expected_item_count: scopePreview?.item_count ?? scopedItems.length,
         scope_token: scopePreview?.scope_token,
       });
@@ -376,7 +394,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     <>
     <SectionCard
       title="Stock Count"
-      subtitle="Operators count the shelf. Admin then compares this count with the last recorded count, including stock that moved in between."
+          subtitle="Operators count the shelf or a doctor bag. Admin then compares this count with the last recorded count, including stock that moved in between."
       actions={
         <span className="inline-flex items-center gap-1.5 rounded-2xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">
           <ClipboardCheck className="size-3.5" />
@@ -386,7 +404,7 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
     >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Folder / category
+          Location
           <select
             value={scope}
             onChange={(event) => {
@@ -395,13 +413,24 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
             }}
             className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
           >
-            <option value="">Select a folder…</option>
-            <option value="all">All OCS folders</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
+            <option value="">Select a location…</option>
+            <optgroup label="Warehouse">
+              <option value="all">All OCS folders</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </optgroup>
+            {bagDoctors.length ? (
+              <optgroup label="Doctor bags">
+                {bagDoctors.map((doctor) => (
+                  <option key={`bag-${doctor.id}`} value={`bag:${doctor.id}`}>
+                    {String(doctor.full_name || "Doctor").trim()}'s bag
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         {canCount ? (
@@ -425,14 +454,18 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       </div>
       <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
         <p>Scope: <strong>{selectedFolderName}</strong></p>
-        <p>Items in scope: <strong>{scopedItems.length}</strong></p>
+        <p>Items in scope: <strong>{scopePreview?.item_count ?? scopedItems.length}</strong></p>
         <p>Counter / assignee: <strong>{user?.full_name || user?.username || "You"}</strong></p>
-        {fullCatalogue ? (
+        {scope === "all" ? (
           <p className="mt-2 font-semibold text-amber-800">
-            All OCS folders will be counted ({scopedItems.length} items). Confirm before starting a full-catalogue session.
+            All OCS folders will be counted ({scopePreview?.item_count ?? scopedItems.length} items). Confirm before starting a full-catalogue session.
+          </p>
+        ) : isBagScope ? (
+          <p className="mt-2 font-semibold text-amber-800">
+            {selectedFolderName} will be counted ({scopePreview?.item_count ?? 0} items). Confirm before starting a bag count.
           </p>
         ) : !scopeChosen ? (
-          <p className="mt-2 text-slate-500">Choose a folder or all folders before starting.</p>
+          <p className="mt-2 text-slate-500">Choose a warehouse folder, all folders, or a doctor bag before starting.</p>
         ) : null}
       </div>
       {recountRequired ? (
@@ -766,9 +799,13 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
       open={confirmFullOpen}
       onClose={() => setConfirmFullOpen(false)}
       onConfirm={() => startStocktakeSession({ confirmAll: true })}
-      title="Start a complete Stock Count?"
-      description={`This will start a blind stock count for ${scopePreview?.item_count ?? scopedItems.length} items across all OCS folders.`}
-      confirmLabel="Start full-catalogue count"
+      title={isBagScope ? "Start a bag stock count?" : "Start a complete Stock Count?"}
+      description={
+        isBagScope
+          ? `This will start a blind stock count for ${scopePreview?.item_count ?? 0} items in ${selectedFolderName}.`
+          : `This will start a blind stock count for ${scopePreview?.item_count ?? scopedItems.length} items across all OCS folders.`
+      }
+      confirmLabel={isBagScope ? "Start bag count" : "Start full-catalogue count"}
       tone="primary"
       busy={creating}
     />
@@ -782,8 +819,9 @@ function InventoryStocktakePanel({ folders = [], items = [], onApplied, sessions
           const payload = await api.post("/inventory/stocktake/sessions", withOperationalOverride(
             user,
             {
-              folder_id: fullCatalogue || !scope ? null : Number(scope),
-              confirm_all: fullCatalogue,
+              folder_id: isBagScope || fullCatalogue || !scope ? null : Number(scope),
+              doctor_id: bagDoctorId,
+              confirm_all: fullCatalogue || isBagScope,
               expected_item_count: scopePreview?.item_count ?? scopedItems.length,
               scope_token: scopePreview?.scope_token,
             },

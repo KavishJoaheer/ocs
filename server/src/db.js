@@ -2766,6 +2766,7 @@ function ensureInventoryOperationsSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       scope TEXT NOT NULL DEFAULT 'ocs',
       folder_id INTEGER,
+      owner_doctor_id INTEGER,
       status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'in_progress', 'submitted', 'approved', 'rejected', 'applied', 'cancelled', 'recount_required')),
       notes TEXT NOT NULL DEFAULT '',
@@ -2928,6 +2929,11 @@ function ensureInventoryIntegritySchema() {
     "inventory_stocktake_sessions",
     "scope_token",
     "ALTER TABLE inventory_stocktake_sessions ADD COLUMN scope_token TEXT",
+  );
+  addColumnIfMissing(
+    "inventory_stocktake_sessions",
+    "owner_doctor_id",
+    "ALTER TABLE inventory_stocktake_sessions ADD COLUMN owner_doctor_id INTEGER",
   );
   addColumnIfMissing(
     "inventory_stocktake_sessions",

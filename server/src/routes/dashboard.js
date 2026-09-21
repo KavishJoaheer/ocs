@@ -22,6 +22,7 @@ const {
   decorateInventoryItems,
   computeDoctorInventoryMetrics,
   catalogueKey,
+  isAtOrBelowPar,
 } = require("../lib/inventoryStockState");
 const {
   CLINIC_UTC_OFFSET_HOURS,
@@ -618,25 +619,26 @@ function getDoctorStatuses() {
 
 function getOcsLowStockAlert() {
   try {
-    const rows = db
-      .prepare(`
-        SELECT
-          id,
-          item_name,
-          quantity AS current_quantity,
-          minimum_quantity AS par_level
-        FROM inventory
-        WHERE stock_scope = 'ocs'
-          AND minimum_quantity > 0
-      `)
-      .all()
+    const rows = decorateInventoryItems(
+      db
+        .prepare(`
+          SELECT i.*, f.name AS folder_name
+          FROM inventory i
+          LEFT JOIN inventory_folders f ON f.id = i.folder_id
+          WHERE i.stock_scope = 'ocs'
+            AND i.owner_doctor_id IS NULL
+            AND i.archived_at IS NULL
+            AND i.minimum_quantity > 0
+        `)
+        .all(),
+    )
+      .filter(isAtOrBelowPar)
       .map((row) => ({
         item_id: Number(row.id),
         item_name: row.item_name,
-        par_level: Number(row.par_level || 0),
-        current_quantity: Number(row.current_quantity || 0),
-      }))
-      .filter((row) => row.par_level > 0 && row.current_quantity <= row.par_level);
+        par_level: Number(row.minimum_quantity || 0),
+        current_quantity: Number(row.available_to_use ?? row.on_hand_quantity ?? row.quantity ?? 0),
+      }));
 
     return {
       triggered: rows.length > 0,

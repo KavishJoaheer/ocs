@@ -1578,18 +1578,39 @@ function loadStocktakeIntervalMovements(session, lines) {
   return grouped;
 }
 
-function loadStocktakeScopeItems({ folderId = null, itemIds = [] } = {}) {
+function loadStocktakeScopeItems({ folderId = null, itemIds = [], ownerDoctorId = null } = {}) {
   const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
+  const doctorId = Number(ownerDoctorId || 0) || null;
   if (scopedIds.length) {
     return scopedIds
       .map((id) =>
-        db
-          .prepare(
-            `SELECT * FROM inventory WHERE id = ? AND stock_scope = 'ocs' AND owner_doctor_id IS NULL AND archived_at IS NULL`,
-          )
-          .get(Number(id)),
+        doctorId
+          ? db
+              .prepare(
+                `SELECT * FROM inventory WHERE id = ? AND stock_scope = 'doctor' AND owner_doctor_id = ? AND archived_at IS NULL`,
+              )
+              .get(Number(id), doctorId)
+          : db
+              .prepare(
+                `SELECT * FROM inventory WHERE id = ? AND stock_scope = 'ocs' AND owner_doctor_id IS NULL AND archived_at IS NULL`,
+              )
+              .get(Number(id)),
       )
       .filter(Boolean);
+  }
+  if (doctorId) {
+    return db
+      .prepare(
+        `
+        SELECT * FROM inventory
+        WHERE stock_scope = 'doctor'
+          AND owner_doctor_id = ?
+          AND archived_at IS NULL
+          AND (? IS NULL OR folder_id = ?)
+        ORDER BY item_name ASC
+      `,
+      )
+      .all(doctorId, folderId || null, folderId || null);
   }
   return db
     .prepare(
@@ -1605,9 +1626,10 @@ function loadStocktakeScopeItems({ folderId = null, itemIds = [] } = {}) {
     .all(folderId || null, folderId || null);
 }
 
-function stocktakeScopeFingerprint(items, { folderId = null, itemIds = [] } = {}) {
+function stocktakeScopeFingerprint(items, { folderId = null, itemIds = [], ownerDoctorId = null } = {}) {
   const payload = {
     folder_id: folderId ? Number(folderId) : null,
+    owner_doctor_id: ownerDoctorId ? Number(ownerDoctorId) : null,
     requested_item_ids: (Array.isArray(itemIds) ? itemIds : [])
       .map((id) => Number(id))
       .filter(Boolean)
@@ -1628,11 +1650,12 @@ function stocktakeScopeFingerprint(items, { folderId = null, itemIds = [] } = {}
   };
 }
 
-function previewStocktakeScope({ folderId = null, itemIds = [] } = {}) {
-  const items = loadStocktakeScopeItems({ folderId, itemIds });
-  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds });
+function previewStocktakeScope({ folderId = null, itemIds = [], ownerDoctorId = null } = {}) {
+  const items = loadStocktakeScopeItems({ folderId, itemIds, ownerDoctorId });
+  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds, ownerDoctorId });
   return {
     folder_id: folderId ? Number(folderId) : null,
+    owner_doctor_id: ownerDoctorId ? Number(ownerDoctorId) : null,
     item_count: fingerprint.item_count,
     scope_token: fingerprint.scope_token,
   };
@@ -1642,6 +1665,7 @@ function createStocktakeSession({
   scope = "ocs",
   folderId = null,
   itemIds = [],
+  ownerDoctorId = null,
   userId,
   notes = "",
   confirmAll = false,
@@ -1649,12 +1673,24 @@ function createStocktakeSession({
   scopeToken = "",
 }) {
   const scopedIds = Array.isArray(itemIds) ? itemIds.filter(Boolean) : [];
+  const doctorId = Number(ownerDoctorId || 0) || null;
   const fullCatalogue = !folderId && !scopedIds.length;
   if (fullCatalogue && !confirmAll) {
-    throw HttpError(400, "Starting a full-catalogue stock count requires explicit confirmation.");
+    throw HttpError(
+      400,
+      doctorId
+        ? "Starting a full bag stock count requires explicit confirmation."
+        : "Starting a full-catalogue stock count requires explicit confirmation.",
+    );
   }
-  const items = loadStocktakeScopeItems({ folderId, itemIds: scopedIds });
-  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds: scopedIds });
+  const items = loadStocktakeScopeItems({ folderId, itemIds: scopedIds, ownerDoctorId: doctorId });
+  if (!items.length) {
+    throw HttpError(
+      400,
+      doctorId ? "This doctor bag has no stock items to count." : "No stock items in this count scope.",
+    );
+  }
+  const fingerprint = stocktakeScopeFingerprint(items, { folderId, itemIds: scopedIds, ownerDoctorId: doctorId });
   const providedToken = String(scopeToken || "").trim();
   if (!providedToken) {
     throw HttpError(400, "A stock count scope token is required.", {
@@ -1678,13 +1714,14 @@ function createStocktakeSession({
   const info = db
     .prepare(`
       INSERT INTO inventory_stocktake_sessions (
-        scope, folder_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at,
+        scope, folder_id, owner_doctor_id, status, notes, created_by_user_id, assigned_counter_user_id, started_at,
         scope_token, scope_snapshot_json
-      ) VALUES (?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+      ) VALUES (?, ?, ?, 'in_progress', ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
     `)
     .run(
-      scope,
+      doctorId ? "doctor" : (scope || "ocs"),
       folderId || null,
+      doctorId,
       notes,
       userId,
       userId,
@@ -1807,6 +1844,7 @@ function listStocktakeSessions() {
         reviewer.full_name AS reviewed_by_name,
         applier.full_name AS applied_by_name,
         f.name AS folder_name,
+        d.full_name AS doctor_name,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS item_count,
         (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id AND si.physical_quantity IS NOT NULL) AS counted_count,
         (SELECT COALESCE(SUM(ABS(si.variance)), 0) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS open_variance_qty,
@@ -1820,13 +1858,16 @@ function listStocktakeSessions() {
       LEFT JOIN users reviewer ON reviewer.id = s.reviewed_by_user_id
       LEFT JOIN users applier ON applier.id = s.applied_by_user_id
       LEFT JOIN inventory_folders f ON f.id = s.folder_id
+      LEFT JOIN doctors d ON d.id = s.owner_doctor_id
       ORDER BY s.created_at DESC, s.id DESC
       LIMIT 100
     `)
     .all()
     .map((row) => ({
       ...row,
-      folder_name: row.folder_name || (row.folder_id ? "Folder" : "All OCS folders"),
+      folder_name: row.owner_doctor_id
+        ? `${String(row.doctor_name || "Doctor").trim()}'s bag`
+        : row.folder_name || (row.folder_id ? "Folder" : "All OCS folders"),
       progress_percent: Number(row.item_count || 0)
         ? Math.round((Number(row.counted_count || 0) / Number(row.item_count || 1)) * 100)
         : 0,

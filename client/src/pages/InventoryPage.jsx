@@ -91,6 +91,7 @@ import {
   isExpiredItem,
   isMissingExpiryItem,
   isNearExpiryItem,
+  isOutOfStock,
   itemAvailable,
   readDoctorMetrics,
 } from "../lib/doctorInventoryMetrics.js";
@@ -225,6 +226,7 @@ function formatCompareQty(qty) {
 function InventoryStatusChips({ item, hideCost = false }) {
   const isService = item.item_kind === "service";
   const isLow = isAtOrBelowPar(item);
+  const isOut = isOutOfStock(item);
   const missingExpiry = Boolean(item.missing_expiry);
   const missingCost = Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0;
   const nearExpiry = Boolean(item.is_near_expiry);
@@ -232,7 +234,7 @@ function InventoryStatusChips({ item, hideCost = false }) {
   const quarantined = itemHasQuarantinedStock(item);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isService && !isLow && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
+  if (!isService && !isLow && !isOut && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -263,6 +265,15 @@ function InventoryStatusChips({ item, hideCost = false }) {
         >
           <span className="sr-only">Stock status: </span>
           Held
+        </span>
+      ) : null}
+      {isOut ? (
+        <span
+          role="status"
+          aria-label="Stock status: Out of stock"
+          className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+        >
+          Out
         </span>
       ) : null}
       {isLow ? (
@@ -3021,6 +3032,7 @@ export default function InventoryPage() {
   const [showUnpricedOnly, setShowUnpricedOnly] = useState(false);
   const [stocktakeStatusFilter, setStocktakeStatusFilter] = useState("");
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+  const [showOutOfStockOnly, setShowOutOfStockOnly] = useState(false);
   const [showNearExpiryOnly, setShowNearExpiryOnly] = useState(false);
   const [showMissingExpiryOnly, setShowMissingExpiryOnly] = useState(false);
   const [showExpiredOnly, setShowExpiredOnly] = useState(false);
@@ -3145,6 +3157,7 @@ export default function InventoryPage() {
   const chaseCounts = useMemo(
     () => ({
       low: items.filter((item) => isAtOrBelowPar(item)).length,
+      out: items.filter((item) => isOutOfStock(item)).length,
       near: items.filter((item) => isNearExpiryItem(item)).length,
       missing: items.filter((item) => isMissingExpiryItem(item)).length,
       expired: items.filter((item) => isExpiredItem(item)).length,
@@ -3449,6 +3462,7 @@ export default function InventoryPage() {
     return source
       .filter((item) => !needle || item.item_name.toLowerCase().includes(needle))
       .filter((item) => !showLowStockOnly || isAtOrBelowPar(item))
+      .filter((item) => !showOutOfStockOnly || isOutOfStock(item))
       .filter((item) => !showNearExpiryOnly || isNearExpiryItem(item))
       .filter((item) => !showMissingExpiryOnly || isMissingExpiryItem(item))
       .filter((item) => !showExpiredOnly || isExpiredItem(item))
@@ -3464,6 +3478,7 @@ export default function InventoryPage() {
     search,
     selectedView,
     showLowStockOnly,
+    showOutOfStockOnly,
     showNearExpiryOnly,
     showMissingExpiryOnly,
     showExpiredOnly,
@@ -3511,6 +3526,9 @@ export default function InventoryPage() {
     if (!doctorViewIsOcs && showLowStockOnly) {
       rows = rows.filter((item) => isAtOrBelowPar(item));
     }
+    if (!doctorViewIsOcs && showOutOfStockOnly) {
+      rows = rows.filter((item) => isOutOfStock(item));
+    }
     if (!doctorViewIsOcs && showMissingExpiryOnly) {
       rows = rows.filter((item) => isMissingExpiryItem(item));
     }
@@ -3522,7 +3540,7 @@ export default function InventoryPage() {
     }
     const expiryRank = (date) => (date ? new Date(date).getTime() : Number.MAX_SAFE_INTEGER);
     return [...rows].sort((a, b) => expiryRank(a.expiry_date) - expiryRank(b.expiry_date));
-  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showMissingExpiryOnly, showNearExpiryOnly, showExpiredOnly]);
+  }, [showMobileDoctorBag, doctorViewIsOcs, data?.my_stock, data?.ocs_stock, search, selectedView, showLowStockOnly, showOutOfStockOnly, showMissingExpiryOnly, showNearExpiryOnly, showExpiredOnly]);
 
   const mobileBagVisibleItems = useMemo(
     () => mobileBagFilteredItems.slice(0, mobileBagVisibleCount),
@@ -3542,7 +3560,7 @@ export default function InventoryPage() {
   useEffect(() => {
     setCurrentPage(1);
     setMobileBagVisibleCount(20);
-  }, [search, selectedView, showLowStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showExpiredOnly, sortMode, doctorContext]);
+  }, [search, selectedView, showLowStockOnly, showOutOfStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showExpiredOnly, sortMode, doctorContext]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -3651,6 +3669,7 @@ export default function InventoryPage() {
   function handleDoctorContextChange(next) {
     if (next === doctorContext) return;
     setShowLowStockOnly(false);
+    setShowOutOfStockOnly(false);
     setShowNearExpiryOnly(false);
     setShowMissingExpiryOnly(false);
     setShowExpiredOnly(false);
@@ -3707,6 +3726,7 @@ export default function InventoryPage() {
   function applyChaseFilter(kind) {
     const next =
       (kind === "low" && showLowStockOnly) ||
+      (kind === "out" && showOutOfStockOnly) ||
       (kind === "near" && showNearExpiryOnly) ||
       (kind === "missing" && showMissingExpiryOnly) ||
       (kind === "expired" && showExpiredOnly)
@@ -3715,6 +3735,7 @@ export default function InventoryPage() {
     setLogisticsTab("stock");
     setSelectedView("all");
     setShowLowStockOnly(next === "low");
+    setShowOutOfStockOnly(next === "out");
     setShowNearExpiryOnly(next === "near");
     setShowMissingExpiryOnly(next === "missing");
     setShowExpiredOnly(next === "expired");
@@ -3733,6 +3754,7 @@ export default function InventoryPage() {
     setShowUnpricedOnly(true);
     setUnpricedFromBags(false);
     setShowLowStockOnly(false);
+    setShowOutOfStockOnly(false);
     setShowNearExpiryOnly(false);
     setShowMissingExpiryOnly(false);
     setShowExpiredOnly(false);
@@ -3744,6 +3766,7 @@ export default function InventoryPage() {
     setSelectedView("all");
     setActiveCategory("All");
     setShowLowStockOnly(false);
+    setShowOutOfStockOnly(false);
     setShowNearExpiryOnly(false);
     setShowMissingExpiryOnly(false);
     setShowExpiredOnly(false);
@@ -3810,6 +3833,7 @@ export default function InventoryPage() {
       { Field: "Active category (folder)", Value: categoryDisplay },
       { Field: "Search text", Value: search.trim() || "—" },
       { Field: "Show low stock only", Value: showLowStockOnly ? "Yes" : "No" },
+      { Field: "Show out of stock only", Value: showOutOfStockOnly ? "Yes" : "No" },
       { Field: "Show near expiry only", Value: showNearExpiryOnly ? "Yes" : "No" },
       { Field: "Show missing expiry only", Value: showMissingExpiryOnly ? "Yes" : "No" },
       { Field: "Sort order", Value: inventorySortModeLabel(sortMode) },
@@ -4655,7 +4679,7 @@ export default function InventoryPage() {
           summaries={data?.tab_summaries}
           chaseCounts={chaseCounts}
           warehouseValue={summary.total_amount_rs || 0}
-          filters={{ low: showLowStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }}
+          filters={{ low: showLowStockOnly, out: showOutOfStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }}
           onFilter={applyChaseFilter}
           onOpenIncoming={() => setLogisticsTab("shipments")}
           onOpenApproval={(status) => {
@@ -4677,6 +4701,14 @@ export default function InventoryPage() {
             hint="Click to filter my bag"
             active={doctorViewIsMy && showLowStockOnly}
             onClick={() => applyDoctorBagFilter("low")}
+          />
+          <SummaryCard
+            title="My bag out of stock"
+            value={doctorMetrics.out_of_stock}
+            tone="rose"
+            hint="Click to filter my bag"
+            active={doctorViewIsMy && showOutOfStockOnly}
+            onClick={() => applyDoctorBagFilter("out")}
           />
           <SummaryCard
             title="My bag missing expiry"
@@ -4764,6 +4796,9 @@ export default function InventoryPage() {
         <OperatorWorkQueuesPanel
           onOpenShipments={() => setLogisticsTab("shipments")}
           onOpenCount={() => setLogisticsTab("count")}
+          onOpenNeedsExpiry={() => applyChaseFilter("missing")}
+          needsExpiryCount={chaseCounts.missing}
+          needsExpiryItems={data?.missing_expiry_items || []}
         />
       ) : null}
 
@@ -4806,6 +4841,7 @@ export default function InventoryPage() {
         <InventoryStocktakePanel
           items={data?.ocs_stock || items}
           folders={folders}
+          doctors={doctors}
           sessions={data?.stocktake_sessions || []}
           requestedStatus={stocktakeStatusFilter}
           onApplied={() => load(undefined, undefined, { silent: true })}
@@ -4908,7 +4944,7 @@ export default function InventoryPage() {
               className="inline-flex min-h-11 shrink-0 items-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700"
             >
               {canManageOcs ? "Sort & tools" : "Filters"}
-              {showLowStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? " · Active" : ""}
+              {showLowStockOnly || showOutOfStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? " · Active" : ""}
             </button>
           </div>
           <div className={cx("flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden lg:flex")}>
@@ -4939,6 +4975,13 @@ export default function InventoryPage() {
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Low stock ({chaseCounts.low})
+            </button> : null}
+            {!canManageOcs ? <button
+              type="button"
+              onClick={() => applyChaseFilter("out")}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showOutOfStockOnly ? "bg-slate-800 text-white" : "border border-slate-200 bg-white text-slate-700"}`}
+            >
+              Out of stock ({chaseCounts.out})
             </button> : null}
             {!canManageOcs ? <button
               type="button"
@@ -5014,7 +5057,7 @@ export default function InventoryPage() {
             <span className="text-xs font-medium text-slate-500" aria-live="polite">
               Showing {sortedItems.length} of {items.length}
             </span>
-            {search || (selectedView && selectedView !== "all") || showLowStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? (
+            {search || (selectedView && selectedView !== "all") || showLowStockOnly || showOutOfStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? (
               <button
                 type="button"
                 onClick={clearStockFilters}
@@ -5055,13 +5098,14 @@ export default function InventoryPage() {
                     {pagedItems.map((item) => {
                       const isService = item.item_kind === "service";
                       const isLow = isAtOrBelowPar(item);
+                      const isOut = isOutOfStock(item);
                       const expanded = Boolean(expandedRows[item.id]);
                       const batches = batchMap[item.id] || [];
                       const quantities = inventoryQuantityBreakdown(item);
                       return (
                         <Fragment key={item.id}>
                           <tr
-                            className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${isLow ? "bg-red-50" : ""}`}
+                            className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${isLow || isOut ? "bg-red-50" : ""}`}
                             onClick={() => toggleExpanded(item.id)}
                           >
                             <td className="px-3 py-1.5 align-middle text-left">
@@ -5145,7 +5189,7 @@ export default function InventoryPage() {
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Batch List (FEFO)</p>
                                     <div className="mt-2 space-y-1">
-                                      {isAdmin && Number(item.unbatched_quantity || 0) > 0 ? (
+                                      {canManageOcs && Number(item.unbatched_quantity || 0) > 0 ? (
                                         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                           <span>{item.unbatched_quantity} unit(s) have no expiry or cost on file. They are still available.</span>
                                           <button
@@ -5162,7 +5206,7 @@ export default function InventoryPage() {
                                           <span>
                                             Batch #{batch.id} · Qty {batch.quantity_remaining} · {batch.expiry_label || formatStockExpiryLabel(batch)} · Cost {formatRupees(batch.unit_cost)}
                                           </span>
-                                          {isAdmin && (batch.missing_expiry || Number(batch.unit_cost || 0) <= 0) ? (
+                                          {canManageOcs && (batch.missing_expiry || Number(batch.unit_cost || 0) <= 0) ? (
                                             <button
                                               type="button"
                                               onClick={() => setBatchOpeningData({ item, batch })}

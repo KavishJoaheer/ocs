@@ -11,7 +11,15 @@ export function itemAvailable(item) {
 
 export function isAtOrBelowPar(item) {
   const par = Number(item?.minimum_quantity || 0);
-  return par > 0 && itemAvailable(item) <= par;
+  const available = itemAvailable(item);
+  return par > 0 && available > 0 && available <= par;
+}
+
+export function isOutOfStock(item) {
+  const par = Number(item?.minimum_quantity || 0);
+  if (par <= 0) return false;
+  if (itemAvailable(item) > 0) return false;
+  return itemOnHand(item) > 0 || Boolean(item?.ever_stocked);
 }
 
 export function isMissingExpiryItem(item) {
@@ -30,6 +38,7 @@ export function readDoctorMetrics(payload) {
   const metrics = payload?.doctor_metrics || {};
   return {
     at_or_below_par: Number(metrics.at_or_below_par || 0),
+    out_of_stock: Number(metrics.out_of_stock || 0),
     missing_expiry: Number(metrics.missing_expiry || 0),
     near_expiry: Number(metrics.near_expiry || 0),
     expired: Number(metrics.expired || 0),

@@ -73,6 +73,8 @@ const {
   decorateBatches,
   decorateInventoryItems,
   isAtOrBelowPar,
+  isOutOfStock,
+  isMissingExpiryItem,
   locationDisplayMeta,
   summarizeLocationValuation,
 } = require("../lib/inventoryStockState");
@@ -177,6 +179,11 @@ router.get("/data-quality.csv", (req, res) => {
   if (kind === "all" || kind === "low_stock") {
     for (const item of items.filter((row) => isAtOrBelowPar(row))) {
       rows.push(["low_stock", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, item.nearest_usable_expiry || ""]);
+    }
+  }
+  if (kind === "all" || kind === "out_of_stock") {
+    for (const item of items.filter((row) => isOutOfStock(row))) {
+      rows.push(["out_of_stock", item.id, item.item_name, item.on_hand_quantity, item.minimum_quantity, item.available_to_use, item.expired_quantity, "Out of stock"]);
     }
   }
   if (kind === "all" || kind === "missing_expiry") {
@@ -1145,8 +1152,9 @@ function summarize(items, doctorId = null) {
   const valuation = summarizeLocationValuation(items);
   const totalAmount = valuation.known_value;
   const lowStock = items.filter((item) => isAtOrBelowPar(item));
+  const outOfStock = items.filter((item) => isOutOfStock(item));
   const nearExpiry = items.filter((item) => item.is_near_expiry);
-  const missingExpiry = items.filter((item) => item.missing_expiry);
+  const missingExpiry = items.filter((item) => isMissingExpiryItem(item));
   const expired = items.filter((item) => item.has_expired);
 
   const monthStart = db.prepare("SELECT date('now','+4 hours','start of month') AS d").get().d;
@@ -1175,6 +1183,7 @@ function summarize(items, doctorId = null) {
     unpriced_count: valuation.unpriced_count,
     total_amount_consumed_rs: roundCurrency(monthlyConsumed?.amount),
     low_stock_count: lowStock.length,
+    out_of_stock_count: outOfStock.length,
     near_expiry_count: nearExpiry.length,
     missing_expiry_count: missingExpiry.length,
     expired_count: expired.length,
@@ -1721,6 +1730,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
             valuation_complete: Boolean(rawSummary.valuation_complete),
             unpriced_count: Number(rawSummary.unpriced_count || 0),
             low_stock: Number(rawSummary.low_stock_count || 0),
+            out_of_stock: Number(rawSummary.out_of_stock_count || 0),
             near_expiry: Number(rawSummary.near_expiry_count || 0),
             missing_expiry: Number(rawSummary.missing_expiry_count || 0),
             expired: Number(rawSummary.expired_count || 0),
@@ -1747,7 +1757,7 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     doctor_metrics: doctorId ? computeDoctorInventoryMetrics(myStock, ocsStock) : null,
     low_stock_items: omitItemLots(activeItems.filter((item) => isAtOrBelowPar(item))),
     near_expiry_items: omitItemLots(activeItems.filter((item) => item.is_near_expiry)),
-    missing_expiry_items: omitItemLots(activeItems.filter((item) => item.missing_expiry)),
+    missing_expiry_items: omitItemLots(activeItems.filter((item) => isMissingExpiryItem(item))),
     expired_items: omitItemLots(activeItems.filter((item) => item.has_expired)),
     movements: getMovements(role, doctorId, {
       userId: req.query.activityUserId,
@@ -2914,10 +2924,8 @@ router.get("/items/:id/batches", (req, res) => {
 
 router.patch("/batches/:id/opening-data", (req, res) => {
   ensureInfrastructure();
-  try {
-    assertAdminCatalogueAction(req.auth, "verify opening batch cost and expiry data");
-  } catch (error) {
-    return res.status(error.status || 403).json({ error: error.message });
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only operators or administrators can add expiry and cost." });
   }
 
   const batchId = Number(req.params.id || 0);
@@ -3011,10 +3019,8 @@ router.patch("/batches/:id/opening-data", (req, res) => {
 
 router.post("/items/:id/opening-batch-data", (req, res) => {
   ensureInfrastructure();
-  try {
-    assertAdminCatalogueAction(req.auth, "create verified opening batch data");
-  } catch (error) {
-    return res.status(error.status || 403).json({ error: error.message });
+  if (!["admin", "operator"].includes(req.auth.role)) {
+    return res.status(403).json({ error: "Only operators or administrators can add expiry and cost." });
   }
 
   const itemId = Number(req.params.id || 0);
@@ -3530,9 +3536,9 @@ router.post("/items/:id/actions", (req, res) => {
   const actionType = String(req.body.action_type || "").trim().toLowerCase();
   const quantity = Number(req.body.quantity || 0);
   const note = String(req.body.note || "").trim();
-  if (!["remove", "stock_out"].includes(actionType)) {
+  if (actionType !== "stock_out") {
     return res.status(400).json({
-      error: "Doctors can record use/sale, wastage, or expiry only. Request replenishment through a supply request.",
+      error: "Doctors can record sale, wastage, or expiry only. Request replenishment through a supply request.",
     });
   }
   if (!Number.isInteger(quantity) || quantity <= 0) {
@@ -4526,6 +4532,7 @@ router.get("/stocktake/scope", (req, res) => {
   try {
     const preview = previewStocktakeScope({
       folderId: req.query?.folder_id ? Number(req.query.folder_id) : null,
+      ownerDoctorId: req.query?.doctor_id ? Number(req.query.doctor_id) : null,
       itemIds: Array.isArray(req.query?.item_ids)
         ? req.query.item_ids
         : String(req.query?.item_ids || "")
@@ -4547,6 +4554,9 @@ router.post("/stocktake/sessions", (req, res) => {
     const session = db.transaction(() =>
       createStocktakeSession({
         folderId: req.body?.folder_id ? Number(req.body.folder_id) : null,
+        ownerDoctorId: req.body?.doctor_id || req.body?.owner_doctor_id
+          ? Number(req.body.doctor_id || req.body.owner_doctor_id)
+          : null,
         itemIds: Array.isArray(req.body?.item_ids) ? req.body.item_ids : [],
         userId: req.auth.id,
         notes: String(req.body?.notes || "").trim(),

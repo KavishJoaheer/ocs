@@ -27,6 +27,7 @@ const QUEUE_DEFS = [
   { id: "awaiting_collection", label: "Awaiting collection", key: "awaiting_collection" },
   { id: "incoming_shipments", label: "Incoming shipments", key: "incoming_shipments", kind: "shipments" },
   { id: "count_variances", label: "Stock count variances", key: "count_variances", kind: "variances" },
+  { id: "needs_expiry", label: "Needs expiry", key: "needs_expiry", kind: "needs_expiry" },
   { id: "history", label: "History", key: "history", kind: "history" },
 ];
 
@@ -39,6 +40,7 @@ const QUEUE_PRIORITY = [
   "awaiting_collection",
   "incoming_shipments",
   "count_variances",
+  "needs_expiry",
 ];
 
 function validQueueId(value) {
@@ -56,7 +58,13 @@ function waitingLabel(value) {
   return `${Math.floor(hours / 24)}d waiting`;
 }
 
-export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }) {
+export default function OperatorWorkQueuesPanel({
+  onOpenShipments,
+  onOpenCount,
+  onOpenNeedsExpiry,
+  needsExpiryCount = 0,
+  needsExpiryItems = [],
+}) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQueue = validQueueId(searchParams.get("queue"));
@@ -151,14 +159,18 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
     };
   }, []);
 
-  const counts = queues?.counts || {};
+  const counts = {
+    ...(queues?.counts || {}),
+    needs_expiry: Number(needsExpiryCount || 0),
+  };
   const waitingTotal = Number(counts.unique_requests ?? 0);
   const queueEntries = Number(counts.queue_entries ?? 0);
   const rows = useMemo(() => {
     if (active === "history") return history.requests;
+    if (active === "needs_expiry") return Array.isArray(needsExpiryItems) ? needsExpiryItems : [];
     if (!queues) return [];
     return queues[active] || [];
-  }, [queues, active, history.requests]);
+  }, [queues, active, history.requests, needsExpiryItems]);
 
   async function accept(request) {
     try {
@@ -285,6 +297,28 @@ export default function OperatorWorkQueuesPanel({ onOpenShipments, onOpenCount }
             <ClipboardList className="mr-2 inline size-4 text-amber-700" />
             Review {rows.length} count variance{rows.length === 1 ? "" : "s"}
           </button>
+        ) : active === "needs_expiry" ? (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => onOpenNeedsExpiry?.()}
+              className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-950 hover:bg-amber-100"
+            >
+              <TimerReset className="mr-2 inline size-4 text-amber-700" />
+              Open stock and add expiry for {rows.length} product{rows.length === 1 ? "" : "s"}
+            </button>
+            {rows.slice(0, 8).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onOpenNeedsExpiry?.()}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span className="min-w-0 truncate font-semibold">{item.item_name}</span>
+                <span className="shrink-0 tabular-nums text-slate-500">{Number(item.on_hand_quantity ?? item.quantity ?? 0)} on hand</span>
+              </button>
+            ))}
+          </div>
         ) : active === "history" ? (
           <div className="space-y-3">
             <SupplyRequestHistoryFilters

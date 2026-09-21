@@ -182,11 +182,13 @@ export default function InventoryTabSummaries({
   const stock = summaries?.stock || {};
   const valueDisplay = stockValueDisplay(stock, warehouseValue);
   const low = stock.low_stock ?? chaseCounts?.low ?? 0;
+  const out = stock.out_of_stock ?? chaseCounts?.out ?? 0;
   const near = stock.near_expiry ?? chaseCounts?.near ?? 0;
+  const missing = stock.missing_expiry ?? chaseCounts?.missing ?? 0;
   const expired = stock.expired ?? chaseCounts?.expired ?? 0;
   const reconciliation = Number(stock.reconciliation_required ?? chaseCounts?.reconciliation ?? 0);
   const isBag = stock.location_kind === "bag";
-  const chaseColumns = reconciliation > 0 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
+  const chaseColumns = reconciliation > 0 ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5";
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-2 sm:p-3 md:p-4">
@@ -200,6 +202,8 @@ export default function InventoryTabSummaries({
         </div>
         <div className={`grid w-full min-w-0 gap-1.5 sm:gap-2 ${chaseColumns}`}>
           <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone="rose" active={filters?.low} onClick={() => onFilter?.("low")} />
+          <StockAttentionButton label="Out of stock" compactLabel="Out" value={out} tone="rose" active={filters?.out} onClick={() => onFilter?.("out")} />
+          <StockAttentionButton label="Needs expiry" compactLabel="Expiry" accessibleLabel="Needs expiry" value={missing} tone="amber" active={filters?.missing} onClick={() => onFilter?.("missing")} />
           <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone="amber" active={filters?.near} onClick={() => onFilter?.("near")} />
           <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone="rose" active={filters?.expired} onClick={() => onFilter?.("expired")} />
           {reconciliation > 0 ? (

@@ -18,7 +18,7 @@ const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
-const { decorateInventoryItems, summarizeLocationValuation, isAtOrBelowPar } = require("../src/lib/inventoryStockState");
+const { decorateInventoryItems, summarizeLocationValuation, isAtOrBelowPar, isOutOfStock } = require("../src/lib/inventoryStockState");
 const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 const { upsertOcsMasterStockDataset } = require("../src/lib/ocsMasterStockUpsert");
 
@@ -125,8 +125,10 @@ function insertOcsItem({ name, qty, expiry = "2028-06-01", nonExpiring = 0, fold
 async function startStocktakeSession(body = {}, token = operatorToken) {
   const itemIds = Array.isArray(body.item_ids) ? body.item_ids : [];
   const folderIdValue = body.folder_id || null;
+  const doctorIdValue = body.doctor_id || body.owner_doctor_id || null;
   const qs = new URLSearchParams();
   if (folderIdValue) qs.set("folder_id", String(folderIdValue));
+  if (doctorIdValue) qs.set("doctor_id", String(doctorIdValue));
   if (itemIds.length) qs.set("item_ids", itemIds.join(","));
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   const preview = await api("GET", `/api/inventory/stocktake/scope${suffix}`, { token: operatorToken });
@@ -297,11 +299,16 @@ test("inventory list payload skips completeness scoring and still audits excepti
   assert.equal(forbidden.status, 403, JSON.stringify(forbidden.data));
 });
 
-test("low stock follows available quantity, not on-hand", () => {
+test("low stock is running low only; empty catalogue is not out of stock", () => {
   assert.equal(isAtOrBelowPar({ quantity: 10, minimum_quantity: 4, available_to_use: 3 }), true);
   assert.equal(isAtOrBelowPar({ quantity: 10, minimum_quantity: 4, available_to_use: 5 }), false);
   assert.equal(isAtOrBelowPar({ quantity: 3, minimum_quantity: 4 }), true);
   assert.equal(isAtOrBelowPar({ quantity: 5, minimum_quantity: 4 }), false);
+  assert.equal(isAtOrBelowPar({ quantity: 0, minimum_quantity: 4 }), false);
+  assert.equal(isOutOfStock({ quantity: 0, minimum_quantity: 4 }), false);
+  assert.equal(isOutOfStock({ quantity: 0, minimum_quantity: 4, ever_stocked: true }), true);
+  assert.equal(isOutOfStock({ quantity: 2, minimum_quantity: 4, available_to_use: 0 }), true);
+  assert.equal(isOutOfStock({ quantity: 0, minimum_quantity: 0, ever_stocked: true }), false);
 });
 
 test("acceptance creates reservations without reducing physical quantity", async () => {
@@ -2728,6 +2735,8 @@ test("inventory operations schema adds release and recount columns on clean and 
     .all()
     .map((row) => row.name);
   assert.ok(stocktakeSessions.includes("movement_id_watermark"));
+  assert.ok(stocktakeSessions.includes("owner_doctor_id"));
+  assert.ok(stocktakeSessions.includes("scope_token"));
   ensureInventoryOperationsSchema();
   assert.ok(
     db
@@ -2835,10 +2844,12 @@ test("doctor inventory metrics match dashboard and exclude zero-quantity missing
   const metrics = inventory.data.doctor_metrics;
   assert.ok(metrics);
   const bag = inventory.data.my_stock || [];
-  const atOrBelow = bag.filter((row) => Number(row.minimum_quantity || 0) > 0 && Number(row.available_to_use ?? row.quantity ?? 0) <= Number(row.minimum_quantity || 0));
+  const atOrBelow = bag.filter((row) => isAtOrBelowPar(row));
   assert.equal(metrics.at_or_below_par, atOrBelow.length);
   const zeroMissing = bag.find((row) => row.item_name === missingName);
   assert.ok(zeroMissing);
+  assert.equal(isAtOrBelowPar(zeroMissing), false);
+  assert.equal(isOutOfStock(zeroMissing), false);
   assert.equal(zeroMissing.missing_expiry, false);
   assert.ok(!metrics.item_ids.missing_expiry.includes(Number(zeroMissing.id)));
 
@@ -4020,4 +4031,82 @@ test("inventory mutation and idempotency receipt roll back together", async () =
   } finally {
     db.exec("DROP TRIGGER IF EXISTS fail_selected_inventory_receipt");
   }
+});
+
+test("doctors cannot write off bag stock through the doctor action API", async () => {
+  const bagId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+         VALUES (?, ?, 4, 0, 'unit', 5, 10, 'doctor', ?)`,
+      )
+      .run(`NoRemove ${Date.now()}`, folderId, doctorId).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 4, '2029-01-01', 5, 0)`,
+  ).run(bagId);
+  const denied = await api("POST", `/api/inventory/items/${bagId}/actions`, {
+    token: doctorToken,
+    body: { action_type: "remove", quantity: 1, reason: "Damaged", confirm: true, note: "trying to write off" },
+  });
+  assert.equal(denied.status, 400, JSON.stringify(denied.data));
+  assert.match(String(denied.data.error || ""), /sale, wastage, or expiry/i);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(bagId).quantity, 4);
+});
+
+test("operators can count a doctor bag with the stocktake flow", async () => {
+  const bagId = Number(
+    db
+      .prepare(
+        `INSERT INTO inventory (item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price, stock_scope, owner_doctor_id)
+         VALUES (?, ?, 7, 0, 'unit', 5, 10, 'doctor', ?)`,
+      )
+      .run(`BagCount ${Date.now()}`, folderId, doctorId).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+     VALUES (?, 7, '2029-01-01', 5, 0)`,
+  ).run(bagId);
+  const preview = await api("GET", `/api/inventory/stocktake/scope?doctor_id=${doctorId}`, { token: operatorToken });
+  assert.equal(preview.status, 200, JSON.stringify(preview.data));
+  assert.equal(Number(preview.data.owner_doctor_id), Number(doctorId));
+  assert.ok(Number(preview.data.item_count) >= 1);
+  const created = await startStocktakeSession({ doctor_id: doctorId, confirm_all: true });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(Number(created.data.session.owner_doctor_id), Number(doctorId));
+  assert.ok((created.data.session.items || []).some((row) => Number(row.inventory_id) === bagId));
+  const listed = await api("GET", "/api/inventory", { token: operatorToken });
+  const session = (listed.data.stocktake_sessions || []).find((row) => Number(row.id) === Number(created.data.session.id));
+  assert.ok(session);
+  assert.match(String(session.folder_name || ""), /bag/i);
+});
+
+test("operators can add expiry and cost to opening lots", async () => {
+  const itemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 2, 0, 'unit', 0, 20, 'ocs', NULL)
+  `).run(`Operator opening ${Date.now()}`, folderId).lastInsertRowid);
+  const batchId = Number(db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 2, NULL, 0, 0)
+  `).run(itemId).lastInsertRowid);
+  const verified = await api("PATCH", `/api/inventory/batches/${batchId}/opening-data`, {
+    token: operatorToken,
+    body: {
+      operation_id: `operator-opening-${Date.now()}`,
+      unit_cost: 9,
+      expiry_date: "2031-12-31",
+      is_non_expiring: false,
+      expected_row_version: 1,
+      reason: "Operator verified invoice and pack label",
+      confirm: true,
+    },
+  });
+  assert.equal(verified.status, 200, JSON.stringify(verified.data));
+  const after = decorateInventoryItems([db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId)])[0];
+  assert.equal(after.available_to_use, 2);
+  assert.equal(after.valuation_complete, true);
 });

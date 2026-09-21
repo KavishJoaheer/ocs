@@ -176,6 +176,17 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
     "inventory_id",
     "total",
   );
+  const everStockedByItem = queryKeyedMap(
+    `
+      SELECT item_id, 1 AS total
+      FROM inventory_movements
+      WHERE item_id IN (__IN__)
+      GROUP BY item_id
+    `,
+    itemIds,
+    "item_id",
+    "total",
+  );
   const decoratedBatches = decorateBatches(liveBatches, { today, reservedByBatch });
   const batchesByItem = new Map();
   for (const batch of decoratedBatches) {
@@ -270,6 +281,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       current_cost_value: roundCurrency(knownCostValue),
       unpriced_units: unpricedUnits,
       valuation_complete: unpricedUnits === 0,
+      ever_stocked: onHand > 0 || Boolean(everStockedByItem.get(itemId)),
       lots: batches,
     };
   });
@@ -292,7 +304,15 @@ function catalogueKey(item) {
 
 function isAtOrBelowPar(item) {
   const par = Number(item?.minimum_quantity || 0);
-  return par > 0 && itemAvailable(item) <= par;
+  const available = itemAvailable(item);
+  return par > 0 && available > 0 && available <= par;
+}
+
+function isOutOfStock(item) {
+  const par = Number(item?.minimum_quantity || 0);
+  if (par <= 0) return false;
+  if (itemAvailable(item) > 0) return false;
+  return itemOnHand(item) > 0 || Boolean(item?.ever_stocked);
 }
 
 function isMissingExpiryItem(item) {
@@ -314,6 +334,7 @@ function computeDoctorInventoryMetrics(bagItems, ocsItems = []) {
     ocsMap.set(catalogueKey(item), item);
   }
   const atOrBelowPar = bag.filter(isAtOrBelowPar);
+  const outOfStock = bag.filter(isOutOfStock);
   const missingExpiry = bag.filter(isMissingExpiryItem);
   const nearExpiry = bag.filter(isNearExpiryItem);
   const expired = bag.filter(isExpiredItem);
@@ -325,12 +346,14 @@ function computeDoctorInventoryMetrics(bagItems, ocsItems = []) {
   });
   return {
     at_or_below_par: atOrBelowPar.length,
+    out_of_stock: outOfStock.length,
     missing_expiry: missingExpiry.length,
     near_expiry: nearExpiry.length,
     expired: expired.length,
     ocs_can_fill: ocsCanFill.length,
     item_ids: {
       at_or_below_par: atOrBelowPar.map((row) => Number(row.id)),
+      out_of_stock: outOfStock.map((row) => Number(row.id)),
       missing_expiry: missingExpiry.map((row) => Number(row.id)),
       near_expiry: nearExpiry.map((row) => Number(row.id)),
       expired: expired.map((row) => Number(row.id)),
@@ -480,6 +503,7 @@ module.exports = {
   isUsableBatch,
   doctorBagLabel,
   isAtOrBelowPar,
+  isOutOfStock,
   isExpiredBatch,
   isExpiredItem,
   isMissingExpiryBatch,
