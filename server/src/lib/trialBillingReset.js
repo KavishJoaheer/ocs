@@ -27,6 +27,7 @@ const RESETTABLE_TABLES = [
   "finance_supplier_payments",
   "finance_supplier_payment_reversals",
   "finance_supplier_invoice_events",
+  "finance_supplier_cost_variances",
   "finance_supplier_invoice_lines",
   "finance_supplier_invoices",
   "finance_monthly_closings",
@@ -62,6 +63,7 @@ const DELETE_GUARD_TRIGGERS = [
   "finance_supplier_payment_reversals_no_delete",
   "finance_supplier_events_no_delete",
   "finance_supplier_lines_no_delete",
+  "finance_supplier_cost_variances_no_delete",
   "finance_supplier_invoices_no_delete",
   "finance_monthly_closings_no_delete",
   "finance_statement_line_no_delete",
@@ -332,8 +334,18 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
       `).all();
       for (const line of costingLines) {
         if (line.batch_id && line.previous_batch_cost != null) {
-          db.prepare("UPDATE inventory_batches SET unit_cost=? WHERE id=?")
-            .run(line.previous_batch_cost, line.batch_id);
+          db.prepare(`
+            WITH RECURSIVE lineage(id) AS (
+              SELECT id FROM inventory_batches WHERE id = ?
+              UNION
+              SELECT child.id
+              FROM inventory_batches child
+              JOIN lineage parent ON child.source_batch_id = parent.id
+            )
+            UPDATE inventory_batches
+            SET unit_cost = ?
+            WHERE id IN (SELECT id FROM lineage)
+          `).run(line.batch_id, line.previous_batch_cost);
         }
         if (line.inventory_item_id && line.previous_inventory_cost != null) {
           db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
@@ -373,6 +385,7 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
       "finance_supplier_payment_reversals",
       "finance_supplier_payments",
       "finance_supplier_invoice_events",
+      "finance_supplier_cost_variances",
       "finance_supplier_invoice_lines",
       "finance_supplier_invoices",
       "financial_day_close_adjustment_references",

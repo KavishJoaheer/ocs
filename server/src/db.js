@@ -2940,6 +2940,11 @@ function ensureInventoryIntegritySchema() {
     "ALTER TABLE inventory_batches ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
   );
   addColumnIfMissing(
+    "inventory_batches",
+    "source_batch_id",
+    "ALTER TABLE inventory_batches ADD COLUMN source_batch_id INTEGER",
+  );
+  addColumnIfMissing(
     "inventory_stocktake_sessions",
     "scope_token",
     "ALTER TABLE inventory_stocktake_sessions ADD COLUMN scope_token TEXT",
@@ -3095,6 +3100,8 @@ function ensureInventoryIntegritySchema() {
       ON inventory_batches(item_id, status);
     CREATE INDEX IF NOT EXISTS idx_inventory_batches_expiry
       ON inventory_batches(item_id, expiry_date);
+    CREATE INDEX IF NOT EXISTS idx_inventory_batches_source
+      ON inventory_batches(source_batch_id);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_shipments_operation
       ON inventory_shipments(operation_id)
       WHERE operation_id IS NOT NULL AND TRIM(operation_id) != '';

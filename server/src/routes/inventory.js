@@ -57,7 +57,9 @@ const {
   saveStocktakeCounts,
   saveStocktakeNewLots,
   shipmentQueueStats,
+  shipmentQueueStatsFromDatabase,
   stocktakeQueueStats,
+  stocktakeQueueStatsFromDatabase,
   submitStocktakeSession,
   validateReceiptExpiry,
   applyExceptionalCorrection,
@@ -786,7 +788,13 @@ function getPayloadFromRequest(req) {
   return getPayload(req, selectedDoctorId, doctorContext);
 }
 
-function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = false, allowBlank = false, supplierName = "", receivedDate = null } = {}) {
+function createBatch(itemId, quantity, expiryDate, unitCost, {
+  isNonExpiring = false,
+  allowBlank = false,
+  supplierName = "",
+  receivedDate = null,
+  sourceBatchId = null,
+} = {}) {
   const expiry = validateReceiptExpiry({
     expiryDate,
     isNonExpiring,
@@ -794,9 +802,10 @@ function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = f
   });
   const created = db.prepare(`
     INSERT INTO inventory_batches (
-      item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name, received_date
+      item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name, received_date,
+      source_batch_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     itemId,
     quantity,
@@ -805,6 +814,7 @@ function createBatch(itemId, quantity, expiryDate, unitCost, { isNonExpiring = f
     expiry.isNonExpiring ? 1 : 0,
     String(supplierName || ""),
     receivedDate || null,
+    sourceBatchId ? Number(sourceBatchId) : null,
   );
   return Number(created.lastInsertRowid || 0);
 }
@@ -821,6 +831,7 @@ function allocateRestockBatchesToPositive(itemId, allocations, previousQuantity)
     if (batchQty > 0) {
       createBatch(itemId, batchQty, allocation.expiry_date, allocation.unit_cost, {
         isNonExpiring: Boolean(allocation.is_non_expiring),
+        sourceBatchId: allocation.batch_id,
       });
     }
   });
@@ -1708,14 +1719,26 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     locationMeta.location_heading = "My bag";
   }
   const warehouseManager = isWarehouseManager(role);
+  const requestedView = String(req.query.view || "full").trim().toLowerCase();
+  const workspaceView = ["stock", "shipments", "count", "bags", "queues"].includes(requestedView)
+    ? requestedView
+    : "full";
+  const includeShipments = workspaceView === "full" || workspaceView === "shipments";
+  const includeStocktakes = workspaceView === "full" || workspaceView === "count";
+  const includeBagReporting = workspaceView === "full" || workspaceView === "bags";
+  const includeActivity = workspaceView === "full" || workspaceView === "stock" || workspaceView === "bags";
   const doctors = warehouseManager ? getDoctors() : [];
-  const shipments = warehouseManager ? listShipments() : [];
-  const stocktakeSessions = warehouseManager ? listStocktakeSessions() : [];
-  const compareRows = warehouseManager ? getCompareRows(activityDateFrom, activityDateTo) : [];
-  const shipmentStats = warehouseManager ? shipmentQueueStats(shipments) : null;
-  const stocktakeStats = warehouseManager ? stocktakeQueueStats(stocktakeSessions) : null;
+  const shipments = warehouseManager && includeShipments ? listShipments() : [];
+  const stocktakeSessions = warehouseManager && includeStocktakes ? listStocktakeSessions() : [];
+  const compareRows = warehouseManager && includeBagReporting ? getCompareRows(activityDateFrom, activityDateTo) : [];
+  const shipmentStats = warehouseManager
+    ? (includeShipments ? shipmentQueueStats(shipments) : shipmentQueueStatsFromDatabase())
+    : null;
+  const stocktakeStats = warehouseManager
+    ? (includeStocktakes ? stocktakeQueueStats(stocktakeSessions) : stocktakeQueueStatsFromDatabase())
+    : null;
   const bagValue = compareRows.reduce((sum, row) => sum + Number(row.bag_on_hand || 0), 0);
-  const bagPricing = warehouseManager ? getBagPricingSummary() : null;
+  const bagPricing = warehouseManager && includeBagReporting ? getBagPricingSummary() : null;
   const periodExceptions = compareRows.reduce(
     (sum, row) => sum + Number(row.exceptional_correction_qty || 0),
     0,
@@ -1767,14 +1790,16 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     near_expiry_items: omitItemLots(activeItems.filter((item) => item.is_near_expiry)),
     missing_expiry_items: omitItemLots(activeItems.filter((item) => isMissingExpiryItem(item))),
     expired_items: omitItemLots(activeItems.filter((item) => item.has_expired)),
-    movements: getMovements(role, doctorId, {
-      userId: req.query.activityUserId,
-      actorRole: req.query.activityRole,
-      dateFrom: activityDateFrom,
-      dateTo: activityDateTo,
-    }),
-    activity_staff: warehouseManager ? getActivityStaffList() : [],
-    staging: warehouseManager
+    movements: includeActivity || !warehouseManager
+      ? getMovements(role, doctorId, {
+          userId: req.query.activityUserId,
+          actorRole: req.query.activityRole,
+          dateFrom: activityDateFrom,
+          dateTo: activityDateTo,
+        })
+      : [],
+    activity_staff: warehouseManager && includeActivity ? getActivityStaffList() : [],
+    staging: warehouseManager && includeShipments
       ? db
           .prepare(
             `

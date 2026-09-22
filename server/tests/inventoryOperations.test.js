@@ -279,6 +279,19 @@ test("inventory list payload skips completeness scoring and still audits excepti
   assert.equal(selectedBag.status, 200, JSON.stringify(selectedBag.data));
   assert.equal(selectedBag.data.data_quality, undefined);
   assert.equal(selectedBag.data.selected_doctor_stock.every((row) => row.lots === undefined), true);
+  const stockView = await api("GET", "/api/inventory?view=stock", { token: operatorToken });
+  assert.equal(stockView.status, 200, JSON.stringify(stockView.data));
+  assert.deepEqual(stockView.data.shipments, []);
+  assert.deepEqual(stockView.data.stocktake_sessions, []);
+  assert.deepEqual(stockView.data.compare_rows, []);
+  assert.ok(stockView.data.tab_summaries?.shipments);
+  assert.ok(stockView.data.tab_summaries?.count);
+  const shipmentView = await api("GET", "/api/inventory?view=shipments", { token: operatorToken });
+  assert.equal(shipmentView.status, 200, JSON.stringify(shipmentView.data));
+  assert.ok(Array.isArray(shipmentView.data.shipments));
+  assert.deepEqual(shipmentView.data.stocktake_sessions, []);
+  assert.deepEqual(shipmentView.data.movements, []);
+  assert.deepEqual(shipmentView.data.compare_rows, []);
   const stockedBagItems = selectedBag.data.selected_doctor_stock.filter(
     (item) => String(item.item_kind || "stock") === "stock" && Number(item.quantity || 0) > 0,
   );
@@ -2372,6 +2385,17 @@ test("selected shipment release rejects an empty selection", async () => {
   });
   assert.equal(zeroQty.status, 200);
   assert.ok(zeroQty.data.rows[0].errors.some((msg) => /positive/i.test(msg)));
+  const zeroCost = await api("POST", "/api/inventory/staging/preview-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: [
+        "folder,item_name,quantity,minimum_quantity,unit,cost_price,selling_price,expiry_date",
+        `Consumable,${name},2,0,unit,0,2,2029-01-01`,
+      ].join("\n"),
+    },
+  });
+  assert.equal(zeroCost.status, 200);
+  assert.ok(zeroCost.data.rows[0].errors.some((msg) => /cost must be greater than zero/i.test(msg)));
 });
 
 test("csv catalogue matching is case-insensitive and unknown items need admin action", async () => {
@@ -4311,6 +4335,18 @@ test("depot transfers preserve actual batch cost on both movement sides", async 
   for (const movement of movements) {
     assert.equal(db.prepare("SELECT COALESCE(SUM(quantity), 0) AS quantity FROM inventory_movement_allocations WHERE movement_id = ?").get(movement.id).quantity, 2);
   }
+  const sourceBatch = db.prepare("SELECT id FROM inventory_batches WHERE item_id = ? ORDER BY id LIMIT 1").get(itemId);
+  const doctorBatch = db.prepare(`
+    SELECT batch.source_batch_id
+    FROM inventory_batches batch
+    JOIN inventory item ON item.id = batch.item_id
+    WHERE item.stock_scope = 'doctor'
+      AND item.owner_doctor_id = ?
+      AND batch.source_batch_id = ?
+    ORDER BY batch.id DESC
+    LIMIT 1
+  `).get(doctorId, sourceBatch.id);
+  assert.equal(Number(doctorBatch.source_batch_id), Number(sourceBatch.id));
 });
 
 test("depot transfer never restores stock into an archived doctor-bag row", async () => {

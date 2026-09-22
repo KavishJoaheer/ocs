@@ -163,7 +163,11 @@ export default function InventoryTabSummaries({
             value={data.awaiting_application || 0}
             onClick={() => onOpenApproval?.("approved")}
           />
-          <Card title="Open count variance" value={formatRupees(data.total_open_variance || 0)} hint="Only counted lines. Zero does not confirm uncounted stock." />
+          <Card
+            title="Estimated count variance"
+            value={formatRupees(data.total_open_variance || 0)}
+            hint="Catalogue-cost estimate for approval. The final record uses the actual lot cost."
+          />
         </div>
       </div>
     );

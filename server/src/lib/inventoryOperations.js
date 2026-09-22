@@ -92,6 +92,8 @@ function stagingRowErrors(row) {
   if (!String(row.item_name || "").trim()) errors.push("Missing item name");
   const qty = Number(row.quantity);
   if (!Number.isInteger(qty) || !Number.isFinite(qty) || qty <= 0) errors.push("Quantity must be a positive whole number greater than zero");
+  const cost = Number(row.cost_price);
+  if (!Number.isFinite(cost) || cost <= 0) errors.push("Cost must be greater than zero");
   const nonExpiring = Number(row.is_non_expiring || 0) === 1 || parseNonExpiringFlag(row.is_non_expiring);
   const expiry = String(row.expiry_date || "").trim();
   if (!nonExpiring && !expiry) {
@@ -1002,6 +1004,41 @@ function shipmentQueueStats(shipments = listShipments(), { now = Date.now() } = 
   };
 }
 
+function shipmentQueueStatsFromDatabase({ now = Date.now() } = {}) {
+  const pending = db.prepare(`
+    SELECT
+      COUNT(DISTINCT shipment.id) AS incoming_shipments,
+      COUNT(staging.id) AS pending_lines,
+      COALESCE(SUM(staging.quantity * staging.cost_price), 0) AS pending_value
+    FROM inventory_shipments shipment
+    JOIN inventory_staging staging ON staging.shipment_id = shipment.id
+    WHERE staging.status = 'pending'
+  `).get();
+  const released = db.prepare(`
+    SELECT
+      shipment.id,
+      MAX(COALESCE(staging.released_at, shipment.released_at)) AS released_at
+    FROM inventory_shipments shipment
+    LEFT JOIN inventory_staging staging
+      ON staging.shipment_id = shipment.id AND staging.status = 'released'
+    WHERE shipment.status != 'cancelled'
+      AND (staging.released_at IS NOT NULL OR shipment.released_at IS NOT NULL)
+    GROUP BY shipment.id
+  `).all();
+  const currentMonth = mauritiusMonthKey(now);
+  return {
+    incoming_shipments: Number(pending?.incoming_shipments || 0),
+    pending_lines: Number(pending?.pending_lines || 0),
+    invalid_excluded_lines: 0,
+    pending_shipment_value: roundCurrency(pending?.pending_value || 0),
+    received_this_month: released.filter((row) => {
+      const timestamp = storedTimestampMs(row.released_at);
+      return timestamp !== null && mauritiusMonthKey(timestamp) === currentMonth;
+    }).length,
+    last_received_at: latestStoredTimestamp(released.map((row) => row.released_at)),
+  };
+}
+
 function closeShipmentIfIdle(shipmentId, userId = null) {
   const remaining = Number(
     db
@@ -1416,6 +1453,9 @@ function parseShipmentRecords(headers, records) {
     if (!costRaw) errors.push("Missing cost");
     else if (!/^\d+(\.\d+)?$/.test(costRaw)) errors.push("Cost must be a number");
     const cost = costRaw ? toNumber(row.cost_price, 0) : 0;
+    if (costRaw && /^\d+(\.\d+)?$/.test(costRaw) && cost <= 0) {
+      errors.push("Cost must be greater than zero");
+    }
     const minimumRaw = String(row.minimum_quantity ?? "").trim();
     const unitRaw = String(row.unit ?? "").trim();
     const sellingRaw = String(row.selling_price ?? "").trim();
@@ -2093,6 +2133,40 @@ function stocktakeQueueStats(sessions = listStocktakeSessions(), { now = Date.no
     awaiting_approval: awaitingApproval.length,
     awaiting_application: awaitingApplication.length,
     total_open_variance: openVarianceValue,
+    completed_last_7_days: completed.filter((value) => {
+      const timestamp = storedTimestampMs(value);
+      return timestamp !== null && timestamp >= sevenDaysAgo && timestamp <= now;
+    }).length,
+    last_completed_at: latestStoredTimestamp(completed),
+  };
+}
+
+function stocktakeQueueStatsFromDatabase({ now = Date.now() } = {}) {
+  const rows = db.prepare(`
+    SELECT
+      session.id,
+      session.status,
+      session.applied_at,
+      session.updated_at,
+      session.created_at,
+      COALESCE(SUM(ABS(item.variance) * COALESCE(inventory.cost_price, 0)), 0) AS open_variance_value
+    FROM inventory_stocktake_sessions session
+    LEFT JOIN inventory_stocktake_session_items item ON item.session_id = session.id
+    LEFT JOIN inventory ON inventory.id = item.inventory_id
+    GROUP BY session.id
+  `).all();
+  const completed = rows
+    .filter((row) => row.status === "applied")
+    .map((row) => row.applied_at || row.updated_at || row.created_at)
+    .filter(Boolean);
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+  return {
+    active_sessions: rows.filter((row) => ["draft", "in_progress", "recount_required"].includes(row.status)).length,
+    awaiting_approval: rows.filter((row) => row.status === "submitted").length,
+    awaiting_application: rows.filter((row) => row.status === "approved").length,
+    total_open_variance: roundCurrency(rows
+      .filter((row) => ["submitted", "approved"].includes(row.status))
+      .reduce((sum, row) => sum + Number(row.open_variance_value || 0), 0)),
     completed_last_7_days: completed.filter((value) => {
       const timestamp = storedTimestampMs(value);
       return timestamp !== null && timestamp >= sevenDaysAgo && timestamp <= now;
@@ -3295,9 +3369,11 @@ module.exports = {
   saveStocktakeNewLots,
   shipmentCumulativeSummary,
   shipmentQueueStats,
+  shipmentQueueStatsFromDatabase,
   shipmentReceipt,
   stagingRowErrors,
   stocktakeQueueStats,
+  stocktakeQueueStatsFromDatabase,
   submitStocktakeSession,
   previewExceptionalCorrection,
   validateReceiptExpiry,

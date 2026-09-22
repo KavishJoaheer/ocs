@@ -415,6 +415,84 @@ test('receivables ageing and append-only follow-up ownership support collection 
   assert.equal(list.data.bills[0].follow_up_next_date,today);
 });
 
+test('supplier approval closes delivery follow-up and revalues stock already used', async () => {
+  const stock = item('Late supplier price medicine', 12, 'ocs');
+  const shipmentId = Number(db.prepare(`
+    INSERT INTO inventory_shipments (
+      supplier, delivery_note, operation_id, status, total_rows, valid_rows,
+      received_date, released_at
+    ) VALUES (?, ?, ?, 'released', 1, 1, ?, CURRENT_TIMESTAMP)
+  `).run('Late Price Supplier', `DN-LATE-${randomUUID()}`, randomUUID(), today).lastInsertRowid);
+
+  let reconciliation = await api('GET', '/billing/reconciliation', 'accountant');
+  let delivery = reconciliation.data.stock_readiness.deliveries_without_invoice
+    .find((entry) => Number(entry.id) === shipmentId);
+  assert.ok(delivery, JSON.stringify(reconciliation.data.stock_readiness));
+  assert.equal(delivery.invoice_status, 'missing');
+
+  db.prepare('UPDATE inventory SET quantity=10,row_version=row_version+1 WHERE id=?').run(stock.id);
+  db.prepare('UPDATE inventory_batches SET quantity_remaining=10,row_version=row_version+1 WHERE id=?').run(stock.batchId);
+  db.prepare(`
+    INSERT INTO inventory_movements (
+      item_id, movement_type, action_type, quantity, previous_quantity, next_quantity,
+      unit_cost_snapshot, unit_price_snapshot, valuation_basis, meta_json
+    ) VALUES (?, 'out', 'stock_out', 2, 12, 10, 10, 25, 'batch_actual', ?)
+  `).run(stock.id, JSON.stringify({ stock_out_reason: 'wasted', business_date: today }));
+
+  const invoice = await api('POST', '/finance/supplier-invoices', 'accountant', {
+    supplier_name: 'Late Price Supplier',
+    invoice_number: `SUP-LATE-${randomUUID()}`,
+    invoice_date: today,
+    delivery_note: `DN-LATE-INVOICE-${randomUUID()}`,
+    shipment_id: shipmentId,
+    operation_id: randomUUID(),
+    lines: [{
+      inventory_item_id: stock.id,
+      batch_id: stock.batchId,
+      description: 'Late supplier price medicine',
+      quantity: 12,
+      unit_cost: 12,
+    }],
+  });
+  assert.equal(invoice.status, 201, JSON.stringify(invoice.data));
+
+  reconciliation = await api('GET', '/billing/reconciliation', 'accountant');
+  delivery = reconciliation.data.stock_readiness.deliveries_without_invoice
+    .find((entry) => Number(entry.id) === shipmentId);
+  assert.ok(delivery, JSON.stringify(reconciliation.data.stock_readiness));
+  assert.equal(delivery.invoice_status, 'submitted');
+  assert.equal(Number(delivery.linked_invoice_id), Number(invoice.data.id));
+
+  const approved = await api('POST', `/finance/supplier-invoices/${invoice.data.id}/decision`, 'admin', {
+    action: 'approved',
+    note: 'Matched against the supplier delivery and quantities.',
+    operation_id: randomUUID(),
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  assert.equal(Number(db.prepare('SELECT unit_cost FROM inventory_batches WHERE id=?').get(stock.batchId).unit_cost), 12);
+  assert.equal(Number(db.prepare('SELECT cost_price FROM inventory WHERE id=?').get(stock.id).cost_price), 12);
+  assert.equal(approved.data.cost_variances.length, 1);
+  assert.equal(Number(approved.data.cost_variances[0].remaining_quantity), 10);
+  assert.equal(Number(approved.data.cost_variances[0].consumed_quantity), 2);
+  assert.equal(Number(approved.data.cost_variances[0].variance_amount), 4);
+
+  reconciliation = await api('GET', '/billing/reconciliation', 'accountant');
+  assert.equal(
+    reconciliation.data.stock_readiness.deliveries_without_invoice
+      .some((entry) => Number(entry.id) === shipmentId),
+    false,
+  );
+  const accounting = await api('GET', `/accounting/workspace?from=${today}&to=${today}`, 'accountant');
+  assert.equal(accounting.status, 200, JSON.stringify(accounting.data));
+  const varianceJournal = accounting.data.journals.find(
+    (entry) => entry.reference_type === 'supplier_cost_variance'
+      && Number(entry.reference_id) === Number(approved.data.cost_variances[0].id),
+  );
+  assert.ok(varianceJournal, JSON.stringify(accounting.data.journals));
+  assert.equal(Number(varianceJournal.amount), 4);
+  assert.equal(accounting.data.statements.trial_balance.is_balanced, true);
+});
+
 
 test('invoice retries have one financial and stock effect, including concurrent and legacy clients', async () => {
   const ctx=context('Retry'); const it=item('Retry medicine'); const id=randomUUID();

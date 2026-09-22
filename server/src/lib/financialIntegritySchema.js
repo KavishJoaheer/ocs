@@ -181,6 +181,24 @@ function ensureFinancialIntegritySchema(db) {
         FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
       );
       CREATE INDEX IF NOT EXISTS idx_supplier_invoice_lines_invoice ON finance_supplier_invoice_lines(supplier_invoice_id, id);
+      CREATE TABLE IF NOT EXISTS finance_supplier_cost_variances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_invoice_id INTEGER NOT NULL,
+        supplier_invoice_line_id INTEGER NOT NULL UNIQUE,
+        batch_id INTEGER NOT NULL,
+        previous_unit_cost REAL NOT NULL CHECK (previous_unit_cost >= 0),
+        approved_unit_cost REAL NOT NULL CHECK (approved_unit_cost >= 0),
+        invoice_quantity REAL NOT NULL CHECK (invoice_quantity > 0),
+        remaining_quantity REAL NOT NULL CHECK (remaining_quantity >= 0),
+        consumed_quantity REAL NOT NULL CHECK (consumed_quantity >= 0),
+        variance_amount REAL NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_invoice_id) REFERENCES finance_supplier_invoices(id) ON DELETE RESTRICT,
+        FOREIGN KEY (supplier_invoice_line_id) REFERENCES finance_supplier_invoice_lines(id) ON DELETE RESTRICT,
+        FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
+      );
+      CREATE INDEX IF NOT EXISTS idx_supplier_cost_variances_invoice
+        ON finance_supplier_cost_variances(supplier_invoice_id, id);
       CREATE TABLE IF NOT EXISTS finance_supplier_invoice_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         supplier_invoice_id INTEGER NOT NULL,
@@ -376,6 +394,12 @@ function ensureFinancialIntegritySchema(db) {
       END;
       CREATE TRIGGER IF NOT EXISTS finance_supplier_lines_no_delete BEFORE DELETE ON finance_supplier_invoice_lines BEGIN
         SELECT RAISE(ABORT, 'Supplier invoice lines are immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_cost_variances_no_update BEFORE UPDATE ON finance_supplier_cost_variances BEGIN
+        SELECT RAISE(ABORT, 'Supplier cost variance history is immutable');
+      END;
+      CREATE TRIGGER IF NOT EXISTS finance_supplier_cost_variances_no_delete BEFORE DELETE ON finance_supplier_cost_variances BEGIN
+        SELECT RAISE(ABORT, 'Supplier cost variance history is immutable');
       END;
       CREATE TRIGGER IF NOT EXISTS finance_supplier_events_no_update BEFORE UPDATE ON finance_supplier_invoice_events BEGIN
         SELECT RAISE(ABORT, 'Supplier approval history is immutable');

@@ -314,10 +314,23 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       patient_id: meta.patient_id, amount: Math.round(movement.quantity * movement.unit_price_snapshot * 100) / 100,
     });
   }
+  const stock = stockFinancials(movementRows(db, { doctorId, from, to }));
+  const supplierCostVariance = doctorId == null
+    ? Number(db.prepare(`
+        SELECT COALESCE(SUM(variance_amount), 0) AS amount
+        FROM finance_supplier_cost_variances variance
+        JOIN finance_supplier_invoices invoice ON invoice.id = variance.supplier_invoice_id
+        WHERE (? IS NULL OR date(invoice.invoice_date) >= date(?))
+          AND (? IS NULL OR date(invoice.invoice_date) <= date(?))
+      `).get(from, from, to, to)?.amount || 0)
+    : 0;
   return {
     as_of: new Date().toISOString(), issues, issue_count: issues.length,
     legacy_estimate_count: movements.filter(m => m.valuation_basis === 'legacy_estimate').length,
-    stock: stockFinancials(movementRows(db, { doctorId, from, to })),
+    stock: {
+      ...stock,
+      supplier_cost_variance_rs: Math.round(supplierCostVariance * 100) / 100,
+    },
     stock_readiness: doctorId == null ? {
       unpriced_products: db.prepare('SELECT COUNT(*) AS n FROM inventory WHERE archived_at IS NULL AND quantity > 0 AND (cost_price IS NULL OR cost_price <= 0)').get().n,
       zero_sale_price_products: db.prepare('SELECT COUNT(*) AS n FROM inventory WHERE archived_at IS NULL AND quantity > 0 AND (selling_price IS NULL OR selling_price <= 0)').get().n,
@@ -353,13 +366,49 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       deliveries_without_invoice_count: db.prepare(`
         SELECT COUNT(*) AS n FROM inventory_shipments s
         WHERE COALESCE(s.status, '') != 'cancelled'
-          AND NOT EXISTS (SELECT 1 FROM finance_supplier_invoices i WHERE i.shipment_id = s.id)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM finance_supplier_invoices i
+            WHERE i.shipment_id = s.id
+              AND COALESCE((
+                SELECT e.action
+                FROM finance_supplier_invoice_events e
+                WHERE e.supplier_invoice_id = i.id
+                ORDER BY e.id DESC
+                LIMIT 1
+              ), 'submitted') = 'approved'
+          )
       `).get().n,
       deliveries_without_invoice: db.prepare(`
-        SELECT s.id, s.supplier, s.delivery_note, s.received_date, s.status
+        SELECT
+          s.id, s.supplier, s.delivery_note, s.received_date, s.status,
+          (
+            SELECT i.id FROM finance_supplier_invoices i
+            WHERE i.shipment_id = s.id
+            ORDER BY i.id DESC LIMIT 1
+          ) AS linked_invoice_id,
+          (
+            SELECT e.action
+            FROM finance_supplier_invoice_events e
+            JOIN finance_supplier_invoices i ON i.id = e.supplier_invoice_id
+            WHERE i.shipment_id = s.id
+            ORDER BY i.id DESC, e.id DESC
+            LIMIT 1
+          ) AS invoice_status
         FROM inventory_shipments s
         WHERE COALESCE(s.status, '') != 'cancelled'
-          AND NOT EXISTS (SELECT 1 FROM finance_supplier_invoices i WHERE i.shipment_id = s.id)
+          AND NOT EXISTS (
+            SELECT 1
+            FROM finance_supplier_invoices i
+            WHERE i.shipment_id = s.id
+              AND COALESCE((
+                SELECT e.action
+                FROM finance_supplier_invoice_events e
+                WHERE e.supplier_invoice_id = i.id
+                ORDER BY e.id DESC
+                LIMIT 1
+              ), 'submitted') = 'approved'
+          )
         ORDER BY s.id DESC
         LIMIT 8
       `).all().map((row) => ({
@@ -368,6 +417,8 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         delivery_note: row.delivery_note || "",
         received_date: row.received_date || "",
         status: row.status || "",
+        linked_invoice_id: row.linked_invoice_id ? Number(row.linked_invoice_id) : null,
+        invoice_status: row.invoice_status || "missing",
       })),
     } : null,
     scope: from || to

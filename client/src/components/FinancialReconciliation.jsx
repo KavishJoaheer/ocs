@@ -30,7 +30,8 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
     result.stock_readiness.unpriced_products ||
     result.stock_readiness.zero_sale_price_products ||
     result.stock_readiness.expiry_unverified_products ||
-    result.stock_readiness.unfinished_counts
+    result.stock_readiness.unfinished_counts ||
+    result.stock_readiness.deliveries_without_invoice_count
   ));
   return <details open={Boolean(error || result?.issue_count || stockNeedsAttention)} className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-700">
     <summary className="min-h-11 cursor-pointer text-sm font-semibold">Financial review {result ? `· ${result.issue_count} record${result.issue_count===1?'':'s'} to review` : ''}</summary>
@@ -85,11 +86,15 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
         ) : null}
         {Number(result.stock_readiness.deliveries_without_invoice_count || 0) > 0 ? (
           <div className="mt-3">
-            <p>{result.stock_readiness.deliveries_without_invoice_count} Receive Delivery record{result.stock_readiness.deliveries_without_invoice_count === 1 ? "" : "s"} have no supplier invoice.</p>
+            <p>{result.stock_readiness.deliveries_without_invoice_count} Receive Delivery record{result.stock_readiness.deliveries_without_invoice_count === 1 ? "" : "s"} still need an approved supplier invoice.</p>
             <div className="mt-1 flex flex-col">
               {(result.stock_readiness.deliveries_without_invoice || []).map((delivery) => (
                 <a key={delivery.id} className="inline-flex min-h-11 items-center font-semibold text-teal-800" href={`/billing?section=suppliers&shipment=${delivery.id}`}>
-                  Record invoice for Receive Delivery #{delivery.id}{delivery.supplier ? ` · ${delivery.supplier}` : ""}{delivery.delivery_note ? ` · ${delivery.delivery_note}` : ""}
+                  {delivery.invoice_status === "submitted"
+                    ? "Approve invoice for"
+                    : delivery.invoice_status === "rejected"
+                      ? "Replace rejected invoice for"
+                      : "Record invoice for"} Receive Delivery #{delivery.id}{delivery.supplier ? ` · ${delivery.supplier}` : ""}{delivery.delivery_note ? ` · ${delivery.delivery_note}` : ""}
                 </a>
               ))}
             </div>
@@ -102,6 +107,12 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
         <div><p>Net stock sales</p><strong>{money(result.stock.net_sales_rs)}</strong></div>
         <div><p>Cost of stock sold</p><strong>{money(result.stock.sales_cost_rs)}</strong></div>
         <div><p>Stock wastage</p><strong>{money(result.stock.wastage_value_rs)}</strong></div>
+        {Number(result.stock.supplier_cost_variance_rs || 0) !== 0 ? (
+          <div>
+            <p>Supplier price adjustments</p>
+            <strong>{money(result.stock.supplier_cost_variance_rs)}</strong>
+          </div>
+        ) : null}
         {(Number(result.stock.stocktake_shortage_rs || 0) !== 0 || Number(result.stock.stocktake_surplus_rs || 0) !== 0) ? (
           <div className="sm:col-span-3 rounded-xl bg-slate-50 p-3">
             <p>Stock count differences</p>

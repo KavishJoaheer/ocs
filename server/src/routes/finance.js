@@ -156,11 +156,96 @@ function supplierInvoiceById(id) {
       LEFT JOIN inventory_batches batch ON batch.id=line.batch_id
       WHERE line.supplier_invoice_id=? ORDER BY line.id
     `).all(id),
+    cost_variances: db.prepare(`
+      SELECT *
+      FROM finance_supplier_cost_variances
+      WHERE supplier_invoice_id=?
+      ORDER BY id
+    `).all(id),
     payments: db.prepare(`SELECT payment.*,reversal.id AS reversal_id,reversal.reversal_date,reversal.reason AS reversal_reason,reversal.reversed_by_name
       FROM finance_supplier_payments payment LEFT JOIN finance_supplier_payment_reversals reversal ON reversal.payment_id=payment.id
       WHERE payment.supplier_invoice_id=? ORDER BY payment.payment_date,payment.id`).all(id),
     history: db.prepare("SELECT * FROM finance_supplier_invoice_events WHERE supplier_invoice_id=? ORDER BY id").all(id),
   };
+}
+
+function batchCostLineage(batchId) {
+  return db.prepare(`
+    WITH RECURSIVE lineage(id) AS (
+      SELECT id FROM inventory_batches WHERE id = ?
+      UNION
+      SELECT child.id
+      FROM inventory_batches child
+      JOIN lineage parent ON child.source_batch_id = parent.id
+    )
+    SELECT b.*
+    FROM inventory_batches b
+    JOIN lineage ON lineage.id = b.id
+    ORDER BY b.id
+  `).all(Number(batchId));
+}
+
+function revalueApprovedSupplierLine(invoice, line) {
+  if (!line.batch_id) return null;
+  const lineage = batchCostLineage(line.batch_id);
+  if (!lineage.length) {
+    throw Object.assign(new Error(`The stock batch for ${line.description} is no longer available.`), { status: 409 });
+  }
+  const previousCost = roundCurrency(line.previous_batch_cost ?? lineage[0].unit_cost);
+  const approvedCost = roundCurrency(line.unit_cost);
+  const costDifference = roundCurrency(approvedCost - previousCost);
+  const transferredOut = Number(db.prepare(`
+    SELECT COALESCE(SUM(a.quantity), 0) AS quantity
+    FROM inventory_movement_allocations a
+    JOIN inventory_movements m ON m.id = a.movement_id
+    WHERE a.batch_id = ? AND m.action_type = 'restock_out'
+  `).get(Number(line.batch_id))?.quantity || 0);
+  if (costDifference !== 0 && transferredOut > 0 && lineage.length === 1) {
+    throw Object.assign(new Error(
+      `${line.description} was transferred before batch cost lineage was available. Reconcile that batch before approving a different supplier cost.`,
+    ), { status: 409 });
+  }
+  const invoiceQuantity = Number(line.quantity || 0);
+  const remainingQuantity = Math.min(
+    invoiceQuantity,
+    lineage.reduce((sum, batch) => sum + Number(batch.quantity_remaining || 0), 0),
+  );
+  const consumedQuantity = Math.max(0, invoiceQuantity - remainingQuantity);
+  const varianceAmount = roundCurrency(consumedQuantity * costDifference);
+  const batchIds = lineage.map((batch) => Number(batch.id));
+  const placeholders = batchIds.map(() => "?").join(",");
+  db.prepare(`
+    UPDATE inventory_batches
+    SET unit_cost = ?, row_version = COALESCE(row_version, 1) + 1
+    WHERE id IN (${placeholders})
+  `).run(approvedCost, ...batchIds);
+  db.prepare(`
+    UPDATE inventory
+    SET cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+    WHERE id IN (
+      SELECT DISTINCT item_id FROM inventory_batches WHERE id IN (${placeholders})
+    )
+  `).run(approvedCost, ...batchIds);
+  if (Math.abs(varianceAmount) >= 0.005) {
+    db.prepare(`
+      INSERT INTO finance_supplier_cost_variances (
+        supplier_invoice_id, supplier_invoice_line_id, batch_id,
+        previous_unit_cost, approved_unit_cost, invoice_quantity,
+        remaining_quantity, consumed_quantity, variance_amount
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      invoice.id,
+      line.id,
+      line.batch_id,
+      previousCost,
+      approvedCost,
+      invoiceQuantity,
+      remainingQuantity,
+      consumedQuantity,
+      varianceAmount,
+    );
+  }
+  return { remainingQuantity, consumedQuantity, varianceAmount };
 }
 
 function approvedIds(eventTable, foreignKey) {
@@ -606,8 +691,8 @@ router.post("/supplier-invoices/:id/decision", adminOnly, (req, res) => {
         .run(invoice.id, action, note, operationId, who.id, who.name, who.role);
       if (action === "approved") {
         for (const line of invoice.lines) {
-          if (line.batch_id) db.prepare("UPDATE inventory_batches SET unit_cost=? WHERE id=?").run(roundCurrency(line.unit_cost), line.batch_id);
-          if (line.inventory_item_id) db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundCurrency(line.unit_cost), line.inventory_item_id);
+          if (line.batch_id) revalueApprovedSupplierLine(invoice, line);
+          else if (line.inventory_item_id) db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundCurrency(line.unit_cost), line.inventory_item_id);
         }
       }
     })();

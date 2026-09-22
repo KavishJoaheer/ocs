@@ -1984,14 +1984,16 @@ function postCollectionTransfer({ request, actor }) {
     const destinationAllocations = [];
     for (const allocation of consumed) {
       const insertedBatch = db.prepare(`
-        INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO inventory_batches (
+          item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, source_batch_id
+        ) VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         bag.id,
         allocation.quantity,
         allocation.expiry_date,
         roundCurrency(allocation.unit_cost),
         allocation.is_non_expiring ? 1 : 0,
+        Number(allocation.batch_id),
       );
       destinationAllocations.push({
         ...allocation,

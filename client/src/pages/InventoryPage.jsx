@@ -1,5 +1,5 @@
 import PendingInventorySync from "../components/inventory/PendingInventorySync.jsx";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Calendar,
@@ -19,7 +19,6 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
@@ -30,11 +29,6 @@ import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
-import InventoryStagingQueue from "../components/InventoryStagingQueue.jsx";
-import InventoryCsvImport from "../components/InventoryCsvImport.jsx";
-import InventoryStocktakePanel from "../components/InventoryStocktakePanel.jsx";
-import OperatorSupplyRequestsPanel from "../components/OperatorSupplyRequestsPanel.jsx";
-import OperatorWorkQueuesPanel from "../components/OperatorWorkQueuesPanel.jsx";
 import AddStockModal from "../components/inventory/AddStockModal.jsx";
 import BatchOpeningDataModal from "../components/inventory/BatchOpeningDataModal.jsx";
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
@@ -99,6 +93,16 @@ import { cx, pageContainerClass } from "../lib/utils.js";
 import { printTransferReceipt } from "../lib/transferReceipt.js";
 
 dayjs.extend(isoWeek);
+
+const InventoryStagingQueue = lazy(() => import("../components/InventoryStagingQueue.jsx"));
+const InventoryCsvImport = lazy(() => import("../components/InventoryCsvImport.jsx"));
+const InventoryStocktakePanel = lazy(() => import("../components/InventoryStocktakePanel.jsx"));
+const OperatorSupplyRequestsPanel = lazy(() => import("../components/OperatorSupplyRequestsPanel.jsx"));
+const OperatorWorkQueuesPanel = lazy(() => import("../components/OperatorWorkQueuesPanel.jsx"));
+
+async function loadSpreadsheetTools() {
+  return import("xlsx");
+}
 
 function useLiveItemLots(open, item) {
   const [loadedLots, setLoadedLots] = useState({ itemId: null, lots: [] });
@@ -1179,7 +1183,7 @@ function buildCompareReconciliationExportRows(compareRows = []) {
   }));
 }
 
-function downloadCompareReconciliationExcel({ compareRows, periodLabel, startDate, endDate }) {
+async function downloadCompareReconciliationExcel({ compareRows, periodLabel, startDate, endDate }) {
   if (!compareRows?.length) {
     toast.error("No reconciliation rows available for export.");
     return;
@@ -1189,6 +1193,7 @@ function downloadCompareReconciliationExcel({ compareRows, periodLabel, startDat
   const toToken = sanitizeInventoryExportToken(endDate, "end");
   const fileName = `OCS_Bag_Reconciliation_${fromToken}_${toToken}.xlsx`;
 
+  const XLSX = await loadSpreadsheetTools();
   const workbook = XLSX.utils.book_new();
   const reconSheet = XLSX.utils.json_to_sheet(buildCompareReconciliationExportRows(compareRows));
   XLSX.utils.book_append_sheet(workbook, reconSheet, excelSafeSheetTitle("Reconciliation"));
@@ -1207,7 +1212,7 @@ function downloadCompareReconciliationExcel({ compareRows, periodLabel, startDat
   toast.success("Reconciliation matrix exported.");
 }
 
-function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, periodLabel, compareRows = [] }) {
+async function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, periodLabel, compareRows = [] }) {
   if (!rows.length && !compareRows?.length) {
     toast.error("No activity rows match the current filters.");
     return;
@@ -1218,6 +1223,7 @@ function downloadLiveActivityExcel({ rows, staffLabel, startDate, endDate, perio
   const toToken = sanitizeInventoryExportToken(endDate, "end");
   const fileName = `OCS_Inventory_History_${staffToken}_${fromToken}_${toToken}.xlsx`;
 
+  const XLSX = await loadSpreadsheetTools();
   const workbook = XLSX.utils.book_new();
 
   if (rows.length) {
@@ -3083,15 +3089,17 @@ export default function InventoryPage() {
   const canUseAdminInventory = isAdmin || isOperator;
   const canAddCatalogueItem = canCreateCatalogue(user);
   const folders = useMemo(() => data?.folders || [], [data?.folders]);
-  const pendingStagingCount = useMemo(
-    () =>
-      Array.isArray(data?.incoming_shipments)
-        ? data.incoming_shipments.length
-        : Array.isArray(data?.staging)
-          ? data.staging.filter((row) => row.status === "pending").length
-          : 0,
-    [data?.incoming_shipments, data?.staging],
-  );
+  const pendingStagingCount = useMemo(() => {
+    const summaryCount = Number(data?.tab_summaries?.shipments?.incoming_shipments || 0);
+    if (Array.isArray(data?.incoming_shipments) && data.incoming_shipments.length) {
+      return data.incoming_shipments.length;
+    }
+    if (Array.isArray(data?.staging)) {
+      const stagingCount = data.staging.filter((row) => row.status === "pending").length;
+      return stagingCount || summaryCount;
+    }
+    return summaryCount;
+  }, [data?.incoming_shipments, data?.staging, data?.tab_summaries?.shipments?.incoming_shipments]);
   const openItemEditor = useCallback(
     (nextItem) => {
       const folderId = resolveItemFolderId(nextItem, folders);
@@ -3147,6 +3155,7 @@ export default function InventoryPage() {
         includeAdminFilters: canUseAdminInventory,
         adminPeriodRange,
         activityStaffUserId,
+        view: canUseAdminInventory ? logisticsTab : "",
       }),
     [
       selectedContextDoctorId,
@@ -3155,6 +3164,7 @@ export default function InventoryPage() {
       canUseAdminInventory,
       adminPeriodRange,
       activityStaffUserId,
+      logisticsTab,
     ],
   );
   const summary = data?.summary || {};
@@ -3257,6 +3267,7 @@ export default function InventoryPage() {
             includeAdminFilters: canUseAdminInventory,
             adminPeriodRange,
             activityStaffUserId,
+            view: canUseAdminInventory ? logisticsTab : "",
           })}`,
         );
         commitInventoryData(payload, { silent: true });
@@ -3277,6 +3288,7 @@ export default function InventoryPage() {
       canUseAdminInventory,
       adminPeriodRange,
       activityStaffUserId,
+      logisticsTab,
       commitInventoryData,
     ],
   );
@@ -3807,7 +3819,7 @@ export default function InventoryPage() {
     setSelectedView("all");
   }
 
-  function downloadAdminStockExcel() {
+  async function downloadAdminStockExcel() {
     if (!canUseAdminInventory) return;
     if (!sortedItems.length) {
       toast.error("No stock rows match the current filters.");
@@ -3866,6 +3878,7 @@ export default function InventoryPage() {
       { Field: "Exported rows", Value: String(sortedItems.length) },
     ];
 
+    const XLSX = await loadSpreadsheetTools();
     const workbook = XLSX.utils.book_new();
     const stockSheet = XLSX.utils.json_to_sheet(stockRows);
     XLSX.utils.book_append_sheet(workbook, stockSheet, mainSheetName);
@@ -4843,24 +4856,28 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs && logisticsTab === "queues" ? (
-        <OperatorWorkQueuesPanel
-          onOpenShipments={() => setLogisticsTab("shipments")}
-          onOpenCount={(sessionId) => {
-            setLogisticsTab("count");
-            if (!sessionId) return;
-            const next = new URLSearchParams(searchParams);
-            next.set("tab", "count");
-            next.set("session", String(sessionId));
-            setSearchParams(next);
-          }}
-          onOpenNeedsExpiry={() => applyChaseFilter("missing")}
-          needsExpiryCount={chaseCounts.missing}
-          needsExpiryItems={data?.missing_expiry_items || []}
-        />
+        <Suspense fallback={<LoadingState label="Loading inventory tasks" />}>
+          <OperatorWorkQueuesPanel
+            onOpenShipments={() => setLogisticsTab("shipments")}
+            onOpenCount={(sessionId) => {
+              setLogisticsTab("count");
+              if (!sessionId) return;
+              const next = new URLSearchParams(searchParams);
+              next.set("tab", "count");
+              next.set("session", String(sessionId));
+              setSearchParams(next);
+            }}
+            onOpenNeedsExpiry={() => applyChaseFilter("missing")}
+            needsExpiryCount={chaseCounts.missing}
+            needsExpiryItems={data?.missing_expiry_items || []}
+          />
+        </Suspense>
       ) : null}
 
       {canManageOcs && logisticsTab === "stock" && isAdmin ? (
-        <OperatorSupplyRequestsPanel />
+        <Suspense fallback={<LoadingState label="Loading supply requests" />}>
+          <OperatorSupplyRequestsPanel />
+        </Suspense>
       ) : null}
 
       {canManageOcs && logisticsTab === "stock" && showUnpricedOnly ? (
@@ -4883,7 +4900,7 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs && logisticsTab === "shipments" ? (
-        <>
+        <Suspense fallback={<LoadingState label="Loading Receive Delivery" />}>
           <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
           {renderMenuSummaries("lg:hidden")}
           <InventoryStagingQueue
@@ -4893,20 +4910,22 @@ export default function InventoryPage() {
             requestedShipmentId={searchParams.get("shipment") || ""}
             onReleased={() => load(undefined, undefined, { silent: true })}
           />
-        </>
+        </Suspense>
       ) : null}
 
       {canManageOcs && logisticsTab === "count" ? (
-        <InventoryStocktakePanel
-          items={data?.ocs_stock || items}
-          folders={folders}
-          doctors={doctors}
-          sessions={data?.stocktake_sessions || []}
-          requestedStatus={stocktakeStatusFilter}
-          requestedSessionId={searchParams.get("session") || ""}
-          afterStart={renderMenuSummaries("lg:hidden")}
-          onApplied={() => load(undefined, undefined, { silent: true })}
-        />
+        <Suspense fallback={<LoadingState label="Loading Stock Count" />}>
+          <InventoryStocktakePanel
+            items={data?.ocs_stock || items}
+            folders={folders}
+            doctors={doctors}
+            sessions={data?.stocktake_sessions || []}
+            requestedStatus={stocktakeStatusFilter}
+            requestedSessionId={searchParams.get("session") || ""}
+            afterStart={renderMenuSummaries("lg:hidden")}
+            onApplied={() => load(undefined, undefined, { silent: true })}
+          />
+        </Suspense>
       ) : null}
 
       {!canManageOcs || logisticsTab === "stock" ? (

@@ -291,6 +291,37 @@ function syncOperationalLedger(db) {
     }, [...debits, { accountId: account("accounts_payable"), credit: total, memo: "Supplier payable", ...party }], { allowLockedPeriod: true });
   }
 
+  const supplierCostVariances = db.prepare(`
+    SELECT variance.*, invoice.invoice_date, invoice.invoice_number, invoice.supplier_name,
+      line.description
+    FROM finance_supplier_cost_variances variance
+    JOIN finance_supplier_invoices invoice ON invoice.id = variance.supplier_invoice_id
+    JOIN finance_supplier_invoice_lines line ON line.id = variance.supplier_invoice_line_id
+    ORDER BY variance.id
+  `).all();
+  for (const variance of supplierCostVariances) {
+    const signedAmount = roundCurrency(variance.variance_amount);
+    const amount = Math.abs(signedAmount);
+    if (amount <= 0) continue;
+    const party = { partyType: "supplier", partyId: null, partyName: variance.supplier_name };
+    const increase = signedAmount > 0;
+    postJournal(db, {
+      entryDate: variance.invoice_date,
+      referenceType: "supplier_cost_variance",
+      referenceId: variance.id,
+      documentNumber: variance.invoice_number,
+      description: `Supplier price adjustment: ${variance.description}`,
+      cashFlowClass: "non_cash",
+      actor: systemActor,
+    }, increase ? [
+      { accountId: account("inventory_adjustment_expense"), debit: amount, memo: variance.description, ...party },
+      { accountId: account("inventory"), credit: amount, memo: "Cost correction for stock already used", ...party },
+    ] : [
+      { accountId: account("inventory"), debit: amount, memo: "Cost correction for stock already used", ...party },
+      { accountId: account("inventory_adjustment_income"), credit: amount, memo: variance.description, ...party },
+    ], { allowLockedPeriod: true });
+  }
+
   const supplierPayments = db.prepare(`
     SELECT p.*,i.supplier_name,i.invoice_number FROM finance_supplier_payments p
     JOIN finance_supplier_invoices i ON i.id=p.supplier_invoice_id ORDER BY p.id

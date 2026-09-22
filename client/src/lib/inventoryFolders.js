@@ -48,10 +48,12 @@ export function buildInventoryListQuery({
   includeAdminFilters = false,
   adminPeriodRange = null,
   activityStaffUserId = "",
+  view = "",
 } = {}) {
   const query = new URLSearchParams();
   if (contextDoctorId) query.set("doctorId", String(contextDoctorId));
   if (includeDoctorContext) query.set("context", doctorContext);
+  if (view) query.set("view", String(view));
   if (includeAdminFilters && adminPeriodRange) {
     query.set("dateFrom", adminPeriodRange.from);
     query.set("dateTo", adminPeriodRange.to);
