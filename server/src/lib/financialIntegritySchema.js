@@ -1051,8 +1051,11 @@ function ensureFinancialIntegritySchema(db) {
           reset_reason = 'Opened for billing trials before the 1 October 2026 go-live'
         WHERE id = 1
           AND (
-            (cutover_date = '2026-10-01' AND reset_reason = 'Live billing cutover baseline')
-            OR (cutover_date = '2026-05-01' AND reset_reason = 'Opened for billing trials before the 1 October 2026 go-live')
+            trim(COALESCE(cutover_date, '')) LIKE '2026-10-01%'
+            OR (
+              trim(COALESCE(cutover_date, '')) = '2026-05-01'
+              AND reset_reason = 'Opened for billing trials before the 1 October 2026 go-live'
+            )
           )
       `).run();
     }
