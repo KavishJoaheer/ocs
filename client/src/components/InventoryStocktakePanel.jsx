@@ -181,6 +181,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const [overrideOpen, setOverrideOpen] = useState(false);
   const isMobile = useIsMobile(DENSE_TABLE_BREAKPOINT);
   const [scope, setScope] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("");
+  const [historyQuery, setHistoryQuery] = useState("");
   const [scopePreview, setScopePreview] = useState(null);
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -225,6 +227,26 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         : folders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
   const fullCatalogue = scope === "all" || isBagScope;
   const scopeChosen = Boolean(scope);
+  const historyQueryText = historyQuery.trim().toLowerCase();
+  const historyMatches = useMemo(() => {
+    if (!historyStatus && !historyQueryText) return [];
+    return (sessions || []).filter((session) => {
+      if (historyStatus && String(session.status) !== historyStatus) return false;
+      if (!historyQueryText) return true;
+      const haystack = [
+        `count #${session.id}`,
+        session.folder_name,
+        countStatusLabel(session.status),
+        session.assigned_counter_name,
+        session.created_by_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const digits = historyQueryText.replace(/\D/g, "");
+      return haystack.includes(historyQueryText) || (digits && String(session.id) === digits);
+    });
+  }, [sessions, historyStatus, historyQueryText]);
 
   useEffect(() => {
     if (!scopeChosen) {
@@ -714,25 +736,61 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
 
       {sessions.length ? (
         <div className="mb-4 space-y-2">
-          {sessions.slice(0, 12).map((session) => (
-            <button
-              key={session.id}
-              type="button"
-              onClick={() => openSession(session.id)}
-              className={cx(
-                "flex min-h-11 w-full flex-col rounded-2xl border px-3 py-2 text-left text-xs sm:flex-row sm:items-center sm:justify-between",
-                String(active?.id) === String(session.id) ? "border-[#2d8f98] bg-[#ecf8f7]" : "border-slate-200 text-slate-600",
-              )}
-            >
-              <span className="font-semibold">
-                Count #{session.id} · {session.folder_name || "All OCS folders"} · {countStatusLabel(session.status)}
-              </span>
-              <span>
-                {session.assigned_counter_name || session.created_by_name || "Counter"} · {session.progress_percent || 0}% ·{" "}
-                {formatSavedAt(session.last_saved_at)}
-              </span>
-            </button>
-          ))}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Count status
+              <select
+                value={historyStatus}
+                onChange={(event) => setHistoryStatus(event.target.value)}
+                className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
+              >
+                <option value="">Filter by status</option>
+                <option value="in_progress">In progress</option>
+                <option value="recount_required">Recount required</option>
+                <option value="submitted">Awaiting approval</option>
+                <option value="approved">Approved</option>
+                <option value="applied">Completed</option>
+                <option value="rejected">Rejected</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Find a count
+              <input
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="Count number or folder"
+                className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
+              />
+            </label>
+          </div>
+          {!historyStatus && !historyQueryText ? (
+            <p className="text-sm text-slate-500">Previous counts stay hidden until you filter.</p>
+          ) : historyMatches.length ? (
+            <div className="space-y-2">
+              {historyMatches.slice(0, 12).map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => openSession(session.id)}
+                  className={cx(
+                    "flex min-h-11 w-full flex-col rounded-2xl border px-3 py-2 text-left text-xs sm:flex-row sm:items-center sm:justify-between",
+                    String(active?.id) === String(session.id) ? "border-[#2d8f98] bg-[#ecf8f7]" : "border-slate-200 text-slate-600",
+                  )}
+                >
+                  <span className="font-semibold">
+                    Count #{session.id} · {session.folder_name || "All OCS folders"} · {countStatusLabel(session.status)}
+                  </span>
+                  <span>
+                    {session.assigned_counter_name || session.created_by_name || "Counter"} · {session.progress_percent || 0}% ·{" "}
+                    {formatSavedAt(session.last_saved_at)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">No counts match this filter.</p>
+          )}
         </div>
       ) : null}
       </>

@@ -12,6 +12,10 @@ async function login(request, username) {
   return response.json();
 }
 
+async function showStockCount(page, sessionId) {
+  await page.getByLabel("Find a count").fill(String(sessionId));
+}
+
 async function injectStaffSession(page, token) {
   await page.addInitScript((authToken) => {
     window.localStorage.setItem("ocs_medecins_auth_token", authToken);
@@ -631,6 +635,7 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock Count" }).click();
+    await showStockCount(page, session.id);
     await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
     await expect(page.getByRole("button", { name: "Cancel count" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Submit counts" })).toBeDisabled();
@@ -674,6 +679,7 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock Count" }).click();
+    await showStockCount(page, session.id);
     await expect(page.getByRole("button", { name: new RegExp(`#${session.id}`) })).toBeVisible({
       timeout: 20_000,
     });
@@ -730,6 +736,7 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock Count" }).click();
+    await showStockCount(page, session.id);
     await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
     await expect(page.getByText(/waiting to be added to stock/i)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "This was a delivery that was not received" })).toHaveCount(0);
@@ -761,6 +768,7 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock Count" }).click();
+    await showStockCount(page, session.id);
     await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
     const lot = page.locator("tr").filter({ hasText: "more than expected" });
     await expect(lot.getByLabel("New lot expiry")).toBeVisible({ timeout: 15_000 });
