@@ -181,6 +181,24 @@ function ShortageFields({ line, disabled, onChange }) {
           </button>
         ))}
       </div>
+      {line.needs_shortage_cost ? (
+        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-700">
+          Cost per unit for the units with no lot
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            inputMode="decimal"
+            disabled={disabled}
+            value={line.shortage_unit_cost ?? ""}
+            onChange={(event) => onChange({ shortage_unit_cost: event.target.value })}
+            className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal text-slate-800"
+          />
+          <span className="font-normal text-slate-500">
+            These units have no lot and no catalogue cost. Enter a cost so the wastage is recorded.
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -205,6 +223,7 @@ function keepEnteredLineDetails(previous, next) {
         surplus_supplier_name: line.needs_new_lot ? (local.surplus_supplier_name ?? line.surplus_supplier_name) : line.surplus_supplier_name,
         surplus_received_date: line.needs_new_lot ? (local.surplus_received_date ?? line.surplus_received_date) : line.surplus_received_date,
         shortage_reason: line.needs_shortage ? (local.shortage_reason || line.shortage_reason) : line.shortage_reason,
+        shortage_unit_cost: line.needs_shortage ? (local.shortage_unit_cost ?? line.shortage_unit_cost) : line.shortage_unit_cost,
         shortage_doctor_id: null,
       };
     }),
@@ -476,6 +495,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
           surplus_supplier_name: local.surplus_supplier_name || "",
           surplus_received_date: local.surplus_received_date || "",
           shortage_reason: local.shortage_reason || "",
+          shortage_unit_cost: local.shortage_unit_cost ?? "",
           shortage_doctor_id: null,
         };
       });
@@ -596,6 +616,18 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       return;
     }
     try {
+      if (decision === "approved") {
+        const missingCost = (active.items || []).find(
+          (line) => line.needs_shortage_cost && !line.left_unchanged && !(Number(line.shortage_unit_cost) > 0),
+        );
+        if (missingCost) {
+          toast.error(
+            `Add a cost for ${missingCost.item_name} before this count can record wastage for units that have no lot.`,
+          );
+          return;
+        }
+        await persistExplanations();
+      }
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/review`, {
         decision,
         reason: rejectReason,
@@ -626,6 +658,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         surplus_supplier_name: line.surplus_supplier_name || "",
         surplus_received_date: line.surplus_received_date || "",
         shortage_reason: line.shortage_reason || "",
+        shortage_unit_cost: line.shortage_unit_cost ?? "",
         shortage_doctor_id: line.shortage_doctor_id || null,
       }));
   }
@@ -652,6 +685,13 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     const unexplainedShortage = (active.items || []).some((line) => line.needs_shortage && !line.left_unchanged && !["wasted", "expired"].includes(line.shortage_reason));
     if (unexplainedShortage) {
       toast.error("Mark the missing supply as wasted or expired.");
+      return;
+    }
+    const missingCost = (active.items || []).find(
+      (line) => line.needs_shortage_cost && !line.left_unchanged && !(Number(line.shortage_unit_cost) > 0),
+    );
+    if (missingCost) {
+      toast.error(`Add a cost for ${missingCost.item_name} before this count can record wastage for units that have no lot.`);
       return;
     }
     const missingLot = (active.items || []).some((line) => line.needs_new_lot && !line.left_unchanged && !surplusLotReady(line));
@@ -776,7 +816,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
   const shortageReady = rows
     .filter((line) => line.needs_shortage && !line.left_unchanged)
-    .every((line) => ["wasted", "expired"].includes(line.shortage_reason));
+    .every(
+      (line) =>
+        ["wasted", "expired"].includes(line.shortage_reason) &&
+        (!line.needs_shortage_cost || Number(line.shortage_unit_cost) > 0),
+    );
   const mismatchRows = rows.filter((line) => !line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)));
   const sheetQueryText = sheetQuery.trim().toLowerCase();
   function matchesSheet(line) {

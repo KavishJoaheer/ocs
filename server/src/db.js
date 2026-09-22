@@ -2990,6 +2990,11 @@ function ensureInventoryIntegritySchema() {
     "ALTER TABLE inventory_stocktake_session_items ADD COLUMN shortage_doctor_id INTEGER",
   );
   addColumnIfMissing(
+    "inventory_stocktake_session_items",
+    "shortage_unit_cost",
+    "ALTER TABLE inventory_stocktake_session_items ADD COLUMN shortage_unit_cost REAL",
+  );
+  addColumnIfMissing(
     "inventory_batches",
     "supplier_name",
     "ALTER TABLE inventory_batches ADD COLUMN supplier_name TEXT NOT NULL DEFAULT ''",

@@ -1925,6 +1925,13 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
       const deliveryInCount = counted && varianceQty > 0 && pendingQty > 0;
       const needsShortage = counted && varianceQty < 0;
       const showLot = showSystem || needsNewLot || deliveryInCount || needsShortage;
+      const unbatchedGap = needsShortage
+        ? unbatchedShortageQty(
+            { id: row.inventory_id, quantity: row.live_quantity, cost_price: row.cost_price },
+            Math.abs(varianceQty),
+          )
+        : 0;
+      const needsShortageCost = Boolean(showLot && unbatchedGap > 0 && !(Number(row.cost_price) > 0));
       const previousQty = row.previous_count_quantity == null ? null : Number(row.previous_count_quantity);
       const movementSince = previousQty == null ? null : expectedQty - previousQty;
       const movementsSince = showSystem ? intervalMovements.get(Number(row.inventory_id)) || [] : [];
@@ -1962,7 +1969,12 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
         needs_new_lot: needsNewLot,
         delivery_in_count: deliveryInCount,
         needs_shortage: needsShortage,
+        needs_shortage_cost: needsShortageCost,
         shortage_reason: showLot ? String(row.shortage_reason || "") : "",
+        shortage_unit_cost:
+          showLot && row.shortage_unit_cost != null && Number(row.shortage_unit_cost) > 0
+            ? Number(row.shortage_unit_cost)
+            : null,
         shortage_doctor_id: showLot && row.shortage_doctor_id ? Number(row.shortage_doctor_id) : null,
         new_lot_quantity: showSystem && Number(row.variance || 0) > 0 ? Number(row.variance) : null,
         pending_shipment_quantity: showLot ? pending.quantity : 0,
@@ -2141,11 +2153,28 @@ function persistStocktakeNewLots(sessionId, lines) {
       if (reason && !["wasted", "expired"].includes(reason)) {
         throw HttpError(400, "Say whether the missing supply was wasted or expired.");
       }
+      let shortageUnitCost = null;
+      let saveShortageCost = false;
+      if (Object.prototype.hasOwnProperty.call(line, "shortage_unit_cost")) {
+        saveShortageCost = true;
+        const rawCost = line.shortage_unit_cost;
+        if (rawCost != null && String(rawCost).trim() !== "") {
+          const parsed = Number(rawCost);
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            throw HttpError(400, "Enter a cost greater than zero for units that have no lot.");
+          }
+          shortageUnitCost = roundCurrency(parsed);
+        }
+      }
       db.prepare(`
         UPDATE inventory_stocktake_session_items
-        SET shortage_reason = ?, shortage_doctor_id = NULL, updated_at = CURRENT_TIMESTAMP
+        SET
+          shortage_reason = ?,
+          shortage_doctor_id = NULL,
+          shortage_unit_cost = CASE WHEN ? = 1 THEN ? ELSE shortage_unit_cost END,
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(reason, line.id);
+      `).run(reason, saveShortageCost ? 1 : 0, shortageUnitCost, line.id);
       continue;
     }
     if (!(variance > 0)) continue;
@@ -2468,7 +2497,7 @@ function saveStocktakeCounts(sessionId, lines, userId) {
       if (physical >= baselineQty) {
         db.prepare(`
           UPDATE inventory_stocktake_session_items
-          SET shortage_reason = '', shortage_doctor_id = NULL
+          SET shortage_reason = '', shortage_doctor_id = NULL, shortage_unit_cost = NULL
           WHERE id = ?
         `).run(line.id);
       }
@@ -2820,6 +2849,56 @@ function otherActiveAdminExists(userId) {
   return Number(row?.count || 0) > 0;
 }
 
+function unbatchedShortageQty(item, shortage) {
+  const shortageQty = Math.abs(Number(shortage) || 0);
+  if (!Number.isInteger(shortageQty) || shortageQty <= 0 || !item?.id) return 0;
+  const previous = Number(item.quantity || 0);
+  const unbatchedBefore = Math.max(0, previous - batchQuantityTotal(item.id));
+  if (unbatchedBefore <= 0) return 0;
+  const preview = previewAllocations(item.id, shortageQty, { includeExpired: true });
+  const batchedQty = preview.allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  const unbatchedQty = shortageQty - batchedQty;
+  if (unbatchedQty <= 0 || unbatchedQty > unbatchedBefore) return 0;
+  return unbatchedQty;
+}
+
+function costForUnbatchedShortage(line, item) {
+  const entered = Number(line?.shortage_unit_cost);
+  if (entered > 0) return roundCurrency(entered);
+  if (Number(item?.cost_price) > 0) return roundCurrency(item.cost_price);
+  return null;
+}
+
+function stocktakeRecordBlocker(items) {
+  const costNames = [];
+  const reservedNotes = [];
+  for (const line of items || []) {
+    if (Number(line.left_unchanged || 0) === 1 || line.physical_quantity == null) continue;
+    const item = db
+      .prepare("SELECT id, item_name, quantity, cost_price FROM inventory WHERE id = ?")
+      .get(line.inventory_id);
+    if (!item) continue;
+    const next = Number(line.physical_quantity);
+    if (Number(line.variance) < 0 && unbatchedShortageQty(item, line.variance) > 0 && !costForUnbatchedShortage(line, item)) {
+      costNames.push(item.item_name);
+    }
+    const reserved = reservedQuantityForItem(item.id);
+    if (Number.isInteger(next) && next >= 0 && next < reserved) {
+      reservedNotes.push(`${item.item_name} (${reserved} reserved)`);
+    }
+  }
+  const parts = [];
+  if (costNames.length) {
+    parts.push(
+      `Add a cost for ${costNames.slice(0, 3).join(", ")} before this count can record wastage for units that have no lot.`,
+    );
+  }
+  if (reservedNotes.length) {
+    parts.push(`Collect or cancel the request for ${reservedNotes.slice(0, 3).join(", ")}, then accept the count again.`);
+  }
+  return parts.join(" ");
+}
+
 function stocktakeReadyToRecord(sessionId, items) {
   try {
     assertShortageReasons(items);
@@ -2859,6 +2938,14 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
   if (decision === "rejected" && String(reason || "").trim().length < 10) {
     throw HttpError(400, "A reason is required to reject a stock count session.");
   }
+  if (decision === "approved") {
+    const items = db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId);
+    const blocker = stocktakeRecordBlocker(items);
+    if (blocker) throw HttpError(409, blocker);
+    if (stocktakeReadyToRecord(sessionId, items)) {
+      return applyStocktakeSession(sessionId, userId, { role: "admin", fromReview: true }).session;
+    }
+  }
   db.prepare(`
     UPDATE inventory_stocktake_sessions
     SET
@@ -2869,17 +2956,12 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(decision === "approved" ? "approved" : "rejected", userId, String(reason || "").slice(0, 500), sessionId);
-  if (decision === "approved") {
-    const items = db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId);
-    if (stocktakeReadyToRecord(sessionId, items)) {
-      return applyStocktakeSession(sessionId, userId, { role: "admin" }).session;
-    }
-  }
   return getStocktakeSession(sessionId, { role: "admin" });
 }
 
 function applyStocktakeSession(sessionId, userId, actor = {}) {
   const reveal = { role: actor.role || "admin" };
+  const fromReview = Boolean(actor.fromReview);
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stock count session not found.");
   if (session.status === "applied" && session.applied_transaction_id) {
@@ -2888,7 +2970,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
   if (session.status === "rejected" || session.status === "cancelled" || session.status === "recount_required") {
     throw HttpError(400, "This session cannot be applied.");
   }
-  if (session.status !== "approved") {
+  if (session.status !== "approved" && !(fromReview && session.status === "submitted")) {
     throw HttpError(400, "Only an approved stock count can be recorded.");
   }
 
@@ -2925,6 +3007,19 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       error.persistRecount = true;
       throw error;
     }
+    if (fromReview && locked.status === "submitted") {
+      const marked = db.prepare(`
+        UPDATE inventory_stocktake_sessions
+        SET
+          status = 'approved',
+          reviewed_by_user_id = ?,
+          reviewed_at = CURRENT_TIMESTAMP,
+          review_reason = '',
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'submitted'
+      `).run(userId, sessionId);
+      if (!marked.changes) throw HttpError(409, "This count changed before it could be recorded.");
+    }
     const transactionId = `ST-${sessionId}-${Date.now().toString(36).toUpperCase()}`;
     const pendingByItem = Number(locked.owner_doctor_id || 0) ? new Map() : loadPendingShipmentsByCatalogueId();
     const applyItems = db
@@ -2946,7 +3041,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
       if (next < reserved) {
         throw HttpError(
           409,
-          `Cannot apply counted quantity ${next} for ${item.item_name} because ${reserved} unit(s) are reserved.`,
+          `Collect or cancel the request for ${item.item_name} (${reserved} reserved), then accept the count again.`,
         );
       }
       const batchesBefore = batchQuantityTotal(item.id);
@@ -3048,6 +3143,13 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         recordMovementAllocations(movementId, allocations);
       }
       if (legacyUnbatchedQty > 0) {
+        const unbatchedCost = costForUnbatchedShortage(line, item);
+        if (!unbatchedCost) {
+          throw HttpError(
+            409,
+            `Add a cost for ${item.item_name} before this count can record wastage for units that have no lot.`,
+          );
+        }
         const legacyPrevious = previous - (Math.abs(variance) - legacyUnbatchedQty);
         const legacyId = recordOpsMovement({
           itemId: item.id,
@@ -3059,7 +3161,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           note: line.reason || `Stock count session #${sessionId}`,
           userId,
           skipPublish: true,
-          unitCost: Number(item.cost_price) > 0 ? roundCurrency(item.cost_price) : null,
+          unitCost: unbatchedCost,
           valuationBasis,
           meta: {
             stocktake_session_id: sessionId,

@@ -1120,6 +1120,86 @@ test("a short count records wastage for stock that has no lot", async () => {
   assert.equal(totals.stocktake_shortage_rs, 0);
 });
 
+test("a short count of stock with no lot and no cost waits for a cost before it is recorded", async () => {
+  const itemId = insertOcsItem({ name: `No cost short ${Date.now()}`, qty: 0 });
+  db.prepare("DELETE FROM inventory_batches WHERE item_id = ?").run(itemId);
+  db.prepare("UPDATE inventory SET quantity = 4, cost_price = 0 WHERE id = ?").run(itemId);
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const sessionId = created.data.session.id;
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 0 }] },
+  });
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "expired" }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(saved.data.session.items[0].needs_shortage_cost, true);
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
+  const blocked = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.match(blocked.data.error, /cost/i);
+  assert.equal(db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(sessionId).status, "submitted");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 4);
+  const priced = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: adminToken,
+    body: { lines: [{ id: lineId, shortage_reason: "expired", shortage_unit_cost: 8 }] },
+  });
+  assert.equal(priced.status, 200, JSON.stringify(priced.data));
+  assert.equal(priced.data.session.items[0].needs_shortage_cost, true);
+  assert.equal(priced.data.session.items[0].shortage_unit_cost, 8);
+  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
+  assert.equal(reviewed.data.session.status, "applied");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 0);
+  const legacy = db
+    .prepare("SELECT unit_cost_snapshot, meta_json, quantity FROM inventory_movements WHERE item_id = ? AND action_type = 'stock_out'")
+    .all(itemId)
+    .find((row) => JSON.parse(row.meta_json).legacy_unknown_lot === true);
+  assert.ok(legacy);
+  assert.equal(Number(legacy.unit_cost_snapshot), 8);
+  assert.equal(Number(legacy.quantity), 4);
+  const { stockFinancials } = require("../src/lib/inventoryFinancials");
+  const totals = stockFinancials(
+    db.prepare("SELECT * FROM inventory_movements WHERE item_id = ?").all(itemId),
+  );
+  assert.equal(totals.wastage_value_rs, 32);
+});
+
+test("accepting a count below reserved units leaves the count awaiting approval", async () => {
+  const name = `Reserved short ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 10 });
+  await createAcceptedRequest({ itemId, itemName: name, quantity: 4 });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const sessionId = created.data.session.id;
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 2 }] },
+  });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "wasted" }] },
+  });
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
+  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(reviewed.status, 409, JSON.stringify(reviewed.data));
+  assert.match(reviewed.data.error, /collect or cancel/i);
+  assert.equal(db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(sessionId).status, "submitted");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 10);
+});
+
 test("a shipment cannot add a delivery that a stock count already recorded", async () => {
   const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
   const name = `Pads twice ${Date.now()}`;
@@ -3017,14 +3097,20 @@ test("zero-variance stocktake without movement still closes and apply rolls back
     body: { lines: [{ id: unsafe.data.session.items[0].id, shortage_reason: "wasted" }] },
   });
   await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/submit`, { token: operatorToken });
-  await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/review`, {
+  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/review`, {
     token: adminToken,
     body: { decision: "approved" },
   });
+  assert.equal(reviewed.status, 409, JSON.stringify(reviewed.data));
+  assert.match(reviewed.data.error, /collect or cancel/i);
+  assert.equal(
+    db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(unsafe.data.session.id).status,
+    "submitted",
+  );
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/apply`, {
     token: adminToken,
   });
-  assert.equal(applied.status, 409, JSON.stringify(applied.data));
+  assert.equal(applied.status, 400, JSON.stringify(applied.data));
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(reservedItem).quantity, 2);
 });
 
