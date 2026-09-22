@@ -4806,7 +4806,14 @@ export default function InventoryPage() {
       {canManageOcs && logisticsTab === "queues" ? (
         <OperatorWorkQueuesPanel
           onOpenShipments={() => setLogisticsTab("shipments")}
-          onOpenCount={() => setLogisticsTab("count")}
+          onOpenCount={(sessionId) => {
+            setLogisticsTab("count");
+            if (!sessionId) return;
+            const next = new URLSearchParams(searchParams);
+            next.set("tab", "count");
+            next.set("session", String(sessionId));
+            setSearchParams(next);
+          }}
           onOpenNeedsExpiry={() => applyChaseFilter("missing")}
           needsExpiryCount={chaseCounts.missing}
           needsExpiryItems={data?.missing_expiry_items || []}

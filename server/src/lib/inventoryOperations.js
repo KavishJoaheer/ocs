@@ -2678,6 +2678,21 @@ function cancelStocktakeSession(sessionId, userId) {
   return getStocktakeSession(sessionId, { role: "operator" });
 }
 
+function assertShortageReasons(items) {
+  const missing = (items || []).filter((row) => {
+    if (Number(row.left_unchanged || 0) === 1) return false;
+    if (row.physical_quantity == null) return false;
+    if (!(Number(row.variance) < 0)) return false;
+    return !["wasted", "expired"].includes(String(row.shortage_reason || ""));
+  });
+  if (!missing.length) return;
+  const names = missing.slice(0, 3).map((row) => {
+    if (row.item_name) return row.item_name;
+    return db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(row.inventory_id)?.item_name || "an item";
+  });
+  throw HttpError(400, `Mark the missing supply as wasted or expired: ${names.join(", ")}.`);
+}
+
 function submitStocktakeSession(sessionId, userId, { finishCounted = false } = {}) {
   const session = db.prepare("SELECT * FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
   if (!session) throw HttpError(404, "Stock count session not found.");
@@ -2765,6 +2780,7 @@ function submitStocktakeSession(sessionId, userId, { finishCounted = false } = {
     error.session = getStocktakeSession(sessionId, { role: "operator" });
     throw error;
   }
+  assertShortageReasons(items);
   db.prepare(`
     UPDATE inventory_stocktake_sessions
     SET
@@ -2877,6 +2893,7 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
     const applyItems = db
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?")
       .all(sessionId);
+    assertShortageReasons(applyItems);
     for (const line of applyItems) {
       if (Number(line.left_unchanged || 0) === 1) continue;
       const variance = Number(line.variance);

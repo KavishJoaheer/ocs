@@ -463,6 +463,47 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }
   }
 
+  function lineExplanations(session) {
+    return (session?.items || [])
+      .filter((line) => line.needs_new_lot || line.needs_shortage)
+      .map((line) => {
+        const local = (active?.items || []).find((row) => row.id === line.id) || line;
+        return {
+          id: line.id,
+          surplus_expiry_date: local.surplus_expiry_date || "",
+          surplus_is_non_expiring: Boolean(local.surplus_is_non_expiring),
+          surplus_unit_cost: local.surplus_unit_cost ?? "",
+          surplus_supplier_name: local.surplus_supplier_name || "",
+          surplus_received_date: local.surplus_received_date || "",
+          shortage_reason: local.shortage_reason || "",
+          shortage_doctor_id: null,
+        };
+      });
+  }
+
+  function explanationGap(session) {
+    const missingLot = (session?.items || []).find((line) => line.needs_new_lot && !surplusLotReady(line));
+    const missingReason = (session?.items || []).find((line) => line.needs_shortage && !["wasted", "expired"].includes(line.shortage_reason));
+    if (!missingLot && !missingReason) return "";
+    return missingReason
+      ? "Mark the missing supply as wasted or expired."
+      : "Enter the expiry, supplier, and delivery date for the extra on this count.";
+  }
+
+  async function persistExplanations() {
+    let session = active;
+    if (Object.keys(editedIds).length) {
+      session = await persistEditedLines();
+    }
+    const explanations = lineExplanations(session);
+    if (explanations.length) {
+      const saved = await api.patch(`/inventory/stocktake/sessions/${active.id}/new-lots`, { lines: explanations });
+      session = saved.session;
+      setActive(session);
+    }
+    return session;
+  }
+
   async function submitSession() {
     if (!active) return;
     const remaining = uncountedLines().length;
@@ -475,36 +516,10 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }
     setSaving(true);
     try {
-      let session = active;
-      if (Object.keys(editedIds).length) {
-        session = await persistEditedLines();
-      }
-      const explanations = (session?.items || [])
-        .filter((line) => line.needs_new_lot || line.needs_shortage)
-        .map((line) => {
-          const local = (active.items || []).find((row) => row.id === line.id) || line;
-          return {
-            id: line.id,
-            surplus_expiry_date: local.surplus_expiry_date || "",
-            surplus_is_non_expiring: Boolean(local.surplus_is_non_expiring),
-            surplus_unit_cost: local.surplus_unit_cost ?? "",
-            surplus_supplier_name: local.surplus_supplier_name || "",
-            surplus_received_date: local.surplus_received_date || "",
-            shortage_reason: local.shortage_reason || "",
-            shortage_doctor_id: local.shortage_doctor_id || null,
-          };
-        });
-      if (explanations.length) {
-        const saved = await api.patch(`/inventory/stocktake/sessions/${active.id}/new-lots`, { lines: explanations });
-        session = saved.session;
-        setActive(session);
-      }
-      const missingLot = (session?.items || []).find((line) => line.needs_new_lot && !surplusLotReady(line));
-      const missingReason = (session?.items || []).find((line) => line.needs_shortage && !["wasted", "expired"].includes(line.shortage_reason));
-      if (missingLot || missingReason) {
-        toast.error(missingReason
-          ? "Mark the missing supply as wasted or expired."
-          : "Enter the expiry, supplier, and delivery date for the extra on this count.");
+      const session = await persistExplanations();
+      const gap = explanationGap(session);
+      if (gap) {
+        toast.error(gap);
         return;
       }
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`);
@@ -532,8 +547,12 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }
     setSaving(true);
     try {
-      if (Object.keys(editedIds).length) {
-        await persistEditedLines();
+      const session = await persistExplanations();
+      const gap = explanationGap(session);
+      if (gap) {
+        toast.error(gap);
+        setFinishOpen(false);
+        return;
       }
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`, {
         finish_counted: true,
@@ -630,11 +649,17 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
 
   async function applySession() {
     if (!active || applying) return;
-    const surplusLines = surplusPayloadLines();
-    if (surplusLines.length && surplusLines.some((line) => !surplusLotReady(line))) {
+    const unexplainedShortage = (active.items || []).some((line) => line.needs_shortage && !line.left_unchanged && !["wasted", "expired"].includes(line.shortage_reason));
+    if (unexplainedShortage) {
+      toast.error("Mark the missing supply as wasted or expired.");
+      return;
+    }
+    const missingLot = (active.items || []).some((line) => line.needs_new_lot && !line.left_unchanged && !surplusLotReady(line));
+    if (missingLot) {
       toast.error("Enter the new lot expiry, supplier, and delivery date before applying.");
       return;
     }
+    const surplusLines = surplusPayloadLines();
     setApplying(true);
     try {
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/apply`, {
@@ -749,6 +774,9 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     (canCount || canReview) && active && ["draft", "in_progress", "recount_required", "submitted", "approved"].includes(active.status),
   );
   const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
+  const shortageReady = rows
+    .filter((line) => line.needs_shortage && !line.left_unchanged)
+    .every((line) => ["wasted", "expired"].includes(line.shortage_reason));
   const mismatchRows = rows.filter((line) => !line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)));
   const sheetQueryText = sheetQuery.trim().toLowerCase();
   function matchesSheet(line) {
@@ -1413,7 +1441,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             {canReview && active.status === "approved" && !isClosedSession(active.status) ? (
               <button
                 type="button"
-                disabled={applying || (surplusRows.length > 0 && !surplusLotsReady)}
+                disabled={applying || !shortageReady || (surplusRows.length > 0 && !surplusLotsReady)}
                 onClick={applySession}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
               >

@@ -8,6 +8,7 @@ const { randomUUID } = require("node:crypto");
 const TMP_DB = path.join(os.tmpdir(), `ocs-inventory-ops-${process.pid}-${Date.now()}.db`);
 process.env.DB_PATH = TMP_DB;
 process.env.NODE_ENV = "test";
+process.env.API_RATE_LIMIT_PER_MINUTE = process.env.API_RATE_LIMIT_PER_MINUTE || "5000";
 delete process.env.ENABLE_DOCTOR_EMERGENCY_RESTOCK;
 
 const { test, before, after } = require("node:test");
@@ -1045,6 +1046,47 @@ test("a lower stock count records waste separately from a count difference", asy
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
+test("a short count cannot be submitted or recorded without wasted or expired", async () => {
+  const itemId = insertOcsItem({ name: `Unexplained short ${Date.now()}`, qty: 8 });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const sessionId = created.data.session.id;
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 5 }] },
+  });
+  const finished = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+    body: { finish_counted: true },
+  });
+  assert.equal(finished.status, 400, JSON.stringify(finished.data));
+  assert.match(String(finished.data.error || ""), /wasted or expired/i);
+  assert.equal(db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(sessionId).status, "in_progress");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
+
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "expired" }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, {
+    token: operatorToken,
+    body: { finish_counted: true },
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  db.prepare("UPDATE inventory_stocktake_session_items SET shortage_reason = '' WHERE id = ?").run(lineId);
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 400, JSON.stringify(applied.data));
+  assert.match(String(applied.data.error || ""), /wasted or expired/i);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
+});
+
 test("a shipment cannot add a delivery that a stock count already recorded", async () => {
   const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
   const name = `Pads twice ${Date.now()}`;
@@ -1185,6 +1227,10 @@ test("admin stock count review compares this count with the last official count"
   await api("PATCH", `/api/inventory/stocktake/sessions/${mismatch.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: mismatch.data.session.items[0].id, physical_quantity: 80 }] },
+  });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${mismatch.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: mismatch.data.session.items[0].id, shortage_reason: "wasted" }] },
   });
   const mismatchSubmit = await api("POST", `/api/inventory/stocktake/sessions/${mismatch.data.session.id}/submit`, {
     token: operatorToken,
@@ -1970,6 +2016,15 @@ test("explicit zero stocktake can be submitted and blank stocktake cannot", asyn
     body: { lines: [{ id: lineId, physical_quantity: 0 }] },
   });
   assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const unexplained = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(unexplained.status, 400, JSON.stringify(unexplained.data));
+  const explained = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "wasted" }] },
+  });
+  assert.equal(explained.status, 200, JSON.stringify(explained.data));
   const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
     token: operatorToken,
   });
@@ -2923,6 +2978,10 @@ test("zero-variance stocktake without movement still closes and apply rolls back
   await api("PATCH", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}`, {
     token: operatorToken,
     body: { lines: [{ id: unsafe.data.session.items[0].id, physical_quantity: 0 }] },
+  });
+  await api("PATCH", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: unsafe.data.session.items[0].id, shortage_reason: "wasted" }] },
   });
   await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/submit`, { token: operatorToken });
   await api("POST", `/api/inventory/stocktake/sessions/${unsafe.data.session.id}/review`, {
@@ -4211,6 +4270,11 @@ test("negative stocktake reconciles unusable batches at their exact recorded cos
     token: operatorToken,
     body: { lines: [{ id: created.data.session.items[0].id, physical_quantity: 2, reason: "Expired units missing during count" }] },
   });
+  const explained = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: created.data.session.items[0].id, shortage_reason: "expired" }] },
+  });
+  assert.equal(explained.status, 200, JSON.stringify(explained.data));
   await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
   await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
     token: adminToken,

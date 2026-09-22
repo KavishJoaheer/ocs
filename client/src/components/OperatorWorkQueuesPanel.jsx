@@ -289,14 +289,24 @@ export default function OperatorWorkQueuesPanel({
             Open {rows.length} in Receive Delivery
           </button>
         ) : active === "count_variances" ? (
-          <button
-            type="button"
-            onClick={() => onOpenCount?.()}
-            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <ClipboardList className="mr-2 inline size-4 text-amber-700" />
-            Review {rows.length} count variance{rows.length === 1 ? "" : "s"}
-          </button>
+          <div className="space-y-2">
+            {rows.map((session) => (
+              <button
+                key={session.id}
+                type="button"
+                onClick={() => onOpenCount?.(session.id)}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <span className="font-semibold">
+                  <ClipboardList className="mr-2 inline size-4 text-amber-700" />
+                  Open count #{session.id}
+                </span>
+                <span className="shrink-0 text-slate-500">
+                  {session.status === "recount_required" ? "Recount required" : "Awaiting approval"}
+                </span>
+              </button>
+            ))}
+          </div>
         ) : active === "needs_expiry" ? (
           <div className="space-y-2">
             <button
