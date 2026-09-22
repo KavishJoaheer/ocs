@@ -759,6 +759,16 @@ test.describe("Inventory workflow", () => {
       data: { lines: [{ id: session.items[0].id, physical_quantity: 9 }] },
     });
     expect(saved.ok(), await saved.text()).toBeTruthy();
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: "Stock Count" }).click();
+    await showStockCount(page, session.id);
+    await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
+    await expect(page.getByText(/while you still have the box/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel("New lot expiry")).toBeVisible();
+
     const submitted = await request.post(`${API_BASE}/inventory/stocktake/sessions/${session.id}/submit`, {
       headers: { Authorization: `Bearer ${operator.token}` },
     });

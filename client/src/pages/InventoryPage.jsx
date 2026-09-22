@@ -3049,6 +3049,12 @@ export default function InventoryPage() {
   const [adminPeriodPreset, setAdminPeriodPreset] = useState("monthly");
   const [adminPeriodAnchor, setAdminPeriodAnchor] = useState(() => inventoryTodayInputValue());
   const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "shipments" || tab === "count" || tab === "stock" || tab === "queues" || tab === "bags") {
+      setLogisticsTab(tab);
+    }
+  }, [searchParams]);
   const inventoryTabListRef = useRef(null);
   const [tabsCanScroll, setTabsCanScroll] = useState({ left: false, right: false });
   const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
@@ -4837,6 +4843,7 @@ export default function InventoryPage() {
             rows={data?.staging}
             shipments={data?.shipments}
             incomingShipments={data?.incoming_shipments}
+            requestedShipmentId={searchParams.get("shipment") || ""}
             onReleased={() => load(undefined, undefined, { silent: true })}
           />
         </>
@@ -4849,6 +4856,7 @@ export default function InventoryPage() {
           doctors={doctors}
           sessions={data?.stocktake_sessions || []}
           requestedStatus={stocktakeStatusFilter}
+          requestedSessionId={searchParams.get("session") || ""}
           onApplied={() => load(undefined, undefined, { silent: true })}
         />
       ) : null}

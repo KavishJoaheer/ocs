@@ -28,10 +28,25 @@ function movementBusinessDateSql(alias = 'm') {
     ELSE date(${alias}.created_at, '+4 hours')
   END`;
 }
+function isStocktakeMovement(row, meta, action) {
+  if (action !== 'adjustment') return false;
+  const basis = String(row.valuation_basis || meta.valuation_basis || '').toLowerCase();
+  return basis === 'stocktake'
+    || meta.reference_type === 'stocktake_session'
+    || Number(meta.stocktake_session_id || 0) > 0;
+}
+function movementDirection(row, meta, reversal) {
+  const deltaDirection = Number(row.next_quantity) < Number(row.previous_quantity) ? 'out' : 'in';
+  const direction = ['in', 'out'].includes(row.direction)
+    ? row.direction
+    : (['in', 'out'].includes(row.movement_type) ? row.movement_type : deltaDirection);
+  return reversal ? (meta.original_direction || (direction === 'in' ? 'out' : 'in')) : direction;
+}
 function financialAction(row) {
   const meta = parse(row.current_meta_json || row.meta_json);
   let action = String(row.movement_action_type || row.action_type || '').toLowerCase();
   if (action === 'reversal') action = String(meta.original_action_type || 'adjustment').toLowerCase();
+  if (isStocktakeMovement(row, meta, action)) return 'stocktake';
   if (action === 'stock_out') {
     const reason = String(meta.stock_out_reason || '').toLowerCase();
     if (reason === 'sale') return 'sell';
@@ -40,7 +55,7 @@ function financialAction(row) {
   return action === 'expired' ? 'wastage' : action;
 }
 function stockFinancials(rows) {
-  let sales=0, saleCost=0, loss=0, lossUnits=0, consumed=0, gross=0;
+  let sales=0, saleCost=0, loss=0, lossUnits=0, consumed=0, gross=0, countShortage=0, countSurplus=0;
   for (const row of rows) {
     const kind=financialAction(row);
     const reversal=(row.movement_action_type || row.action_type)==='reversal';
@@ -48,17 +63,20 @@ function stockFinancials(rows) {
     const qty=Math.abs(Number(row.quantity || 0));
     const cost=Number(row.unit_cost_snapshot ?? row.cost_price ?? 0);
     const price=Number(row.unit_price_snapshot ?? row.selling_price ?? 0);
+    const meta = parse(row.current_meta_json || row.meta_json);
     if (kind !== 'restock_in') gross += qty*cost;
     if (kind === 'sell') { sales += sign*qty*price; saleCost += sign*qty*cost; }
     if (kind === 'wastage') { loss += sign*qty*cost; lossUnits += sign*qty; }
     if (['sell','wastage','remove','stock_out'].includes(kind)) consumed += sign*qty*cost;
+    if (kind === 'stocktake') {
+      const originalDirection = movementDirection(row, meta, reversal);
+      if (originalDirection === 'out' || (!originalDirection && Number(row.quantity) < 0)) countShortage += sign*qty*cost;
+      else countSurplus += sign*qty*cost;
+    }
     // A stock count increase is not consumption. A compensating reversal has
     // the opposite direction, so reversing a decrease removes consumption.
     if (['adjustment','correction','exceptional_correction','override'].includes(kind)) {
-      const meta = parse(row.current_meta_json || row.meta_json);
-      const deltaDirection = Number(row.next_quantity) < Number(row.previous_quantity) ? 'out' : 'in';
-      const direction = ['in','out'].includes(row.direction) ? row.direction : (['in','out'].includes(row.movement_type) ? row.movement_type : deltaDirection);
-      const originalDirection = reversal ? (meta.original_direction || (direction === 'in' ? 'out' : 'in')) : direction;
+      const originalDirection = movementDirection(row, meta, reversal);
       if (originalDirection === 'out' || (!originalDirection && Number(row.quantity) < 0)) consumed += sign*qty*cost;
     }
   }
@@ -66,6 +84,9 @@ function stockFinancials(rows) {
     gross_margin_pct:sales>0?round((sales-saleCost)/sales*100):null,
     wastage_value_rs:round(loss),wastage_units:lossUnits,total_value_cost_rs:round(consumed),
     gross_movement_cost_rs:round(gross),
+    stocktake_shortage_rs:round(countShortage),
+    stocktake_surplus_rs:round(countSurplus),
+    stocktake_net_rs:round(countSurplus-countShortage),
     unclassified_movement_count: rows.filter(row => ['adjustment','correction','exceptional_correction','override','remove','stock_out',''].includes(financialAction(row))).length,
     estimated_movement_count: rows.filter(row => row.valuation_basis === 'legacy_estimate').length};
 }

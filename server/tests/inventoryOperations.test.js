@@ -834,6 +834,28 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
     token: operatorToken,
     body: { lines: [{ id: lineId, physical_quantity: 80 }] },
   });
+  const counting = await api("GET", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+  });
+  assert.equal(counting.status, 200, JSON.stringify(counting.data));
+  assert.equal(counting.data.session.items[0].needs_new_lot, true);
+  assert.equal(counting.data.session.items[0].system_quantity, null);
+  assert.equal(counting.data.session.items[0].variance, null);
+  const earlyLot = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: {
+      lines: [{
+        id: lineId,
+        surplus_expiry_date: "2028-01-01",
+        surplus_supplier_name: "MedSupply Ltd",
+        surplus_received_date: "2026-01-10",
+        surplus_unit_cost: 7,
+      }],
+    },
+  });
+  assert.equal(earlyLot.status, 200, JSON.stringify(earlyLot.data));
+  assert.equal(earlyLot.data.session.items[0].needs_new_lot, true);
+  assert.equal(earlyLot.data.session.items[0].variance, null);
   const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
     token: operatorToken,
   });
@@ -847,6 +869,7 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
         surplus_expiry_date: "2028-01-01",
         surplus_supplier_name: "MedSupply Ltd",
         surplus_received_date: "2026-01-10",
+        surplus_unit_cost: 7,
       }],
     },
   });
@@ -875,6 +898,58 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   assert.equal(String(batches[1].expiry_date || "").slice(0, 10), "2028-01-01");
   assert.equal(String(batches[1].supplier_name || ""), "MedSupply Ltd");
   assert.equal(String(batches[1].received_date || "").slice(0, 10), "2026-01-10");
+  const surplusBatch = db.prepare(
+    "SELECT unit_cost FROM inventory_batches WHERE item_id = ? AND expiry_date LIKE '2028-01-01%'",
+  ).get(itemId);
+  assert.equal(Number(surplusBatch.unit_cost), 7);
+  const movement = db.prepare(
+    "SELECT unit_cost_snapshot, valuation_basis FROM inventory_movements WHERE item_id = ? AND action_type = 'adjustment' ORDER BY id DESC LIMIT 1",
+  ).get(itemId);
+  assert.equal(movement.valuation_basis, "stocktake");
+  assert.equal(Number(movement.unit_cost_snapshot), 7);
+  const { stockFinancials } = require("../src/lib/inventoryFinancials");
+  const counted = stockFinancials([db.prepare(
+    "SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'adjustment' ORDER BY id DESC LIMIT 1",
+  ).get(itemId)]);
+  assert.equal(counted.total_value_cost_rs, 0);
+  assert.equal(counted.unclassified_movement_count, 0);
+  assert.equal(counted.stocktake_surplus_rs, 350);
+});
+
+test("a received delivery is valued at the sheet cost, not the older catalogue cost", async () => {
+  const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
+  const name = `Sheet cost ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 4, folder: consumable.id, expiry: "2027-01-01" });
+  const csv = [
+    "folder,item_name,quantity,cost_price,expiry_date",
+    `${consumable.name},${name},6,9.00,2028-04-01`,
+  ].join("\n");
+  const imported = await api("POST", "/api/inventory/staging/import-csv", {
+    token: operatorToken,
+    body: {
+      csv_text: csv,
+      supplier: "Sheet Supplier",
+      received_date: "2026-02-02",
+      delivery_note: `DN-COST-${Date.now()}`,
+    },
+  });
+  assert.equal(imported.status, 201, JSON.stringify(imported.data));
+  const shipmentId = imported.data.import_summary.shipment_id;
+  const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
+    token: operatorToken,
+    body: { mode: "all_valid" },
+  });
+  assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  const movement = db.prepare(
+    "SELECT unit_cost_snapshot, valuation_basis FROM inventory_movements WHERE item_id = ? AND action_type = 'add' ORDER BY id DESC LIMIT 1",
+  ).get(itemId);
+  assert.equal(movement.valuation_basis, "delivery_cost");
+  assert.equal(Number(movement.unit_cost_snapshot), 9);
+  assert.equal(Number(db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(itemId).cost_price), 5);
+  const invoiceLines = await api("GET", `/api/finance/supplier-shipments/${shipmentId}`, { token: adminToken });
+  assert.equal(invoiceLines.status, 200, JSON.stringify(invoiceLines.data));
+  assert.equal(invoiceLines.data.shipment.lines.length, 1);
+  assert.equal(Number(invoiceLines.data.shipment.lines[0].cost_price), 9);
 });
 
 test("extra counted stock waits for an incoming shipment instead of becoming a second lot", async () => {

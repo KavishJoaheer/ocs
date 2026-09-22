@@ -325,6 +325,50 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
         EXISTS (SELECT 1 FROM inventory_batches b WHERE b.item_id=i.id AND b.quantity_remaining>0 AND b.expiry_date IS NULL AND COALESCE(b.is_non_expiring,0)=0)
         OR i.quantity > COALESCE((SELECT SUM(b.quantity_remaining) FROM inventory_batches b WHERE b.item_id=i.id),0))`).get().n,
       unfinished_counts: db.prepare("SELECT COUNT(*) AS n FROM inventory_stocktake_sessions WHERE status IN ('draft','in_progress','recount_required','submitted','approved')").get().n,
+      unfinished_count_sessions: db.prepare(`
+        SELECT s.id, s.status, s.created_at, s.folder_id, s.owner_doctor_id,
+          f.name AS folder_name, d.full_name AS doctor_name,
+          counter.full_name AS counter_name,
+          (SELECT COUNT(*) FROM inventory_stocktake_session_items si WHERE si.session_id = s.id) AS item_count,
+          (SELECT COUNT(*) FROM inventory_stocktake_session_items si
+            WHERE si.session_id = s.id AND si.physical_quantity IS NOT NULL AND COALESCE(si.left_unchanged, 0) = 0) AS counted_count
+        FROM inventory_stocktake_sessions s
+        LEFT JOIN inventory_folders f ON f.id = s.folder_id
+        LEFT JOIN doctors d ON d.id = s.owner_doctor_id
+        LEFT JOIN users counter ON counter.id = COALESCE(s.assigned_counter_user_id, s.created_by_user_id)
+        WHERE s.status IN ('draft','in_progress','recount_required','submitted','approved')
+        ORDER BY s.id DESC
+        LIMIT 20
+      `).all().map((row) => ({
+        id: Number(row.id),
+        status: row.status,
+        created_at: row.created_at,
+        counter_name: row.counter_name || "",
+        item_count: Number(row.item_count || 0),
+        counted_count: Number(row.counted_count || 0),
+        location: row.owner_doctor_id
+          ? `${String(row.doctor_name || "Doctor").trim()}'s bag`
+          : (row.folder_name || (row.folder_id ? "Folder" : "All OCS folders")),
+      })),
+      deliveries_without_invoice_count: db.prepare(`
+        SELECT COUNT(*) AS n FROM inventory_shipments s
+        WHERE COALESCE(s.status, '') != 'cancelled'
+          AND NOT EXISTS (SELECT 1 FROM finance_supplier_invoices i WHERE i.shipment_id = s.id)
+      `).get().n,
+      deliveries_without_invoice: db.prepare(`
+        SELECT s.id, s.supplier, s.delivery_note, s.received_date, s.status
+        FROM inventory_shipments s
+        WHERE COALESCE(s.status, '') != 'cancelled'
+          AND NOT EXISTS (SELECT 1 FROM finance_supplier_invoices i WHERE i.shipment_id = s.id)
+        ORDER BY s.id DESC
+        LIMIT 8
+      `).all().map((row) => ({
+        id: Number(row.id),
+        supplier: row.supplier || "",
+        delivery_note: row.delivery_note || "",
+        received_date: row.received_date || "",
+        status: row.status || "",
+      })),
     } : null,
     scope: from || to
       ? 'Invoice and stock exceptions follow the selected date range and doctor scope.'

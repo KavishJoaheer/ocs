@@ -2813,7 +2813,12 @@ function BillingPage() {
     searchParams.get("status") === "paid" ? "paid" : "pending",
   );
   const isFinanceWorkspace = ["admin", "accountant"].includes(user?.role);
-  const [financeSection, setFinanceSection] = useState("overview");
+  const [financeSection, setFinanceSection] = useState(() => {
+    const section = searchParams.get("section");
+    return ["overview", "sales", "expenses", "receivables", "cash", "suppliers", "statements", "controls"].includes(section)
+      ? section
+      : "overview";
+  });
   const [financeBasis, setFinanceBasis] = useState("accrual");
   const [financeAgeBucket, setFinanceAgeBucket] = useState("");
   const [followUpBill, setFollowUpBill] = useState(null);
@@ -3445,6 +3450,7 @@ function BillingPage() {
           dateTo={financeDateTo}
           basis={financeBasis}
           user={user}
+          initialShipmentId={financeSection === "suppliers" ? (searchParams.get("shipment") || "") : ""}
         />
       ) : null}
 

@@ -170,12 +170,52 @@ function Expenses({ rows, user, reload, loading }) {
   </SectionCard>;
 }
 
-function SupplierForm({ catalogue, onCreated, onCancel }) {
+function deliveryLineToInvoice(line, options) {
+  const releasedBatch = Number(line.released_batch_id || 0);
+  const releasedItem = Number(line.released_inventory_id || 0);
+  const match = (releasedBatch && options.find((item) => Number(item.batch_id) === releasedBatch))
+    || (releasedItem && options.find((item) => Number(item.id) === releasedItem))
+    || null;
+  return {
+    inventory_item_id: match ? String(match.id) : (releasedItem ? String(releasedItem) : ""),
+    batch_id: releasedBatch ? String(releasedBatch) : "",
+    description: line.item_name || "",
+    quantity: String(line.quantity || ""),
+    unit_cost: line.cost_price == null || line.cost_price === "" ? "" : String(line.cost_price),
+  };
+}
+
+function SupplierForm({ catalogue, onCreated, onCancel, initialShipmentId = "" }) {
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ supplier_name: "", invoice_number: "", invoice_date: localDateInput(), due_date: "", delivery_note: "", shipment_id: "", other_amount: "0" });
+  const [form, setForm] = useState({ supplier_name: "", invoice_number: "", invoice_date: localDateInput(), due_date: "", delivery_note: "", shipment_id: initialShipmentId ? String(initialShipmentId) : "", other_amount: "0" });
   const [document, setDocument] = useState(null);
   const [lines, setLines] = useState([{ inventory_item_id: "", batch_id: "", description: "", quantity: "1", unit_cost: "" }]);
+  const [fromDelivery, setFromDelivery] = useState(false);
   const options = useMemo(() => catalogue?.items || [], [catalogue]);
+  useEffect(() => {
+    const shipmentId = Number(form.shipment_id || initialShipmentId || 0);
+    if (!shipmentId) return undefined;
+    let ignore = false;
+    api.get(`/finance/supplier-shipments/${shipmentId}`).then((payload) => {
+      if (ignore || !payload?.shipment) return;
+      const shipment = payload.shipment;
+      const nextLines = (shipment.lines || [])
+        .filter((line) => !["excluded", "cancelled"].includes(String(line.status || "")))
+        .map((line) => deliveryLineToInvoice(line, options));
+      setForm((current) => ({
+        ...current,
+        shipment_id: String(shipmentId),
+        supplier_name: shipment.supplier || current.supplier_name,
+        delivery_note: shipment.delivery_note || current.delivery_note,
+        invoice_date: String(shipment.received_date || "").slice(0, 10) || current.invoice_date,
+      }));
+      if (nextLines.length) {
+        setLines(nextLines);
+        setFromDelivery(true);
+      }
+    }).catch(() => {});
+    return () => { ignore = true; };
+  }, [form.shipment_id, initialShipmentId, options]);
   function updateLine(index, patch) { setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line)); }
   async function submit(event) {
     event.preventDefault(); setSaving(true);
@@ -196,6 +236,7 @@ function SupplierForm({ catalogue, onCreated, onCancel }) {
       <label className="grid gap-1 text-xs font-bold">Freight / other cost<input type="number" min="0" step="0.01" value={form.other_amount} onChange={(event) => setForm({ ...form, other_amount: event.target.value })} className={formControlClass} /></label>
       <label className="grid gap-1 text-xs font-bold">Invoice document<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => setDocument(event.target.files?.[0] || null)} className="block w-full text-xs" /></label>
     </div>
+    {fromDelivery ? <p className="text-sm text-slate-600">Lines are filled from the Receive Delivery. Enter the supplier’s invoice number. Change a unit cost if the invoice differs from the delivery sheet. Approving this invoice updates the catalogue cost. The stock movement keeps the cost from when the delivery was added.</p> : null}
     <div className="space-y-2"><div className="flex items-center justify-between"><p className="font-black">Actual item and batch costs</p><button type="button" onClick={() => setLines([...lines, { inventory_item_id: "", batch_id: "", description: "", quantity: "1", unit_cost: "" }])} className="text-sm font-bold text-[#17666a]">+ Add line</button></div>
       {lines.map((line, index) => <div key={index} className="grid gap-2 rounded-xl bg-white p-3 md:grid-cols-[1.4fr_1.3fr_.6fr_.7fr_auto]">
         <select value={`${line.inventory_item_id || ""}:${line.batch_id || ""}`} onChange={(event) => { const match = options.find((item) => `${item.id}:${item.batch_id || ""}` === event.target.value); updateLine(index, match ? { inventory_item_id: String(match.id), batch_id: String(match.batch_id || ""), description: match.item_name, unit_cost: String(match.unit_cost || match.cost_price || "") } : { inventory_item_id: "", batch_id: "" }); }} className={formControlClass}><option value=":">Service / unlinked item</option>{options.map((item) => <option key={`${item.id}-${item.batch_id || 0}`} value={`${item.id}:${item.batch_id || ""}`}>{item.item_name}{item.batch_id ? ` · batch ${item.batch_id} · ${item.quantity_remaining} remaining` : ""}</option>)}</select>
@@ -209,13 +250,13 @@ function SupplierForm({ catalogue, onCreated, onCancel }) {
   </form>;
 }
 
-function Suppliers({ rows, catalogue, user, reload, loading }) {
-  const [adding, setAdding] = useState(false); const [busyId, setBusyId] = useState(null);
+function Suppliers({ rows, catalogue, user, reload, loading, initialShipmentId = "" }) {
+  const [adding, setAdding] = useState(Boolean(initialShipmentId)); const [busyId, setBusyId] = useState(null);
   async function decide(row, action, note) { setBusyId(row.id); try { await api.post(`/finance/supplier-invoices/${row.id}/decision`, { action, note, operation_id: operationId(`supplier-${action}`) }); toast.success(`Supplier invoice ${action}.`); await reload(); } catch (error) { toast.error(error.message); } finally { setBusyId(null); } }
   async function pay(row, form) { setBusyId(row.id); try { await api.post(`/finance/supplier-invoices/${row.id}/payments`, { ...form, operation_id: operationId("supplier-payment") }); toast.success("Supplier payment recorded."); await reload(); } catch (error) { toast.error(error.message); } finally { setBusyId(null); } }
   async function reverse(row, payment, form) { setBusyId(row.id); try { await api.post(`/finance/supplier-invoices/${row.id}/payments/${payment.id}/reversal`, { ...form, operation_id: operationId("supplier-payment-reversal") }); toast.success("Supplier payment reversed with an audit entry."); await reload(); } catch (error) { toast.error(error.message); } finally { setBusyId(null); } }
   return <SectionCard title="Supplier purchasing and payables" actions={<button type="button" onClick={() => setAdding(true)} className="flex items-center gap-2 rounded-xl bg-[#17666a] px-4 py-2 text-sm font-bold text-white"><Plus className="size-4" /> Add supplier invoice</button>}>
-    <div className="space-y-3">{adding ? <SupplierForm catalogue={catalogue} onCreated={() => { setAdding(false); reload(); }} onCancel={() => setAdding(false)} /> : null}
+    <div className="space-y-3">{adding ? <SupplierForm catalogue={catalogue} initialShipmentId={initialShipmentId} onCreated={() => { setAdding(false); reload(); }} onCancel={() => setAdding(false)} /> : null}
       {loading ? <LoadingState label="Loading supplier invoices" /> : rows.length ? rows.map((row) => <article key={row.id} className="rounded-2xl border border-slate-200 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-black">{row.supplier_name} · {row.invoice_number}</p><p className="mt-1 text-sm font-semibold text-slate-500">Invoice {formatDate(row.invoice_date)}{row.due_date ? ` · Due ${formatDate(row.due_date)}` : ""}{row.delivery_note ? ` · Delivery ${row.delivery_note}` : ""}</p></div><div className="text-right"><p className="text-xl font-black">{formatRupees(row.total_amount)}</p><StatusPill status={row.approval_status} /></div></div>
         <div className="mt-3 grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Paid</p><p className="font-black">{formatRupees(row.paid_amount)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Outstanding</p><p className="font-black">{formatRupees(row.outstanding_amount)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-slate-500">Stock lines</p><p className="font-black">{row.lines?.length || 0}</p></div></div>
@@ -249,7 +290,7 @@ function MonthlyClose({ user }) {
   </SectionCard>;
 }
 
-export default function FinanceLedgerSections({ section, dateFrom, dateTo, basis, user }) {
+export default function FinanceLedgerSections({ section, dateFrom, dateTo, basis, user, initialShipmentId = "" }) {
   const [summary, setSummary] = useState(null); const [expenses, setExpenses] = useState([]); const [suppliers, setSuppliers] = useState([]); const [catalogue, setCatalogue] = useState({ items: [], shipments: [] }); const [loading, setLoading] = useState(false);
   const load = useCallback(async () => {
     if (!dateFrom || !dateTo || dateFrom > dateTo) return;
@@ -266,7 +307,7 @@ export default function FinanceLedgerSections({ section, dateFrom, dateTo, basis
   useEffect(() => { if (["overview", "expenses", "suppliers", "statements"].includes(section)) load(); }, [load, section]);
   if (section === "overview") return <Overview summary={summary} loading={loading} basis={basis} />;
   if (section === "expenses") return <Expenses rows={expenses} user={user} reload={load} loading={loading} />;
-  if (section === "suppliers") return <Suppliers rows={suppliers} catalogue={catalogue} user={user} reload={load} loading={loading} />;
+  if (section === "suppliers") return <Suppliers rows={suppliers} catalogue={catalogue} user={user} reload={load} loading={loading} initialShipmentId={initialShipmentId} />;
   if (section === "statements") return <Statements summary={summary} basis={basis} dateFrom={dateFrom} dateTo={dateTo} />;
   if (section === "controls") return <MonthlyClose user={user} />;
   return null;

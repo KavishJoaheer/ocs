@@ -88,13 +88,36 @@ function surplusLotReady(line) {
   return expiryOk && supplierOk && deliveredOk;
 }
 
+function ShipmentHold({ line }) {
+  const shipments = Array.isArray(line?.pending_shipments) ? line.pending_shipments : [];
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>
+      <div className="flex flex-wrap gap-3">
+        {shipments.map((shipment) => (
+          <a
+            key={shipment.shipment_id}
+            href={`/inventory?tab=shipments&shipment=${shipment.shipment_id}`}
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-[#2d8f98]"
+          >
+            Open Receive Delivery #{shipment.shipment_id}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SurplusLotFields({ line, disabled, onChange }) {
   const extra = Number(line.variance || 0);
+  const knownExtra = line.variance != null && extra > 0;
   const nonExpiring = Boolean(line.surplus_is_non_expiring);
   return (
     <div className="space-y-2 rounded-xl border border-amber-200 bg-white px-3 py-3">
       <p className="text-xs text-slate-600">
-        {extra} more than expected. Enter the expiry, supplier, and delivery date for this extra. The old lot stays as it is.
+        {knownExtra
+          ? `${extra} more than expected. Enter the expiry, supplier, and delivery date for this extra. The old lot stays as it is.`
+          : "This count is higher than the shelf record. Enter the expiry, supplier, and delivery date for the extra while you still have the box. The old lot stays as it is."}
       </p>
       <label className="flex items-center gap-2 text-sm text-slate-700">
         <input
@@ -174,7 +197,7 @@ function countStatusLabel(status) {
   }[status] || status;
 }
 
-function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApplied, sessions = [], requestedStatus = "" }) {
+function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApplied, sessions = [], requestedStatus = "", requestedSessionId = "" }) {
   const { user } = useAuth();
   const canCount = canCountStocktake(user);
   const canReview = canReviewStocktake(user);
@@ -183,6 +206,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const [scope, setScope] = useState("");
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyQuery, setHistoryQuery] = useState("");
+  const [sheetQuery, setSheetQuery] = useState("");
   const [scopePreview, setScopePreview] = useState(null);
   const [active, setActive] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -282,6 +306,14 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedStatus]);
 
+  useEffect(() => {
+    const id = Number(requestedSessionId || 0);
+    if (!id) return;
+    void openSession(id);
+    // Open the count named in the link once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSessionId]);
+
   async function startStocktakeSession({ confirmAll = false } = {}) {
     if (!scopeChosen) return;
     if (fullCatalogue && !confirmAll) {
@@ -321,6 +353,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       const payload = await api.get(`/inventory/stocktake/sessions/${id}`);
       setActive(payload.session);
       setLastSavedAt(payload.session?.last_saved_at || "");
+      setSheetQuery("");
       setMobileIndex(0);
       setReviewUncounted(
         isMobile && ["draft", "in_progress", "recount_required"].includes(payload.session?.status),
@@ -508,7 +541,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
 
   function surplusPayloadLines() {
     return (active?.items || [])
-      .filter((line) => isSurplusCount(line) && Number(line.pending_shipment_quantity || 0) === 0)
+      .filter((line) => line.needs_new_lot && Number(line.pending_shipment_quantity || 0) === 0)
       .map((line) => ({
         id: line.id,
         surplus_expiry_date: line.surplus_expiry_date || "",
@@ -579,13 +612,26 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   async function moveMobile(delta) {
     const nextIndex = Math.min(Math.max(mobileRows.length - 1, 0), Math.max(0, mobileIndex + delta));
     if (nextIndex === mobileIndex) return;
+    const currentId = mobileRows[mobileIndex]?.id;
+    let session = active;
     if (Object.keys(editedIds).length) {
       try {
-        await saveProgress({ silent: true });
-      } catch {
+        session = await persistEditedLines();
+      } catch (error) {
+        toast.error(error.message || "Could not save counts.");
         return;
       }
       if (reviewUncounted) return;
+    }
+    const savedLine = (session?.items || []).find((line) => line.id === currentId);
+    if (
+      delta > 0 &&
+      savedLine?.needs_new_lot &&
+      Number(savedLine.pending_shipment_quantity || 0) === 0 &&
+      !surplusLotReady(savedLine)
+    ) {
+      toast.error("Enter the expiry, supplier, and delivery date for this extra before the next item.");
+      return;
     }
     setMobileIndex(nextIndex);
   }
@@ -620,20 +666,26 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   const total = Number(active?.item_count || rows.length);
   const countingTotal = Math.max(total - leftUnchangedCount, countedNow);
   const progress = countingTotal ? Math.round((countedNow / countingTotal) * 100) : 0;
-  const surplusRows = submitted ? rows.filter((line) => isSurplusCount(line)) : [];
+  const surplusRows = rows.filter((line) => line.needs_new_lot && !line.left_unchanged);
   const canEditNewLots = Boolean(
-    (canCount || canReview) && active && ["submitted", "approved"].includes(active.status),
+    (canCount || canReview) && active && ["draft", "in_progress", "recount_required", "submitted", "approved"].includes(active.status),
   );
   const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
   const surplusHeldByShipment = surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0);
   const mismatchRows = rows.filter((line) => !line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)));
-  const visibleRows = submitted && reviewMismatchesOnly
+  const sheetQueryText = sheetQuery.trim().toLowerCase();
+  function matchesSheet(line) {
+    if (!sheetQueryText) return true;
+    return String(line.item_name || "").toLowerCase().includes(sheetQueryText);
+  }
+  const visibleRows = (submitted && reviewMismatchesOnly
     ? mismatchRows
     : reviewUncounted && canEditCounts && isMobile
       ? rows.filter((line) => isBlankCount(line.physical_quantity) || editedIds[line.id])
-      : rows;
+      : rows
+  ).filter(matchesSheet);
   const sheetColumnCount = 2 + (submitted ? 5 : 0) + (recountRequired ? 1 : 0);
-  const mobileRows = reviewUncounted ? uncountedLines() : rows;
+  const mobileRows = (reviewUncounted ? uncountedLines() : rows).filter(matchesSheet);
   const mobileLine = mobileRows[mobileIndex] || null;
 
   useEffect(() => {
@@ -820,6 +872,25 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             {lastSavedAt ? ` · saved ${formatSavedAt(lastSavedAt)}` : ""}
           </p>
           {saving ? <p className="text-xs text-slate-500" aria-live="polite">Saving progress…</p> : null}
+          <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Find an item
+            <input
+              value={sheetQuery}
+              onChange={(event) => setSheetQuery(event.target.value)}
+              placeholder="Item name"
+              className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-normal normal-case text-slate-800"
+            />
+          </label>
+          {sheetQueryText && !visibleRows.length ? (
+            <p className="text-sm text-slate-500">No items match this search.</p>
+          ) : null}
+          {!submitted && surplusRows.length ? (
+            <p className="text-sm text-amber-900">
+              {surplusHeldByShipment
+                ? "A higher count matches a Receive Delivery that is not on the shelf yet. Open that delivery, add it to stock, then recount."
+                : "A higher count needs the expiry, supplier, and delivery date on that line, while the box is still in hand."}
+            </p>
+          ) : null}
 
           {submitted ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -873,10 +944,10 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                   {submitted && !line.left_unchanged && isCountMismatch(line) ? (
                     <p className="mt-2 text-xs font-semibold text-rose-700">This physical count does not match expected.</p>
                   ) : null}
-                  {submitted && isSurplusCount(line) && !line.left_unchanged ? (
+                  {line.needs_new_lot && !line.left_unchanged ? (
                     <div className="mt-3">
                       {Number(line.pending_shipment_quantity || 0) > 0 ? (
-                        <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>
+                        <ShipmentHold line={line} />
                       ) : (
                         <>
                           <SurplusLotFields
@@ -926,6 +997,29 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 >
                   Counted as zero
                 </button>
+                {mobileLine.needs_new_lot ? (
+                  Number(mobileLine.pending_shipment_quantity || 0) > 0 ? (
+                    <ShipmentHold line={mobileLine} />
+                  ) : (
+                    <div className="space-y-2">
+                      <SurplusLotFields
+                        line={mobileLine}
+                        disabled={!canEditNewLots}
+                        onChange={(patch) => updateSurplus(mobileLine.id, patch)}
+                      />
+                      {canEditNewLots ? (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => void saveNewLots().catch(() => {})}
+                          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
+                        >
+                          {saving ? "Saving…" : "Save new lot details"}
+                        </button>
+                      ) : null}
+                    </div>
+                  )
+                ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -1045,11 +1139,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                         </td>
                       ) : null}
                     </tr>
-                    {submitted && isSurplusCount(line) && !line.left_unchanged ? (
+                    {line.needs_new_lot && !line.left_unchanged ? (
                       <tr className="bg-amber-50">
                         <td colSpan={sheetColumnCount} className="px-3 py-3">
                           {Number(line.pending_shipment_quantity || 0) > 0 ? (
-                            <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>
+                            <ShipmentHold line={line} />
                           ) : (
                             <div className="max-w-xl space-y-2">
                               <SurplusLotFields
@@ -1061,6 +1155,9 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                                 <button
                                   type="button"
                                   disabled={saving}
+                                  onMouseDown={() => {
+                                    skipBlurSave.current = true;
+                                  }}
                                   onClick={() => void saveNewLots().catch(() => {})}
                                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
                                 >

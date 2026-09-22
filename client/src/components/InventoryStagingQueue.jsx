@@ -19,7 +19,7 @@ function historyLabel(status) {
   return status || "Closed";
 }
 
-function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, onReleased }) {
+function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, onReleased, requestedShipmentId = "" }) {
   const { user } = useAuth();
   const grouped = useMemo(() => {
     if (Array.isArray(incomingShipments) && incomingShipments.length) {
@@ -47,7 +47,7 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
       ),
     [shipments],
   );
-  const [openId, setOpenId] = useState(null);
+  const [openId, setOpenId] = useState(requestedShipmentId || null);
   const [selected, setSelected] = useState({});
   const [excludeReason, setExcludeReason] = useState({});
   const [overrideReason, setOverrideReason] = useState("");
@@ -163,6 +163,19 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
       title="Add to the shelf"
       subtitle="These deliveries are saved. Add to stock when the goods are on the shelf."
     >
+      {requestedShipmentId && !grouped.some((row) => String(row.id) === String(requestedShipmentId)) ? (
+        <p className="mb-3 text-sm text-slate-600">
+          Receive Delivery #{requestedShipmentId} is not waiting to be added.
+          {user?.role === "admin" ? (
+            <>
+              {" "}
+              <a href={`/billing?section=suppliers&shipment=${requestedShipmentId}`} className="font-semibold text-[#2d8f98]">
+                Record its supplier invoice
+              </a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {grouped.length ? (
         <div className="space-y-4">
           {grouped.length > 1 ? (
@@ -191,6 +204,14 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
                 {supplierName}
                 {note}
               </p>
+              {user?.role === "admin" && openShipment.id && openShipment.id !== "ungrouped" ? (
+                <a
+                  href={`/billing?section=suppliers&shipment=${openShipment.id}`}
+                  className="inline-flex min-h-11 items-center text-sm font-semibold text-[#2d8f98]"
+                >
+                  Record supplier invoice from this delivery
+                </a>
+              ) : null}
               <div className="space-y-2">
                 {validPending.map((line) => (
                   <label key={line.id} className="flex items-start gap-3 rounded-2xl border border-slate-100 px-4 py-3">

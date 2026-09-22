@@ -481,6 +481,19 @@ router.get("/expenses/:id/receipt", (req, res) => {
   return res.sendFile(filePath);
 });
 
+router.get("/supplier-shipments/:id", (req, res) => {
+  const shipment = db.prepare(`
+    SELECT id, supplier, delivery_note, received_date, status
+    FROM inventory_shipments WHERE id = ?
+  `).get(Number(req.params.id));
+  if (!shipment) return res.status(404).json({ error: "Receive Delivery record not found." });
+  const lines = db.prepare(`
+    SELECT item_name, quantity, cost_price, status, released_inventory_id, released_batch_id
+    FROM inventory_staging WHERE shipment_id = ? ORDER BY id
+  `).all(shipment.id);
+  return res.json({ shipment: { ...shipment, lines } });
+});
+
 router.get("/supplier-catalogue", (_req, res) => {
   const items = db.prepare(`
     SELECT inventory.id,inventory.item_name,inventory.unit,inventory.cost_price,

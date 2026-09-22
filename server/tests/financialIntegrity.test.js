@@ -1226,6 +1226,24 @@ test('stock corrections distinguish additions from consumption and surface incom
   assert.equal(results.estimated_movement_count,1);
   const historic=stockFinancials([{action_type:'correction',direction:'adjustment',quantity:4,previous_quantity:10,next_quantity:6,cost_price:10}]);
   assert.equal(historic.total_value_cost_rs,40); assert.equal(historic.unclassified_movement_count,1);
+  const counted=stockFinancials([{
+    action_type:'adjustment', movement_type:'in', quantity:3, previous_quantity:4, next_quantity:7,
+    unit_cost_snapshot:8, valuation_basis:'stocktake',
+    meta_json: JSON.stringify({ reference_type:'stocktake_session', valuation_basis:'stocktake_surplus' }),
+  }]);
+  assert.equal(counted.total_value_cost_rs,0);
+  assert.equal(counted.unclassified_movement_count,0);
+  assert.equal(counted.stocktake_surplus_rs,24);
+  assert.equal(counted.stocktake_shortage_rs,0);
+  const shortCount=stockFinancials([{
+    action_type:'adjustment', movement_type:'out', quantity:2, previous_quantity:7, next_quantity:5,
+    unit_cost_snapshot:8, valuation_basis:'recorded_price',
+    meta_json: JSON.stringify({ stocktake_session_id:4, reference_type:'stocktake_session', valuation_basis:'batch_allocation' }),
+  }]);
+  assert.equal(shortCount.total_value_cost_rs,0);
+  assert.equal(shortCount.stocktake_shortage_rs,16);
+  assert.equal(shortCount.unclassified_movement_count,0);
+  assert.equal(shortCount.stocktake_net_rs,-16);
 });
 
 test('supply follow-up retains stock and status, records the actor, and blocks closed or stale requests', async () => {
