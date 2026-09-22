@@ -247,7 +247,7 @@ test.describe("Inventory workflow", () => {
 
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
     await page.getByRole("button", { name: /^History/ }).click();
     await expect(page.locator("span").filter({ hasText: /^Supply Dispatched$/ })).toBeVisible();
   });
@@ -546,8 +546,8 @@ test.describe("Inventory workflow", () => {
     for (const width of [1440, 768, 375, 320]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
-      await expect(page.getByRole("heading", { name: "OCS warehouse" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("button", { name: /queues|stock|receive delivery|count/i }).first()).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("tab", { name: "Tasks", exact: true })).toBeVisible();
       if (width === 1440) {
         await page.getByRole("tab", { name: "Stock", exact: true }).click();
         await expect(page.getByRole("button", { name: /^Low stock:/i })).toBeVisible();
@@ -1237,7 +1237,7 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await expect(page.getByText("Incomplete").first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("Warehouse value")).toBeVisible();
+    await expect(page.getByText("Warehouse value").filter({ visible: true })).toBeVisible();
   });
 
   test("unreconciled legacy ready request cannot be collected", async ({ request, page }) => {
@@ -1564,8 +1564,8 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Receive Delivery" }).click();
-    await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i)).toBeVisible();
-    await expect(page.getByText(/Received this month/i)).toBeVisible();
+    await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText(/Received this month/i).filter({ visible: true })).toBeVisible();
     await expect(page.getByLabel("Delivery file")).toBeAttached({ timeout: 20_000 });
     await expect(page.getByText("Check delivery, then save delivery. Stock changes when you add it to stock.")).toBeVisible();
     const importButton = page.getByRole("button", { name: "Save delivery" });
@@ -1578,8 +1578,8 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock Count" }).click();
-    await expect(page.getByText(/usually 2–3 times per week, with no fixed days/i)).toBeVisible();
-    await expect(page.getByText(/Completed in 7 days/i)).toBeVisible();
+    await expect(page.getByText(/usually 2–3 times per week, with no fixed days/i).filter({ visible: true })).toBeVisible();
+    await expect(page.getByText(/Completed in 7 days/i).filter({ visible: true })).toBeVisible();
     const start = page.getByRole("button", { name: "Start Stock Count" });
     await expect(start).toBeDisabled();
     await page.getByRole("combobox", { name: "Location" }).selectOption({ label: "All OCS folders" });
