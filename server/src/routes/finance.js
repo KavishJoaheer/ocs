@@ -185,13 +185,63 @@ function batchCostLineage(batchId) {
   `).all(Number(batchId));
 }
 
+function validateSupplierReceiptLines(invoice, lines, { checkApproved = false } = {}) {
+  const shipmentId = Number(invoice.shipment_id || 0);
+  if (!shipmentId) {
+    throw Object.assign(new Error("Choose a Receive Delivery with stock already added before submitting a stock invoice."), { status: 400 });
+  }
+  const shipment = db.prepare("SELECT id, supplier, status FROM inventory_shipments WHERE id=?").get(shipmentId);
+  if (!shipment || shipment.status === "cancelled") {
+    throw Object.assign(new Error("The selected Receive Delivery is unavailable."), { status: 400 });
+  }
+  if (String(shipment.supplier || "").trim().toLowerCase() !== String(invoice.supplier_name || "").trim().toLowerCase()) {
+    throw Object.assign(new Error("The invoice supplier must match the Receive Delivery supplier."), { status: 400 });
+  }
+  const received = db.prepare(`
+    SELECT released_batch_id AS batch_id, released_inventory_id AS item_id, quantity
+    FROM inventory_staging
+    WHERE shipment_id=? AND status='released' AND released_batch_id IS NOT NULL
+  `).all(shipmentId);
+  const byBatch = new Map(received.map((row) => [Number(row.batch_id), row]));
+  const seen = new Set();
+  for (const line of lines) {
+    const batchId = Number(line.batch_id || 0);
+    const receipt = byBatch.get(batchId);
+    if (!batchId || !receipt || Number(line.inventory_item_id) !== Number(receipt.item_id)) {
+      throw Object.assign(new Error(`${line.description || "Invoice line"} must match a released line from this delivery.`), { status: 400 });
+    }
+    if (seen.has(batchId)) {
+      throw Object.assign(new Error("Each received batch can appear only once on an invoice."), { status: 400 });
+    }
+    seen.add(batchId);
+    // A batch has one cost. Invoice whole receipt lines so that a partial invoice
+    // cannot reprice stock that the supplier has not yet invoiced.
+    if (Math.abs(Number(line.quantity) - Number(receipt.quantity)) > 0.000001) {
+      throw Object.assign(new Error(`${line.description}: invoice the full received line (${receipt.quantity}) or leave it for another invoice.`), { status: 400 });
+    }
+    if (checkApproved) {
+      const prior = db.prepare(`
+        SELECT other.id FROM finance_supplier_invoice_lines prior_line
+        JOIN finance_supplier_invoices other ON other.id=prior_line.supplier_invoice_id
+        WHERE prior_line.batch_id=? AND other.id!=?
+          AND (SELECT event.action FROM finance_supplier_invoice_events event
+               WHERE event.supplier_invoice_id=other.id ORDER BY event.id DESC LIMIT 1)='approved'
+        LIMIT 1
+      `).get(batchId, Number(invoice.id || 0));
+      if (prior) {
+        throw Object.assign(new Error(`${line.description} was already approved on supplier invoice #${prior.id}.`), { status: 409 });
+      }
+    }
+  }
+}
+
 function revalueApprovedSupplierLine(invoice, line) {
   if (!line.batch_id) return null;
   const lineage = batchCostLineage(line.batch_id);
   if (!lineage.length) {
     throw Object.assign(new Error(`The stock batch for ${line.description} is no longer available.`), { status: 409 });
   }
-  const previousCost = roundCurrency(line.previous_batch_cost ?? lineage[0].unit_cost);
+  const previousCost = roundCurrency(lineage[0].unit_cost);
   const approvedCost = roundCurrency(line.unit_cost);
   const costDifference = roundCurrency(approvedCost - previousCost);
   const transferredOut = Number(db.prepare(`
@@ -574,20 +624,38 @@ router.get("/supplier-shipments/:id", (req, res) => {
   if (!shipment) return res.status(404).json({ error: "Receive Delivery record not found." });
   const lines = db.prepare(`
     SELECT item_name, quantity, cost_price, status, released_inventory_id, released_batch_id
-    FROM inventory_staging WHERE shipment_id = ? ORDER BY id
+    FROM inventory_staging staging
+    WHERE staging.shipment_id = ? AND staging.status='released'
+      AND NOT EXISTS (
+        SELECT 1 FROM finance_supplier_invoice_lines line
+        JOIN finance_supplier_invoices invoice ON invoice.id=line.supplier_invoice_id
+        WHERE line.batch_id=staging.released_batch_id
+          AND (SELECT event.action FROM finance_supplier_invoice_events event
+               WHERE event.supplier_invoice_id=invoice.id ORDER BY event.id DESC LIMIT 1)='approved'
+      )
+    ORDER BY staging.id
   `).all(shipment.id);
   return res.json({ shipment: { ...shipment, lines } });
 });
 
 router.get("/supplier-catalogue", (_req, res) => {
-  const items = db.prepare(`
-    SELECT inventory.id,inventory.item_name,inventory.unit,inventory.cost_price,
-      batch.id AS batch_id,batch.quantity_remaining,batch.expiry_date,batch.unit_cost
-    FROM inventory LEFT JOIN inventory_batches batch ON batch.item_id=inventory.id AND batch.quantity_remaining>0
-    WHERE inventory.archived_at IS NULL ORDER BY inventory.item_name COLLATE NOCASE,batch.expiry_date,batch.id
+  const shipments = db.prepare(`
+    SELECT shipment.id,shipment.supplier,shipment.delivery_note,shipment.status,shipment.imported_at
+    FROM inventory_shipments shipment
+    WHERE EXISTS (
+      SELECT 1 FROM inventory_staging staging
+      WHERE staging.shipment_id=shipment.id AND staging.status='released'
+        AND NOT EXISTS (
+          SELECT 1 FROM finance_supplier_invoice_lines line
+          JOIN finance_supplier_invoices invoice ON invoice.id=line.supplier_invoice_id
+          WHERE line.batch_id=staging.released_batch_id
+            AND (SELECT event.action FROM finance_supplier_invoice_events event
+                 WHERE event.supplier_invoice_id=invoice.id ORDER BY event.id DESC LIMIT 1)='approved'
+        )
+    )
+    ORDER BY shipment.id DESC
   `).all();
-  const shipments = db.prepare("SELECT id,supplier,delivery_note,status,imported_at FROM inventory_shipments ORDER BY id DESC LIMIT 100").all();
-  return res.json({ items, shipments });
+  return res.json({ shipments });
 });
 
 router.get("/supplier-invoices", (req, res) => {
@@ -634,6 +702,7 @@ router.post("/supplier-invoices", upload.single("document"), (req, res) => {
       description: String(line.description || "").trim(),
       quantity: Number(line.quantity), unit_cost: Number(line.unit_cost),
     }));
+    validateSupplierReceiptLines({ shipment_id: shipmentId, supplier_name: supplier }, normalized, { checkApproved: true });
     for (const line of normalized) {
       if (!line.description || !Number.isFinite(line.quantity) || line.quantity <= 0 || !isValidCurrencyAmount(line.unit_cost)) throw Object.assign(new Error("Every supplier line needs a description, positive quantity, and valid unit cost."), { status: 400 });
       if (line.inventory_item_id) {
@@ -690,6 +759,7 @@ router.post("/supplier-invoices/:id/decision", adminOnly, (req, res) => {
       db.prepare(`INSERT INTO finance_supplier_invoice_events (supplier_invoice_id,action,note,operation_id,actor_user_id,actor_name,actor_role) VALUES (?,?,?,?,?,?,?)`)
         .run(invoice.id, action, note, operationId, who.id, who.name, who.role);
       if (action === "approved") {
+        validateSupplierReceiptLines(invoice, invoice.lines, { checkApproved: true });
         for (const line of invoice.lines) {
           if (line.batch_id) revalueApprovedSupplierLine(invoice, line);
           else if (line.inventory_item_id) db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(roundCurrency(line.unit_cost), line.inventory_item_id);

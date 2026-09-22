@@ -181,6 +181,8 @@ function ensureFinancialIntegritySchema(db) {
         FOREIGN KEY (batch_id) REFERENCES inventory_batches(id) ON DELETE RESTRICT
       );
       CREATE INDEX IF NOT EXISTS idx_supplier_invoice_lines_invoice ON finance_supplier_invoice_lines(supplier_invoice_id, id);
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoice_lines_batch ON finance_supplier_invoice_lines(batch_id, supplier_invoice_id);
+      CREATE INDEX IF NOT EXISTS idx_supplier_invoices_shipment ON finance_supplier_invoices(shipment_id, id);
       CREATE TABLE IF NOT EXISTS finance_supplier_cost_variances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         supplier_invoice_id INTEGER NOT NULL,

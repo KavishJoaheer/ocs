@@ -3020,6 +3020,7 @@ export default function InventoryPage() {
   const [doctorContext, setDoctorContext] = useState("my");
   const doctorContextRef = useRef(doctorContext);
   doctorContextRef.current = doctorContext;
+  const latestInventoryLoadRef = useRef(0);
   const [contextSearch, setContextSearch] = useState("OCS Stock");
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
@@ -3066,7 +3067,6 @@ export default function InventoryPage() {
     }
   }, [searchParams]);
   const inventoryTabListRef = useRef(null);
-  const [tabsCanScroll, setTabsCanScroll] = useState({ left: false, right: false });
   const [emergencyRestockEnabled, setEmergencyRestockEnabled] = useState(false);
   const isDoctor = user.role === "doctor";
   const commitInventoryData = useCallback(
@@ -3089,17 +3089,14 @@ export default function InventoryPage() {
   const canUseAdminInventory = isAdmin || isOperator;
   const canAddCatalogueItem = canCreateCatalogue(user);
   const folders = useMemo(() => data?.folders || [], [data?.folders]);
-  const pendingStagingCount = useMemo(() => {
-    const summaryCount = Number(data?.tab_summaries?.shipments?.incoming_shipments || 0);
-    if (Array.isArray(data?.incoming_shipments) && data.incoming_shipments.length) {
-      return data.incoming_shipments.length;
-    }
-    if (Array.isArray(data?.staging)) {
-      const stagingCount = data.staging.filter((row) => row.status === "pending").length;
-      return stagingCount || summaryCount;
-    }
-    return summaryCount;
-  }, [data?.incoming_shipments, data?.staging, data?.tab_summaries?.shipments?.incoming_shipments]);
+  const pendingStagingCount = Number(data?.tab_summaries?.shipments?.incoming_shipments || 0);
+  const inventorySections = [
+    ...(isOperator ? [{ id: "queues", label: "Tasks" }] : []),
+    { id: "stock", label: "Stock" },
+    { id: "shipments", label: "Receive Delivery", badge: pendingStagingCount },
+    { id: "count", label: "Stock Count" },
+    ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
+  ];
   const openItemEditor = useCallback(
     (nextItem) => {
       const folderId = resolveItemFolderId(nextItem, folders);
@@ -3167,6 +3164,8 @@ export default function InventoryPage() {
       logisticsTab,
     ],
   );
+  const currentInventoryQueryRef = useRef(inventoryListQuery);
+  currentInventoryQueryRef.current = inventoryListQuery;
   const summary = data?.summary || {};
   const folderCounts = useMemo(() => {
     const map = new Map();
@@ -3255,31 +3254,36 @@ export default function InventoryPage() {
       nextDoctorContext = doctorContextRef.current,
       { silent = false } = {},
     ) => {
+      const query = buildInventoryListQuery({
+        contextDoctorId,
+        doctorContext: nextDoctorContext,
+        includeDoctorContext: isDoctor,
+        includeAdminFilters: canUseAdminInventory,
+        adminPeriodRange,
+        activityStaffUserId,
+        view: canUseAdminInventory ? logisticsTab : "",
+      });
+      if (query !== currentInventoryQueryRef.current) return;
+      const loadId = ++latestInventoryLoadRef.current;
       const keepShell = silent || hasInventoryDataRef.current;
       if (!keepShell) setLoading(true);
       else setListRefreshing(true);
       try {
-        const payload = await api.get(
-          `/inventory${buildInventoryListQuery({
-            contextDoctorId,
-            doctorContext: nextDoctorContext,
-            includeDoctorContext: isDoctor,
-            includeAdminFilters: canUseAdminInventory,
-            adminPeriodRange,
-            activityStaffUserId,
-            view: canUseAdminInventory ? logisticsTab : "",
-          })}`,
-        );
+        const payload = await api.get(`/inventory${query}`);
+        if (loadId !== latestInventoryLoadRef.current || query !== currentInventoryQueryRef.current) return;
         commitInventoryData(payload, { silent: true });
         if (isDoctor) {
           setEmergencyRestockEnabled(Boolean(payload.emergency_restock_enabled));
         }
       } catch (error) {
+        if (loadId !== latestInventoryLoadRef.current || query !== currentInventoryQueryRef.current) return;
         toast.error(error.message);
         if (!keepShell) setData(null);
       } finally {
-        setLoading(false);
-        setListRefreshing(false);
+        if (loadId === latestInventoryLoadRef.current) {
+          setLoading(false);
+          setListRefreshing(false);
+        }
       }
     },
     [
@@ -3466,25 +3470,6 @@ export default function InventoryPage() {
       window.clearTimeout(timer);
     };
   }, [logisticsTab, pendingStagingCount, Boolean(data)]);
-
-  useEffect(() => {
-    const scroller = inventoryTabListRef.current;
-    if (!scroller) return undefined;
-    function updateOverflow() {
-      const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-      setTabsCanScroll({
-        left: scroller.scrollLeft > 4,
-        right: scroller.scrollLeft < max - 4,
-      });
-    }
-    updateOverflow();
-    scroller.addEventListener("scroll", updateOverflow, { passive: true });
-    window.addEventListener("resize", updateOverflow);
-    return () => {
-      scroller.removeEventListener("scroll", updateOverflow);
-      window.removeEventListener("resize", updateOverflow);
-    };
-  }, [logisticsTab, canManageOcs, Boolean(data)]);
 
   const unpricedProductKeys = useMemo(
     () => data?.tab_summaries?.bags?.unpriced_product_keys || [],
@@ -4807,19 +4792,25 @@ export default function InventoryPage() {
 
       {canManageOcs ? (
         <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
+          <label className="block sm:hidden">
+            <span className="mb-1 block text-sm font-semibold text-slate-600">Inventory section</span>
+            <select
+              value={logisticsTab}
+              onChange={(event) => setLogisticsTab(event.target.value)}
+              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-900 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2d8f98]"
+            >
+              {inventorySections.map((tab) => (
+                <option key={tab.id} value={tab.id}>{tab.label}{tab.badge > 0 ? ` · ${tab.badge} waiting` : ""}</option>
+              ))}
+            </select>
+          </label>
           <div
             ref={inventoryTabListRef}
             role="tablist"
             aria-label="Inventory sections"
-            className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="hidden w-full min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-1 sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-          {[
-            ...(isOperator ? [{ id: "queues", label: "Tasks", shortLabel: "Tasks" }] : []),
-            { id: "stock", label: "Stock", shortLabel: "Stock" },
-            { id: "shipments", label: "Receive Delivery", shortLabel: "Receive Delivery", badge: pendingStagingCount },
-            { id: "count", label: "Stock Count", shortLabel: "Stock Count" },
-            ...(isAdmin ? [{ id: "bags", label: "Bags", shortLabel: "Bags" }] : []),
-          ].map((tab) => (
+          {inventorySections.map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -4846,12 +4837,6 @@ export default function InventoryPage() {
             </button>
           ))}
           </div>
-          {tabsCanScroll.left ? (
-            <div className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
-          ) : null}
-          {tabsCanScroll.right ? (
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent sm:hidden" aria-hidden="true" />
-          ) : null}
         </div>
       ) : null}
 

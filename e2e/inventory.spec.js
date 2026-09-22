@@ -118,6 +118,12 @@ async function createStockedItem(request, { adminToken, operatorToken, name, qua
 }
 
 async function openStockTab(page) {
+  if ((page.viewportSize()?.width || 0) < 640) {
+    const section = page.getByRole("combobox", { name: "Inventory section" });
+    await expect(section).toBeVisible({ timeout: 20_000 });
+    await section.selectOption("stock");
+    return;
+  }
   const tab = page.getByRole("tab", { name: /^(Warehouse stock|Stock)$/ });
   await expect(tab).toBeVisible({ timeout: 20_000 });
   await tab.click();
@@ -547,7 +553,11 @@ test.describe("Inventory workflow", () => {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
       await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("tab", { name: "Tasks", exact: true })).toBeVisible();
+      if (width < 640) {
+        await expect(page.getByRole("combobox", { name: "Inventory section" })).toHaveValue("queues");
+      } else {
+        await expect(page.getByRole("tab", { name: "Tasks", exact: true })).toBeVisible();
+      }
       if (width === 1440) {
         await page.getByRole("tab", { name: "Stock", exact: true }).click();
         await expect(page.getByRole("button", { name: /^Low stock:/i })).toBeVisible();
@@ -566,7 +576,7 @@ test.describe("Inventory workflow", () => {
     }
   });
 
-  test("inventory tabs stay readable at phone and tablet widths", async ({ request, page }) => {
+  test("inventory sections stay readable at phone and tablet widths", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     await injectStaffSession(page, operator.token);
     for (const size of [
@@ -577,10 +587,17 @@ test.describe("Inventory workflow", () => {
     ]) {
       await page.setViewportSize(size);
       await page.goto(`${STAFF_BASE}/inventory`);
-      await expect(page.getByRole("tab", { name: "Receive Delivery" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("tab", { name: "Stock Count" })).toBeVisible();
-      const box = await page.getByRole("tab", { name: "Receive Delivery" }).boundingBox();
-      expect(box?.width || 0).toBeGreaterThan(44);
+      if (size.width < 640) {
+        const section = page.getByRole("combobox", { name: "Inventory section" });
+        await expect(section).toBeVisible({ timeout: 20_000 });
+        await expect(section.locator('option[value="shipments"]')).toContainText("Receive Delivery");
+        await expect(section.locator('option[value="count"]')).toContainText("Stock Count");
+        const box = await section.boundingBox();
+        expect(box?.height || 0).toBeGreaterThanOrEqual(44);
+      } else {
+        await expect(page.getByRole("tab", { name: "Receive Delivery" })).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole("tab", { name: "Stock Count" })).toBeVisible();
+      }
     }
   });
 
@@ -1297,7 +1314,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Receive Delivery" }).click();
+    await page.getByRole("combobox", { name: "Inventory section" }).selectOption("shipments");
     await expect(page.getByRole("button", { name: "Check delivery" })).toBeVisible({ timeout: 20_000 });
     const validate = await page.getByRole("button", { name: "Check delivery" }).boundingBox();
     expect(validate?.width || 0).toBeGreaterThan(200);
@@ -1338,7 +1355,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: /Bags/i }).click();
+    await page.getByRole("combobox", { name: "Inventory section" }).selectOption("bags");
     const bagCard = page.getByRole("button", { name: /View .* bag/i }).first();
     await expect(bagCard).toBeVisible({ timeout: 20_000 });
     const box = await bagCard.boundingBox();
@@ -1563,7 +1580,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Receive Delivery" }).click();
+    await page.getByRole("combobox", { name: "Inventory section" }).selectOption("shipments");
     await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i).filter({ visible: true })).toBeVisible();
     await expect(page.getByText(/Received this month/i).filter({ visible: true })).toBeVisible();
     await expect(page.getByLabel("Delivery file")).toBeAttached({ timeout: 20_000 });
@@ -1589,18 +1606,15 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   });
 
-  test("inventory tabs reveal overflow and keep the page from scrolling sideways", async ({ request, page }) => {
+  test("mobile inventory picker keeps the page from scrolling sideways", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 320, height: 720 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    const tablist = page.getByRole("tablist", { name: "Inventory sections" });
-    await expect(tablist).toBeVisible({ timeout: 20_000 });
-    const hasHorizontalOverflow = await tablist.evaluate((element) => element.scrollWidth > element.clientWidth);
-    expect(hasHorizontalOverflow).toBeTruthy();
-    await page.getByRole("tab", { name: "Stock Count" }).click();
-    const selected = tablist.getByRole("tab", { selected: true });
-    await expect(selected).toBeVisible();
+    const section = page.getByRole("combobox", { name: "Inventory section" });
+    await expect(section).toBeVisible({ timeout: 20_000 });
+    await section.selectOption("count");
+    await expect(section).toHaveValue("count");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(overflow).toBeFalsy();
   });
@@ -1646,7 +1660,7 @@ test.describe("Inventory workflow", () => {
     for (const width of [320, 390, 500]) {
       await page.setViewportSize({ width, height: 720 });
       await page.goto(`${STAFF_BASE}/inventory`);
-      await page.getByRole("tab", { name: "Tasks" }).click();
+      await page.getByRole("combobox", { name: "Inventory section" }).selectOption("queues");
       const last = page.getByRole("button", { name: /History/i });
       await last.scrollIntoViewIfNeeded();
       const box = await last.boundingBox();

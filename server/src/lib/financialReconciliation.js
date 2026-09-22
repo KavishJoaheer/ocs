@@ -2,6 +2,25 @@ const { isConsultationFee } = require('./consultationFees');
 const { stockFinancials, movementRows } = require('./inventoryFinancials');
 const { calculateBillingTotal, normalizeBillingItems } = require('./utils');
 
+const deliveryNeedsInvoiceSql = `
+  COALESCE(s.status, '') != 'cancelled'
+  AND (
+    EXISTS (SELECT 1 FROM inventory_staging pending WHERE pending.shipment_id=s.id AND pending.status='pending')
+    OR NOT EXISTS (SELECT 1 FROM inventory_staging released WHERE released.shipment_id=s.id AND released.status='released')
+    OR EXISTS (
+      SELECT 1 FROM inventory_staging released
+      WHERE released.shipment_id=s.id AND released.status='released'
+        AND NOT EXISTS (
+          SELECT 1 FROM finance_supplier_invoice_lines line
+          JOIN finance_supplier_invoices invoice ON invoice.id=line.supplier_invoice_id
+          WHERE invoice.shipment_id=s.id AND line.batch_id=released.released_batch_id
+            AND (SELECT event.action FROM finance_supplier_invoice_events event
+                 WHERE event.supplier_invoice_id=invoice.id ORDER BY event.id DESC LIMIT 1)='approved'
+        )
+    )
+  )
+`;
+
 function financialReconciliation(db, { doctorId = null, from = null, to = null } = {}) {
   const bills = db.prepare(`
     SELECT b.*, c.doctor_id, c.consultation_date, c.voided_at AS consultation_voided_at
@@ -365,19 +384,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
       })),
       deliveries_without_invoice_count: db.prepare(`
         SELECT COUNT(*) AS n FROM inventory_shipments s
-        WHERE COALESCE(s.status, '') != 'cancelled'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM finance_supplier_invoices i
-            WHERE i.shipment_id = s.id
-              AND COALESCE((
-                SELECT e.action
-                FROM finance_supplier_invoice_events e
-                WHERE e.supplier_invoice_id = i.id
-                ORDER BY e.id DESC
-                LIMIT 1
-              ), 'submitted') = 'approved'
-          )
+        WHERE ${deliveryNeedsInvoiceSql}
       `).get().n,
       deliveries_without_invoice: db.prepare(`
         SELECT
@@ -396,19 +403,7 @@ function financialReconciliation(db, { doctorId = null, from = null, to = null }
             LIMIT 1
           ) AS invoice_status
         FROM inventory_shipments s
-        WHERE COALESCE(s.status, '') != 'cancelled'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM finance_supplier_invoices i
-            WHERE i.shipment_id = s.id
-              AND COALESCE((
-                SELECT e.action
-                FROM finance_supplier_invoice_events e
-                WHERE e.supplier_invoice_id = i.id
-                ORDER BY e.id DESC
-                LIMIT 1
-              ), 'submitted') = 'approved'
-          )
+        WHERE ${deliveryNeedsInvoiceSql}
         ORDER BY s.id DESC
         LIMIT 8
       `).all().map((row) => ({

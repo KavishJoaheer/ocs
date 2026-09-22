@@ -28,7 +28,7 @@ export default function InventoryQuantitySummary({
 
   if (compact) {
     return (
-      <div className="flex flex-col gap-0.5 text-[11px] leading-snug text-slate-500">
+      <div className="flex flex-col gap-0.5 text-sm leading-snug text-slate-600">
         {qty}
         {showMinimum ? (
           <span>
@@ -40,7 +40,7 @@ export default function InventoryQuantitySummary({
   }
 
   return (
-    <p className="text-xs leading-snug text-slate-600 [overflow-wrap:anywhere]" title={ATP_HELP_TEXT}>
+    <p className="text-sm leading-snug text-slate-600 [overflow-wrap:anywhere]" title={ATP_HELP_TEXT}>
       {qty}
       {showMinimum ? (
         <>

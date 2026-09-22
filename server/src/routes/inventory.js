@@ -56,9 +56,7 @@ const {
   reviewStocktakeSession,
   saveStocktakeCounts,
   saveStocktakeNewLots,
-  shipmentQueueStats,
   shipmentQueueStatsFromDatabase,
-  stocktakeQueueStats,
   stocktakeQueueStatsFromDatabase,
   submitStocktakeSession,
   validateReceiptExpiry,
@@ -1731,12 +1729,8 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   const shipments = warehouseManager && includeShipments ? listShipments() : [];
   const stocktakeSessions = warehouseManager && includeStocktakes ? listStocktakeSessions() : [];
   const compareRows = warehouseManager && includeBagReporting ? getCompareRows(activityDateFrom, activityDateTo) : [];
-  const shipmentStats = warehouseManager
-    ? (includeShipments ? shipmentQueueStats(shipments) : shipmentQueueStatsFromDatabase())
-    : null;
-  const stocktakeStats = warehouseManager
-    ? (includeStocktakes ? stocktakeQueueStats(stocktakeSessions) : stocktakeQueueStatsFromDatabase())
-    : null;
+  const shipmentStats = warehouseManager ? shipmentQueueStatsFromDatabase() : null;
+  const stocktakeStats = warehouseManager ? stocktakeQueueStatsFromDatabase() : null;
   const bagValue = compareRows.reduce((sum, row) => sum + Number(row.bag_on_hand || 0), 0);
   const bagPricing = warehouseManager && includeBagReporting ? getBagPricingSummary() : null;
   const periodExceptions = compareRows.reduce(

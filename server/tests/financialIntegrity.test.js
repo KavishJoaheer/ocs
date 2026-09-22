@@ -70,6 +70,20 @@ function item(name, quantity = 20, scope = 'doctor') {
   const batchId = Number(db.prepare("INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status) VALUES (?, ?, '2031-12-31', 10, 0, 'usable')").run(id,quantity).lastInsertRowid);
   return {id,batchId};
 }
+function receivedStock(stock, supplier, quantity, deliveryNote = `DN-${randomUUID()}`) {
+  const inventory = db.prepare('SELECT item_name, cost_price, selling_price, expiry_date FROM inventory WHERE id=?').get(stock.id);
+  const shipmentId = Number(db.prepare(`
+    INSERT INTO inventory_shipments (supplier, delivery_note, operation_id, status, total_rows, valid_rows, received_date, released_at)
+    VALUES (?, ?, ?, 'released', 1, 1, ?, CURRENT_TIMESTAMP)
+  `).run(supplier, deliveryNote, randomUUID(), today).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_staging (
+      folder_id, item_name, quantity, cost_price, selling_price, expiry_date, status,
+      shipment_id, released_inventory_id, released_batch_id, released_at
+    ) VALUES (?, ?, ?, ?, ?, '2031-12-31', 'released', ?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(folderId, inventory.item_name, quantity, inventory.cost_price, inventory.selling_price, shipmentId, stock.id, stock.batchId);
+  return shipmentId;
+}
 async function bill(ctx, lines, extra = {}) {
   const payload={consultation_id:ctx.consultationId,patient_id:ctx.patientId,items:lines,status:'unpaid',...extra};
   if (payload.status==='paid' && payload.payment_method && payload.payment_method!=='cash' && !payload.payment_reference) {
@@ -305,9 +319,11 @@ test('expense, supplier payable, cash/accrual and approval ledgers remain audita
   assert.equal(expensePayment.data.outstanding_amount, 200);
 
   const stock = item('Supplier costing medicine', 12, 'ocs');
+  const shipmentId = receivedStock(stock, 'Audit Medical Supplier', 12);
   const supplierInvoice = await api('POST', '/finance/supplier-invoices', 'accountant', {
     supplier_name: 'Audit Medical Supplier', invoice_number: `SUP-${fixtureIndex}-${randomUUID()}`,
     invoice_date: today, due_date: today, delivery_note: 'DN-AUDIT-001', other_amount: 50,
+    shipment_id: shipmentId,
     operation_id: randomUUID(),
     lines: [{ inventory_item_id: stock.id, batch_id: stock.batchId, description: 'Supplier costing medicine', quantity: 12, unit_cost: 17.5 }],
   });
@@ -417,12 +433,7 @@ test('receivables ageing and append-only follow-up ownership support collection 
 
 test('supplier approval closes delivery follow-up and revalues stock already used', async () => {
   const stock = item('Late supplier price medicine', 12, 'ocs');
-  const shipmentId = Number(db.prepare(`
-    INSERT INTO inventory_shipments (
-      supplier, delivery_note, operation_id, status, total_rows, valid_rows,
-      received_date, released_at
-    ) VALUES (?, ?, ?, 'released', 1, 1, ?, CURRENT_TIMESTAMP)
-  `).run('Late Price Supplier', `DN-LATE-${randomUUID()}`, randomUUID(), today).lastInsertRowid);
+  const shipmentId = receivedStock(stock, 'Late Price Supplier', 12);
 
   let reconciliation = await api('GET', '/billing/reconciliation', 'accountant');
   let delivery = reconciliation.data.stock_readiness.deliveries_without_invoice
@@ -491,6 +502,81 @@ test('supplier approval closes delivery follow-up and revalues stock already use
   assert.ok(varianceJournal, JSON.stringify(accounting.data.journals));
   assert.equal(Number(varianceJournal.amount), 4);
   assert.equal(accounting.data.statements.trial_balance.is_balanced, true);
+});
+
+test('supplier invoices cannot claim unrelated, partial, or already approved receipt batches', async () => {
+  const supplier = 'Receipt Match Supplier';
+  const stock = item(`Receipt match ${randomUUID()}`, 8, 'ocs');
+  const other = item(`Other receipt ${randomUUID()}`, 4, 'ocs');
+  const shipmentId = receivedStock(stock, supplier, 8);
+  const baseInvoice = {
+    supplier_name: supplier, invoice_date: today, delivery_note: `DN-MATCH-${randomUUID()}`,
+    shipment_id: shipmentId,
+    lines: [{ inventory_item_id: stock.id, batch_id: stock.batchId, description: 'Receipt match stock', quantity: 8, unit_cost: 12 }],
+  };
+  async function submit(patch = {}) {
+    return api('POST', '/finance/supplier-invoices', 'accountant', {
+      ...baseInvoice, invoice_number: `MATCH-${randomUUID()}`, operation_id: randomUUID(), ...patch,
+    });
+  }
+  assert.equal((await submit({ shipment_id: null })).status, 400);
+  assert.equal((await submit({ supplier_name: 'Different Supplier' })).status, 400);
+  assert.equal((await submit({ lines: [{ ...baseInvoice.lines[0], batch_id: other.batchId, inventory_item_id: other.id }] })).status, 400);
+  assert.equal((await submit({ lines: [{ ...baseInvoice.lines[0], quantity: 4 }] })).status, 400);
+  assert.equal((await submit({ lines: [baseInvoice.lines[0], baseInvoice.lines[0]] })).status, 400);
+
+  const first = await submit();
+  const competing = await submit({ lines: [{ ...baseInvoice.lines[0], unit_cost: 15 }] });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  assert.equal(competing.status, 201, JSON.stringify(competing.data));
+  const approved = await api('POST', `/finance/supplier-invoices/${first.data.id}/decision`, 'admin', {
+    action: 'approved', note: 'Matched to one received batch.', operation_id: randomUUID(),
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const duplicate = await api('POST', `/finance/supplier-invoices/${competing.data.id}/decision`, 'admin', {
+    action: 'approved', note: 'Second invoice for the same batch.', operation_id: randomUUID(),
+  });
+  assert.equal(duplicate.status, 409, JSON.stringify(duplicate.data));
+  assert.equal(db.prepare('SELECT unit_cost FROM inventory_batches WHERE id=?').get(stock.batchId).unit_cost, 12);
+  assert.equal(db.prepare(`SELECT action FROM finance_supplier_invoice_events WHERE supplier_invoice_id=? ORDER BY id DESC LIMIT 1`).get(competing.data.id).action, 'submitted');
+  assert.equal((await submit()).status, 409);
+  const catalogue = await api('GET', '/finance/supplier-catalogue', 'accountant');
+  assert.equal(catalogue.status, 200);
+  assert.equal(catalogue.data.shipments.some((entry) => Number(entry.id) === shipmentId), false);
+  const receipt = await api('GET', `/finance/supplier-shipments/${shipmentId}`, 'accountant');
+  assert.deepEqual(receipt.data.shipment.lines, []);
+});
+
+test('a delivery follow-up stays open until every released line has an approved invoice', async () => {
+  const supplier = 'Two Line Supplier';
+  const firstStock = item(`First received ${randomUUID()}`, 3, 'ocs');
+  const secondStock = item(`Second received ${randomUUID()}`, 5, 'ocs');
+  const shipmentId = receivedStock(firstStock, supplier, 3);
+  db.prepare(`
+    INSERT INTO inventory_staging (
+      folder_id, item_name, quantity, cost_price, selling_price, expiry_date, status,
+      shipment_id, released_inventory_id, released_batch_id, released_at
+    ) VALUES (?, ?, 5, 10, 25, '2031-12-31', 'released', ?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(folderId, 'Second received', shipmentId, secondStock.id, secondStock.batchId);
+  db.prepare('UPDATE inventory_shipments SET total_rows=2,valid_rows=2 WHERE id=?').run(shipmentId);
+  for (const [stock, quantity] of [[firstStock, 3], [secondStock, 5]]) {
+    const invoice = await api('POST', '/finance/supplier-invoices', 'accountant', {
+      supplier_name: supplier, invoice_number: `TWO-${randomUUID()}`, invoice_date: today,
+      delivery_note: `DN-TWO-${randomUUID()}`, shipment_id: shipmentId, operation_id: randomUUID(),
+      lines: [{ inventory_item_id: stock.id, batch_id: stock.batchId, description: 'Received stock', quantity, unit_cost: 10 }],
+    });
+    assert.equal(invoice.status, 201, JSON.stringify(invoice.data));
+    const decision = await api('POST', `/finance/supplier-invoices/${invoice.data.id}/decision`, 'admin', {
+      action: 'approved', note: 'Matched to received line.', operation_id: randomUUID(),
+    });
+    assert.equal(decision.status, 200, JSON.stringify(decision.data));
+    const reconciliation = await api('GET', '/billing/reconciliation', 'accountant');
+    const stillOpen = reconciliation.data.stock_readiness.deliveries_without_invoice.some((row) => Number(row.id) === shipmentId);
+    assert.equal(stillOpen, stock.id === firstStock.id);
+    const receipt = await api('GET', `/finance/supplier-shipments/${shipmentId}`, 'accountant');
+    assert.equal(receipt.status, 200);
+    assert.equal(receipt.data.shipment.lines.length, stock.id === firstStock.id ? 1 : 0);
+  }
 });
 
 

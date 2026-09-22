@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Plus } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -170,18 +170,14 @@ function Expenses({ rows, user, reload, loading }) {
   </SectionCard>;
 }
 
-function deliveryLineToInvoice(line, options) {
-  const releasedBatch = Number(line.released_batch_id || 0);
-  const releasedItem = Number(line.released_inventory_id || 0);
-  const match = (releasedBatch && options.find((item) => Number(item.batch_id) === releasedBatch))
-    || (releasedItem && options.find((item) => Number(item.id) === releasedItem))
-    || null;
+function deliveryLineToInvoice(line) {
   return {
-    inventory_item_id: match ? String(match.id) : (releasedItem ? String(releasedItem) : ""),
-    batch_id: releasedBatch ? String(releasedBatch) : "",
+    inventory_item_id: String(line.released_inventory_id),
+    batch_id: String(line.released_batch_id),
     description: line.item_name || "",
     quantity: String(line.quantity || ""),
     unit_cost: line.cost_price == null || line.cost_price === "" ? "" : String(line.cost_price),
+    selected: true,
   };
 }
 
@@ -189,19 +185,17 @@ function SupplierForm({ catalogue, onCreated, onCancel, initialShipmentId = "" }
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ supplier_name: "", invoice_number: "", invoice_date: localDateInput(), due_date: "", delivery_note: "", shipment_id: initialShipmentId ? String(initialShipmentId) : "", other_amount: "0" });
   const [document, setDocument] = useState(null);
-  const [lines, setLines] = useState([{ inventory_item_id: "", batch_id: "", description: "", quantity: "1", unit_cost: "" }]);
-  const [fromDelivery, setFromDelivery] = useState(false);
-  const options = useMemo(() => catalogue?.items || [], [catalogue]);
+  const [lines, setLines] = useState([]);
   useEffect(() => {
-    const shipmentId = Number(form.shipment_id || initialShipmentId || 0);
+    const shipmentId = Number(form.shipment_id || 0);
     if (!shipmentId) return undefined;
     let ignore = false;
     api.get(`/finance/supplier-shipments/${shipmentId}`).then((payload) => {
       if (ignore || !payload?.shipment) return;
       const shipment = payload.shipment;
       const nextLines = (shipment.lines || [])
-        .filter((line) => !["excluded", "cancelled"].includes(String(line.status || "")))
-        .map((line) => deliveryLineToInvoice(line, options));
+        .filter((line) => line.status === "released" && line.released_batch_id && line.released_inventory_id)
+        .map(deliveryLineToInvoice);
       setForm((current) => ({
         ...current,
         shipment_id: String(shipmentId),
@@ -209,19 +203,24 @@ function SupplierForm({ catalogue, onCreated, onCancel, initialShipmentId = "" }
         delivery_note: shipment.delivery_note || current.delivery_note,
         invoice_date: String(shipment.received_date || "").slice(0, 10) || current.invoice_date,
       }));
-      if (nextLines.length) {
-        setLines(nextLines);
-        setFromDelivery(true);
-      }
+      setLines(nextLines);
     }).catch(() => {});
     return () => { ignore = true; };
-  }, [form.shipment_id, initialShipmentId, options]);
+  }, [form.shipment_id]);
   function updateLine(index, patch) { setLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line)); }
   async function submit(event) {
     event.preventDefault(); setSaving(true);
     try {
       const body = new FormData(); Object.entries(form).forEach(([key, value]) => body.append(key, value));
-      body.append("operation_id", operationId("supplier-invoice")); body.append("lines", JSON.stringify(lines)); if (document) body.append("document", document);
+      const selectedLines = lines.filter((line) => line.selected).map((line) => ({
+        inventory_item_id: line.inventory_item_id,
+        batch_id: line.batch_id,
+        description: line.description,
+        quantity: line.quantity,
+        unit_cost: line.unit_cost,
+      }));
+      if (!form.shipment_id || !selectedLines.length) throw new Error("Choose a delivery and at least one received line.");
+      body.append("operation_id", operationId("supplier-invoice")); body.append("lines", JSON.stringify(selectedLines)); if (document) body.append("document", document);
       await api.post("/finance/supplier-invoices", body); toast.success("Supplier invoice submitted for approval."); onCreated();
     } catch (error) { toast.error(error.message); } finally { setSaving(false); }
   }
@@ -232,21 +231,20 @@ function SupplierForm({ catalogue, onCreated, onCancel, initialShipmentId = "" }
       <label className="grid gap-1 text-xs font-bold">Invoice date<input required type="date" value={form.invoice_date} onChange={(event) => setForm({ ...form, invoice_date: event.target.value })} className={formControlClass} /></label>
       <label className="grid gap-1 text-xs font-bold">Due date<input type="date" value={form.due_date} onChange={(event) => setForm({ ...form, due_date: event.target.value })} className={formControlClass} /></label>
       <label className="grid gap-1 text-xs font-bold">Delivery note<input value={form.delivery_note} onChange={(event) => setForm({ ...form, delivery_note: event.target.value })} className={formControlClass} /></label>
-      <label className="grid gap-1 text-xs font-bold">Linked Receive Delivery<select value={form.shipment_id} onChange={(event) => setForm({ ...form, shipment_id: event.target.value })} className={formControlClass}><option value="">Not linked</option>{(catalogue?.shipments || []).map((shipment) => <option key={shipment.id} value={shipment.id}>#{shipment.id} · {shipment.supplier || "Supplier"} · {shipment.delivery_note || "No delivery note"}</option>)}</select></label>
+      <label className="grid gap-1 text-xs font-bold">Receive Delivery<select required value={form.shipment_id} onChange={(event) => { setLines([]); setForm({ ...form, shipment_id: event.target.value }); }} className={formControlClass}><option value="">Choose delivery</option>{(catalogue?.shipments || []).map((shipment) => <option key={shipment.id} value={shipment.id}>#{shipment.id} · {shipment.supplier || "Supplier"} · {shipment.delivery_note || "No delivery note"}</option>)}</select></label>
       <label className="grid gap-1 text-xs font-bold">Freight / other cost<input type="number" min="0" step="0.01" value={form.other_amount} onChange={(event) => setForm({ ...form, other_amount: event.target.value })} className={formControlClass} /></label>
       <label className="grid gap-1 text-xs font-bold">Invoice document<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => setDocument(event.target.files?.[0] || null)} className="block w-full text-xs" /></label>
     </div>
-    {fromDelivery ? <p className="text-sm text-slate-600">Lines are filled from the Receive Delivery. Enter the supplier’s invoice number. Change a unit cost if the invoice differs from the delivery sheet. Approving this invoice updates the catalogue cost. The stock movement keeps the cost from when the delivery was added.</p> : null}
-    <div className="space-y-2"><div className="flex items-center justify-between"><p className="font-black">Actual item and batch costs</p><button type="button" onClick={() => setLines([...lines, { inventory_item_id: "", batch_id: "", description: "", quantity: "1", unit_cost: "" }])} className="text-sm font-bold text-[#17666a]">+ Add line</button></div>
-      {lines.map((line, index) => <div key={index} className="grid gap-2 rounded-xl bg-white p-3 md:grid-cols-[1.4fr_1.3fr_.6fr_.7fr_auto]">
-        <select value={`${line.inventory_item_id || ""}:${line.batch_id || ""}`} onChange={(event) => { const match = options.find((item) => `${item.id}:${item.batch_id || ""}` === event.target.value); updateLine(index, match ? { inventory_item_id: String(match.id), batch_id: String(match.batch_id || ""), description: match.item_name, unit_cost: String(match.unit_cost || match.cost_price || "") } : { inventory_item_id: "", batch_id: "" }); }} className={formControlClass}><option value=":">Service / unlinked item</option>{options.map((item) => <option key={`${item.id}-${item.batch_id || 0}`} value={`${item.id}:${item.batch_id || ""}`}>{item.item_name}{item.batch_id ? ` · batch ${item.batch_id} · ${item.quantity_remaining} remaining` : ""}</option>)}</select>
-        <input required value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} placeholder="Description" className={formControlClass} />
-        <input required type="number" min="0.01" step="0.01" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} placeholder="Qty" className={formControlClass} />
-        <input required type="number" min="0" step="0.01" value={line.unit_cost} onChange={(event) => updateLine(index, { unit_cost: event.target.value })} placeholder="Unit cost" className={formControlClass} />
-        <button type="button" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, lineIndex) => lineIndex !== index))} className="rounded-xl border px-3 text-rose-700 disabled:opacity-30">Remove</button>
+    <p className="text-sm text-slate-600">Choose the received lines on this invoice, then adjust their unit costs if needed. For services or charges unrelated to stock, use an expense instead.</p>
+    <div className="space-y-2"><p className="font-black">Received lines</p>
+      {form.shipment_id && !lines.length ? <p className="text-sm text-amber-800">No stock has been added from this delivery yet.</p> : null}
+      {lines.map((line, index) => <div key={line.batch_id} className="grid gap-2 rounded-xl bg-white p-3 sm:grid-cols-[auto_1fr_8rem] sm:items-center">
+        <label className="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={line.selected} onChange={(event) => updateLine(index, { selected: event.target.checked })} className="size-5 accent-[#17666a]" /><span className="sm:sr-only">Include {line.description}</span></label>
+        <div><p className="text-sm font-bold text-slate-900">{line.description}</p><p className="text-sm text-slate-600">{line.quantity} received · batch #{line.batch_id}</p></div>
+        <label className="grid gap-1 text-sm font-semibold">Unit cost<input required={line.selected} disabled={!line.selected} type="number" min="0" step="0.01" value={line.unit_cost} onChange={(event) => updateLine(index, { unit_cost: event.target.value })} className={formControlClass} /></label>
       </div>)}
     </div>
-    <div className="flex gap-2"><button disabled={saving} className="rounded-xl bg-[#17666a] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Submit supplier invoice"}</button><button type="button" onClick={onCancel} className="rounded-xl border px-5 py-2.5 text-sm font-bold">Cancel</button></div>
+    <div className="flex flex-wrap gap-2"><button disabled={saving} className="min-h-11 rounded-xl bg-[#17666a] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Submit supplier invoice"}</button><button type="button" onClick={onCancel} className="min-h-11 rounded-xl border px-5 py-2.5 text-sm font-bold">Cancel</button></div>
   </form>;
 }
 

@@ -963,8 +963,14 @@ function listShipments({ incomingOnly = false } = {}) {
       FROM inventory_shipments s
       LEFT JOIN users u ON u.id = s.imported_by_user_id
       LEFT JOIN users r ON r.id = s.released_by_user_id
-      ORDER BY s.imported_at DESC, s.id DESC
-      LIMIT 100
+      WHERE EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=s.id AND st.status='pending')
+         OR s.id IN (
+           SELECT recent.id FROM inventory_shipments recent
+           WHERE NOT EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=recent.id AND st.status='pending')
+           ORDER BY recent.imported_at DESC, recent.id DESC LIMIT 100
+         )
+      ORDER BY CASE WHEN EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=s.id AND st.status='pending')
+                    THEN 0 ELSE 1 END, s.imported_at DESC, s.id DESC
     `,
     )
     .all()
@@ -1006,13 +1012,16 @@ function shipmentQueueStats(shipments = listShipments(), { now = Date.now() } = 
 
 function shipmentQueueStatsFromDatabase({ now = Date.now() } = {}) {
   const pending = db.prepare(`
-    SELECT
-      COUNT(DISTINCT shipment.id) AS incoming_shipments,
-      COUNT(staging.id) AS pending_lines,
-      COALESCE(SUM(staging.quantity * staging.cost_price), 0) AS pending_value
-    FROM inventory_shipments shipment
-    JOIN inventory_staging staging ON staging.shipment_id = shipment.id
-    WHERE staging.status = 'pending'
+    SELECT shipment_id,item_name,quantity,cost_price,expiry_date,is_non_expiring
+    FROM inventory_staging WHERE status='pending' AND shipment_id IS NOT NULL
+  `).all();
+  const incomingIds = new Set(pending.map((row) => Number(row.shipment_id)));
+  const valid = pending.filter((row) => stagingRowErrors(row).length === 0);
+  const excluded = db.prepare(`
+    SELECT COUNT(*) AS count FROM inventory_staging staging
+    WHERE staging.status IN ('excluded','cancelled')
+      AND EXISTS (SELECT 1 FROM inventory_staging pending
+                  WHERE pending.shipment_id=staging.shipment_id AND pending.status='pending')
   `).get();
   const released = db.prepare(`
     SELECT
@@ -1027,10 +1036,10 @@ function shipmentQueueStatsFromDatabase({ now = Date.now() } = {}) {
   `).all();
   const currentMonth = mauritiusMonthKey(now);
   return {
-    incoming_shipments: Number(pending?.incoming_shipments || 0),
-    pending_lines: Number(pending?.pending_lines || 0),
-    invalid_excluded_lines: 0,
-    pending_shipment_value: roundCurrency(pending?.pending_value || 0),
+    incoming_shipments: incomingIds.size,
+    pending_lines: pending.length,
+    invalid_excluded_lines: pending.length - valid.length + Number(excluded?.count || 0),
+    pending_shipment_value: roundCurrency(valid.reduce((sum, row) => sum + Number(row.quantity) * Number(row.cost_price), 0)),
     received_this_month: released.filter((row) => {
       const timestamp = storedTimestampMs(row.released_at);
       return timestamp !== null && mauritiusMonthKey(timestamp) === currentMonth;
@@ -2086,8 +2095,14 @@ function listStocktakeSessions() {
       LEFT JOIN users applier ON applier.id = s.applied_by_user_id
       LEFT JOIN inventory_folders f ON f.id = s.folder_id
       LEFT JOIN doctors d ON d.id = s.owner_doctor_id
-      ORDER BY s.created_at DESC, s.id DESC
-      LIMIT 100
+      WHERE s.status IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+         OR s.id IN (
+           SELECT recent.id FROM inventory_stocktake_sessions recent
+           WHERE recent.status NOT IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+           ORDER BY recent.created_at DESC, recent.id DESC LIMIT 100
+         )
+      ORDER BY CASE WHEN s.status IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+                    THEN 0 ELSE 1 END, s.created_at DESC, s.id DESC
     `)
     .all()
     .map((row) => ({
@@ -2142,36 +2157,33 @@ function stocktakeQueueStats(sessions = listStocktakeSessions(), { now = Date.no
 }
 
 function stocktakeQueueStatsFromDatabase({ now = Date.now() } = {}) {
-  const rows = db.prepare(`
+  const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const currentTime = new Date(now).toISOString();
+  const counts = db.prepare(`
     SELECT
-      session.id,
-      session.status,
-      session.applied_at,
-      session.updated_at,
-      session.created_at,
-      COALESCE(SUM(ABS(item.variance) * COALESCE(inventory.cost_price, 0)), 0) AS open_variance_value
+      SUM(CASE WHEN status IN ('draft','in_progress','recount_required') THEN 1 ELSE 0 END) AS active_sessions,
+      SUM(CASE WHEN status='submitted' THEN 1 ELSE 0 END) AS awaiting_approval,
+      SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS awaiting_application,
+      SUM(CASE WHEN status='applied'
+        AND datetime(COALESCE(applied_at,updated_at,created_at)) BETWEEN datetime(?) AND datetime(?)
+        THEN 1 ELSE 0 END) AS completed_last_7_days,
+      MAX(CASE WHEN status='applied' THEN datetime(COALESCE(applied_at,updated_at,created_at)) END) AS last_completed_at
+    FROM inventory_stocktake_sessions
+  `).get(sevenDaysAgo, currentTime);
+  const variance = db.prepare(`
+    SELECT COALESCE(SUM(ABS(item.variance) * COALESCE(inventory.cost_price, 0)), 0) AS amount
     FROM inventory_stocktake_sessions session
-    LEFT JOIN inventory_stocktake_session_items item ON item.session_id = session.id
-    LEFT JOIN inventory ON inventory.id = item.inventory_id
-    GROUP BY session.id
-  `).all();
-  const completed = rows
-    .filter((row) => row.status === "applied")
-    .map((row) => row.applied_at || row.updated_at || row.created_at)
-    .filter(Boolean);
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    JOIN inventory_stocktake_session_items item ON item.session_id=session.id
+    JOIN inventory ON inventory.id=item.inventory_id
+    WHERE session.status IN ('submitted','approved')
+  `).get();
   return {
-    active_sessions: rows.filter((row) => ["draft", "in_progress", "recount_required"].includes(row.status)).length,
-    awaiting_approval: rows.filter((row) => row.status === "submitted").length,
-    awaiting_application: rows.filter((row) => row.status === "approved").length,
-    total_open_variance: roundCurrency(rows
-      .filter((row) => ["submitted", "approved"].includes(row.status))
-      .reduce((sum, row) => sum + Number(row.open_variance_value || 0), 0)),
-    completed_last_7_days: completed.filter((value) => {
-      const timestamp = storedTimestampMs(value);
-      return timestamp !== null && timestamp >= sevenDaysAgo && timestamp <= now;
-    }).length,
-    last_completed_at: latestStoredTimestamp(completed),
+    active_sessions: Number(counts?.active_sessions || 0),
+    awaiting_approval: Number(counts?.awaiting_approval || 0),
+    awaiting_application: Number(counts?.awaiting_application || 0),
+    total_open_variance: roundCurrency(variance?.amount || 0),
+    completed_last_7_days: Number(counts?.completed_last_7_days || 0),
+    last_completed_at: latestStoredTimestamp([counts?.last_completed_at]),
   };
 }
 

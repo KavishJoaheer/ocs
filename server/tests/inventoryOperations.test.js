@@ -4871,3 +4871,54 @@ test("an open stock count can be cancelled or finished without counting every it
   });
   assert.equal(late.status, 400);
 });
+
+test("older pending deliveries and counts remain visible beyond 100 completed records", async () => {
+  const before = await api("GET", "/api/inventory?view=stock", { token: operatorToken });
+  assert.equal(before.status, 200);
+  const beforeStats = before.data.tab_summaries.shipments;
+  const pendingShipmentId = Number(db.prepare(`
+    INSERT INTO inventory_shipments (supplier, delivery_note, status, imported_at)
+    VALUES ('Queue Test Supplier', ?, 'pending', '2024-01-01 10:00:00')
+  `).run(`QUEUE-${randomUUID()}`).lastInsertRowid);
+  const pendingSessionId = Number(db.prepare(`
+    INSERT INTO inventory_stocktake_sessions (status, created_at)
+    VALUES ('submitted', '2024-01-01 10:00:00')
+  `).run().lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_staging (folder_id, item_name, quantity, cost_price, expiry_date, status, shipment_id)
+    VALUES (?, 'Valid queue line', 3, 7, '2031-12-31', 'pending', ?)
+  `).run(folderId, pendingShipmentId);
+  db.prepare(`
+    INSERT INTO inventory_staging (folder_id, item_name, quantity, cost_price, expiry_date, status, shipment_id)
+    VALUES (?, 'Invalid queue line', 2, 0, '2031-12-31', 'pending', ?)
+  `).run(folderId, pendingShipmentId);
+  db.prepare(`
+    INSERT INTO inventory_staging (folder_id, item_name, quantity, cost_price, expiry_date, status, shipment_id, exclude_reason)
+    VALUES (?, 'Excluded queue line', 1, 7, '2031-12-31', 'excluded', ?, 'Duplicate delivery line')
+  `).run(folderId, pendingShipmentId);
+  db.transaction(() => {
+    const insertShipment = db.prepare(`
+      INSERT INTO inventory_shipments (supplier, delivery_note, status, imported_at)
+      VALUES ('Historical Supplier', ?, 'released', CURRENT_TIMESTAMP)
+    `);
+    const insertSession = db.prepare(`
+      INSERT INTO inventory_stocktake_sessions (status, created_at)
+      VALUES ('applied', CURRENT_TIMESTAMP)
+    `);
+    for (let index = 0; index < 105; index += 1) {
+      insertShipment.run(`HISTORY-${randomUUID()}`);
+      insertSession.run();
+    }
+  })();
+  const shipments = await api("GET", "/api/inventory?view=shipments", { token: operatorToken });
+  const counts = await api("GET", "/api/inventory?view=count", { token: operatorToken });
+  const stock = await api("GET", "/api/inventory?view=stock", { token: operatorToken });
+  assert.equal(shipments.status, 200, JSON.stringify(shipments.data));
+  assert.equal(counts.status, 200, JSON.stringify(counts.data));
+  assert.ok(shipments.data.incoming_shipments.some((row) => Number(row.id) === pendingShipmentId));
+  assert.ok(counts.data.stocktake_sessions.some((row) => Number(row.id) === pendingSessionId));
+  assert.deepEqual(shipments.data.tab_summaries.shipments, stock.data.tab_summaries.shipments);
+  assert.equal(stock.data.tab_summaries.shipments.pending_shipment_value - beforeStats.pending_shipment_value, 21);
+  assert.equal(stock.data.tab_summaries.shipments.pending_lines - beforeStats.pending_lines, 2);
+  assert.equal(stock.data.tab_summaries.shipments.invalid_excluded_lines - beforeStats.invalid_excluded_lines, 2);
+});
