@@ -1407,7 +1407,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                   onClick={() => review("approved")}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl bg-emerald-600 px-3 text-sm font-bold text-white"
                 >
-                  {Number(active.discrepancy_count || 0) === 0 && surplusRows.length === 0 ? "Accept this count" : "Approve"}
+                  {shortageReady && surplusLotsReady ? "Accept this count" : "Approve"}
                 </button>
                 {rejectOpen ? (
                   <>

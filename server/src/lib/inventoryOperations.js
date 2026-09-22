@@ -132,6 +132,21 @@ function assertBatchBalance(itemId) {
   }
 }
 
+function assertStocktakeOnHand(itemId, { quantityBefore, batchesBefore }) {
+  const item = db.prepare("SELECT id, item_name, quantity FROM inventory WHERE id = ?").get(Number(itemId));
+  if (!item) throw HttpError(404, "Stock item not found.");
+  const batches = batchQuantityTotal(itemId);
+  const quantity = Number(item.quantity || 0);
+  const gapBefore = Math.max(0, Number(quantityBefore) - Number(batchesBefore));
+  const gapAfter = quantity - batches;
+  if (batches > quantity || gapAfter > gapBefore) {
+    throw HttpError(
+      409,
+      `Batch totals (${batches}) do not match on-hand quantity (${quantity}) for ${item.item_name}.`,
+    );
+  }
+}
+
 function lastKnownBatchIdentity(itemId) {
   const today = getTodayLocal();
   const batches = db
@@ -2805,6 +2820,31 @@ function otherActiveAdminExists(userId) {
   return Number(row?.count || 0) > 0;
 }
 
+function stocktakeReadyToRecord(sessionId, items) {
+  try {
+    assertShortageReasons(items);
+  } catch {
+    return false;
+  }
+  const session = db.prepare("SELECT owner_doctor_id FROM inventory_stocktake_sessions WHERE id = ?").get(Number(sessionId));
+  const pendingByItem = Number(session?.owner_doctor_id || 0) ? new Map() : loadPendingShipmentsByCatalogueId();
+  for (const row of items || []) {
+    if (Number(row.left_unchanged || 0) === 1) continue;
+    const variance = Number(row.variance);
+    if (!(variance > 0)) continue;
+    const pendingQty = Number(pendingByItem.get(Number(row.inventory_id))?.quantity || 0);
+    const remainder = variance - pendingQty;
+    if (remainder <= 0) continue;
+    const item = db.prepare("SELECT id, item_name, cost_price FROM inventory WHERE id = ?").get(row.inventory_id);
+    try {
+      surplusLotForApply({ ...row, variance: remainder }, item || { id: row.inventory_id, item_name: "This item", cost_price: 0 });
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
   if (!["approved", "rejected"].includes(decision)) {
     throw HttpError(400, "Decision must be approved or rejected.");
@@ -2831,10 +2871,7 @@ function reviewStocktakeSession(sessionId, { decision, reason, userId, role }) {
   `).run(decision === "approved" ? "approved" : "rejected", userId, String(reason || "").slice(0, 500), sessionId);
   if (decision === "approved") {
     const items = db.prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ?").all(sessionId);
-    const hasVariance = items.some(
-      (row) => Number(row.left_unchanged || 0) !== 1 && Number(row.variance) !== 0,
-    );
-    if (!hasVariance) {
+    if (stocktakeReadyToRecord(sessionId, items)) {
       return applyStocktakeSession(sessionId, userId, { role: "admin" }).session;
     }
   }
@@ -2912,20 +2949,28 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           `Cannot apply counted quantity ${next} for ${item.item_name} because ${reserved} unit(s) are reserved.`,
         );
       }
+      const batchesBefore = batchQuantityTotal(item.id);
       let allocations = [];
       let movementQuantity = Math.abs(variance);
+      let legacyUnbatchedQty = 0;
       let movementPrevious = previous;
       let actionType = "adjustment";
       let valuationBasis = "stocktake";
       let stockOutReason = "";
       const shortageReason = String(line.shortage_reason || "");
       if (variance < 0) {
-        const preview = previewAllocations(item.id, Math.abs(variance), { includeExpired: true });
-        if (!preview.can_fulfil) {
+        const unbatchedBefore = Math.max(0, previous - batchesBefore);
+        const shortage = Math.abs(variance);
+        const preview = previewAllocations(item.id, shortage, { includeExpired: true });
+        const batchedQty = preview.allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+        const unbatchedQty = shortage - batchedQty;
+        if (unbatchedQty > unbatchedBefore) {
           throw HttpError(409, `Insufficient unreserved traceable batch quantity to apply the count for ${item.item_name}.`);
         }
-        consumeAllocatedBatches(preview.allocations);
+        if (batchedQty > 0) consumeAllocatedBatches(preview.allocations);
         allocations = preview.allocations;
+        movementQuantity = batchedQty;
+        legacyUnbatchedQty = unbatchedQty;
         if (shortageReason === "wasted" || shortageReason === "expired") {
           actionType = "stock_out";
           valuationBasis = "batch_allocation";
@@ -2968,14 +3013,14 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         }
       }
       updateInventoryQuantity(item.id, next);
-      assertBatchBalance(item.id);
+      assertStocktakeOnHand(item.id, { quantityBefore: previous, batchesBefore });
       if (movementQuantity > 0) {
         const movementId = recordOpsMovement({
           itemId: item.id,
           movementType: variance > 0 ? "in" : "out",
           quantity: movementQuantity,
           previousQuantity: movementPrevious,
-          nextQuantity: next,
+          nextQuantity: variance < 0 ? movementPrevious - movementQuantity : next,
           actionType,
           note: line.reason || `Stock count session #${sessionId}`,
           userId,
@@ -3001,6 +3046,39 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
           },
         });
         recordMovementAllocations(movementId, allocations);
+      }
+      if (legacyUnbatchedQty > 0) {
+        const legacyPrevious = previous - (Math.abs(variance) - legacyUnbatchedQty);
+        const legacyId = recordOpsMovement({
+          itemId: item.id,
+          movementType: "out",
+          quantity: legacyUnbatchedQty,
+          previousQuantity: legacyPrevious,
+          nextQuantity: next,
+          actionType,
+          note: line.reason || `Stock count session #${sessionId}`,
+          userId,
+          skipPublish: true,
+          unitCost: Number(item.cost_price) > 0 ? roundCurrency(item.cost_price) : null,
+          valuationBasis,
+          meta: {
+            stocktake_session_id: sessionId,
+            transaction_id: transactionId,
+            previous_quantity: legacyPrevious,
+            counted_quantity: next,
+            expected_quantity: line.expected_quantity,
+            performed_by_user_id: userId,
+            performed_by_name: actor.displayName || "",
+            performed_by_role: actor.role || "",
+            reference_type: "stocktake_session",
+            reference_id: sessionId,
+            stock_out_reason: stockOutReason || undefined,
+            shortage_reason: shortageReason || undefined,
+            legacy_unknown_lot: true,
+            valuation_basis: stockOutReason ? "batch_allocation" : "batch_allocation",
+          },
+        });
+        recordMovementAllocations(legacyId, []);
       }
     }
     const watermark = Number(

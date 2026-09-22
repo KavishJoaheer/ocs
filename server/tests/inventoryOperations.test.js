@@ -1087,6 +1087,39 @@ test("a short count cannot be submitted or recorded without wasted or expired", 
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 8);
 });
 
+test("a short count records wastage for stock that has no lot", async () => {
+  const itemId = insertOcsItem({ name: `No lot short ${Date.now()}`, qty: 6, expiry: "2027-06-01" });
+  db.prepare("UPDATE inventory SET quantity = 10, cost_price = 5 WHERE id = ?").run(itemId);
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const sessionId = created.data.session.id;
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 0 }] },
+  });
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${sessionId}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "expired" }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/submit`, { token: operatorToken });
+  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${sessionId}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
+  assert.equal(reviewed.data.session.status, "applied");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 0);
+  assert.equal(Number(db.prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS total FROM inventory_batches WHERE item_id = ?").get(itemId).total), 0);
+  const movements = db.prepare("SELECT * FROM inventory_movements WHERE item_id = ? AND action_type = 'stock_out'").all(itemId);
+  assert.equal(movements.length, 2);
+  assert.ok(movements.some((row) => JSON.parse(row.meta_json).legacy_unknown_lot === true));
+  const { stockFinancials } = require("../src/lib/inventoryFinancials");
+  const totals = stockFinancials(movements);
+  assert.equal(totals.wastage_value_rs, 50);
+  assert.equal(totals.stocktake_shortage_rs, 0);
+});
+
 test("a shipment cannot add a delivery that a stock count already recorded", async () => {
   const consumable = db.prepare("SELECT id, name FROM inventory_folders WHERE name = 'Consumable'").get();
   const name = `Pads twice ${Date.now()}`;
