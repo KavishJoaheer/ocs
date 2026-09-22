@@ -5061,7 +5061,13 @@ export default function InventoryPage() {
             {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("expired")}
-              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showExpiredOnly ? "bg-rose-600 text-white" : "border border-rose-200 bg-white text-rose-700"}`}
+              className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${
+                showExpiredOnly
+                  ? "bg-rose-600 text-white"
+                  : Number(chaseCounts.expired) > 0
+                    ? "border border-rose-200 bg-white text-rose-700"
+                    : "border border-slate-200 bg-white text-slate-700"
+              }`}
             >
               Expired stock ({chaseCounts.expired})
             </button> : null}

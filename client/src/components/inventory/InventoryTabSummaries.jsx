@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { formatRupees } from "../../lib/format.js";
 import { cx } from "../../lib/utils.js";
 
@@ -59,6 +60,25 @@ function stockValueDisplay(stock, warehouseValue) {
   return { value: formatRupees(known), hint: undefined };
 }
 
+function useHorizontalOverflow(watch) {
+  const ref = useRef(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    const measure = () => setOverflowing(node.scrollWidth - node.clientWidth > 8);
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(node);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [watch]);
+  return [ref, overflowing];
+}
+
 function StockAttentionButton({ label, compactLabel, accessibleLabel, value, tone = "slate", active = false, onClick }) {
   const toneClass =
     tone === "rose"
@@ -100,6 +120,7 @@ export default function InventoryTabSummaries({
   onOpenUnpriced,
   onOpenReconciliation,
 }) {
+  const [chaseRef, chaseOverflows] = useHorizontalOverflow(tab);
   if (tab === "shipments") {
     const data = summaries?.shipments || {};
     return (
@@ -198,21 +219,26 @@ export default function InventoryTabSummaries({
           <p className="mt-0.5 text-sm font-semibold text-slate-950 sm:text-base">{valueDisplay.value}</p>
           {valueDisplay.hint ? <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-slate-400">{valueDisplay.hint}</p> : null}
         </div>
-        <div className={`flex w-full min-w-0 gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:overflow-visible lg:pb-0 ${chaseColumns}`}>
-          <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone={Number(low) > 0 ? "rose" : "slate"} active={filters?.low} onClick={() => onFilter?.("low")} />
-          <StockAttentionButton label="Out of stock" compactLabel="Out" value={out} tone={Number(out) > 0 ? "rose" : "slate"} active={filters?.out} onClick={() => onFilter?.("out")} />
-          <StockAttentionButton label="Needs expiry" compactLabel="Expiry" accessibleLabel="Needs expiry" value={missing} tone={Number(missing) > 0 ? "amber" : "slate"} active={filters?.missing} onClick={() => onFilter?.("missing")} />
-          <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone={Number(near) > 0 ? "amber" : "slate"} active={filters?.near} onClick={() => onFilter?.("near")} />
-          <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone={Number(expired) > 0 ? "rose" : "slate"} active={filters?.expired} onClick={() => onFilter?.("expired")} />
-          {reconciliation > 0 ? (
-            <StockAttentionButton
-              label="Reconciliation"
-              compactLabel="Reconcile"
-              accessibleLabel="Reconciliation required"
-              value={reconciliation}
-              tone="amber"
-              onClick={onOpenReconciliation}
-            />
+        <div className="relative min-w-0">
+          <div ref={chaseRef} className={`flex w-full min-w-0 gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:overflow-visible lg:pb-0 ${chaseColumns}`}>
+            <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone={Number(low) > 0 ? "rose" : "slate"} active={filters?.low} onClick={() => onFilter?.("low")} />
+            <StockAttentionButton label="Out of stock" compactLabel="Out" value={out} tone={Number(out) > 0 ? "rose" : "slate"} active={filters?.out} onClick={() => onFilter?.("out")} />
+            <StockAttentionButton label="Needs expiry" compactLabel="Expiry" accessibleLabel="Needs expiry" value={missing} tone={Number(missing) > 0 ? "amber" : "slate"} active={filters?.missing} onClick={() => onFilter?.("missing")} />
+            <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone={Number(near) > 0 ? "amber" : "slate"} active={filters?.near} onClick={() => onFilter?.("near")} />
+            <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone={Number(expired) > 0 ? "rose" : "slate"} active={filters?.expired} onClick={() => onFilter?.("expired")} />
+            {reconciliation > 0 ? (
+              <StockAttentionButton
+                label="Reconciliation"
+                compactLabel="Reconcile"
+                accessibleLabel="Reconciliation required"
+                value={reconciliation}
+                tone="amber"
+                onClick={onOpenReconciliation}
+              />
+            ) : null}
+          </div>
+          {chaseOverflows ? (
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent lg:hidden" aria-hidden="true" />
           ) : null}
         </div>
       </div>

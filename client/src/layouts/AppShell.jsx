@@ -317,7 +317,7 @@ function AppShell() {
             {user?.role ? (
               <>
                 <AppUpdateBanner />
-                <PushNotificationBanner role={user.role} className="mb-4 max-w-3xl" />
+                <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
               </>
             ) : null}
             <Outlet />

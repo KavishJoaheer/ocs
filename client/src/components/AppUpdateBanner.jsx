@@ -71,11 +71,11 @@ export default function AppUpdateBanner() {
   return (
     <div
       role="status"
-      className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-950 sm:mb-4 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
+      className="mb-1.5 flex items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs text-teal-950 sm:mb-3 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
     >
-      <p className="min-w-0">
-        <span className="font-semibold">Update available.</span> A newer OCS release is deployed.
-        <span className="hidden sm:inline">
+      <p className="min-w-0 truncate sm:overflow-visible sm:whitespace-normal">
+        <span className="font-semibold">Update available.</span>
+        <span className="hidden sm:inline"> A newer OCS release is deployed.
           {dirty
             ? " Unsaved stock count, fulfilment, receive delivery or correction work is open. Reloading now can lose those counts."
             : " Reload to use the current version."}
