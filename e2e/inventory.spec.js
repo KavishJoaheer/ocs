@@ -735,6 +735,39 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByRole("button", { name: "This was a delivery that was not received" })).toHaveCount(0);
   });
 
+  test("extra counted stock asks for expiry, supplier, and delivery date on that line", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Extra Lot ${Date.now()}`,
+      quantity: 4,
+    });
+    const created = await startStocktakeSession(request, operator.token, { itemIds: [item.id] });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const session = (await apiJson(created)).session;
+    const saved = await request.patch(`${API_BASE}/inventory/stocktake/sessions/${session.id}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { lines: [{ id: session.items[0].id, physical_quantity: 9 }] },
+    });
+    expect(saved.ok(), await saved.text()).toBeTruthy();
+    const submitted = await request.post(`${API_BASE}/inventory/stocktake/sessions/${session.id}/submit`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    expect(submitted.ok(), await submitted.text()).toBeTruthy();
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("tab", { name: "Stock Count" }).click();
+    await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
+    const lot = page.locator("tr").filter({ hasText: "more than expected" });
+    await expect(lot.getByLabel("New lot expiry")).toBeVisible({ timeout: 15_000 });
+    await expect(lot.getByLabel("Supplier")).toBeVisible();
+    await expect(lot.getByLabel("Date of delivery")).toBeVisible();
+  });
+
   test("stale clients see an update banner and do not auto-reload dirty forms", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     const deployedSha = `deployed-${Date.now()}`;
