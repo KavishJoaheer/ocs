@@ -68,12 +68,11 @@ function shipmentHoldCopy(line) {
     .filter(Boolean)
     .join(", ");
   const lead = shipments.length === 1
-    ? `Receive Delivery #${first.shipment_id} still has ${waiting} of this item waiting to be added to stock${detail ? ` (${detail})` : ""}.`
-    : `${shipments.length} Receive Delivery records still have ${waiting} of this item waiting to be added to stock.`;
-  const addWord = shipments.length === 1 ? "it" : "them";
+    ? `Receive Delivery #${first.shipment_id} has ${waiting} of this item waiting${detail ? ` (${detail})` : ""}.`
+    : `${shipments.length} Receive Delivery records have ${waiting} of this item waiting.`;
   const follow = extra > waiting
-    ? ` Add ${addWord} to stock, then recount. Only what is still extra after that can be a new lot.`
-    : ` Add ${addWord} to stock, then recount this line.`;
+    ? " This count adds that delivery. What is still extra is a new lot on this line."
+    : " This count adds that delivery. Stay on this count.";
   return lead + follow;
 }
 
@@ -85,23 +84,7 @@ function surplusLotReady(line) {
 }
 
 function ShipmentHold({ line }) {
-  const shipments = Array.isArray(line?.pending_shipments) ? line.pending_shipments : [];
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>
-      <div className="flex flex-wrap gap-3">
-        {shipments.map((shipment) => (
-          <a
-            key={shipment.shipment_id}
-            href={`/inventory?tab=shipments&shipment=${shipment.shipment_id}`}
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-[#2d8f98]"
-          >
-            Open Receive Delivery #{shipment.shipment_id}
-          </a>
-        ))}
-      </div>
-    </div>
-  );
+  return <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>;
 }
 
 function SurplusLotFields({ line, disabled, onChange }) {
@@ -176,8 +159,56 @@ function SurplusLotFields({ line, disabled, onChange }) {
   );
 }
 
+function ShortageFields({ line, disabled, onChange }) {
+  const choices = [["wasted", "Wasted"], ["expired", "Expired"]];
+  return (
+    <div className="space-y-2 rounded-xl border border-rose-200 bg-white px-3 py-3">
+      <p className="text-xs text-slate-600">
+        This count is lower than the shelf record. Supply given to a doctor is already on the transfer record. Mark what is still missing as wasted or expired.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {choices.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange({ shortage_reason: value, shortage_doctor_id: null })}
+            className={`min-h-11 rounded-xl border px-3 text-sm font-semibold ${
+              line.shortage_reason === value ? "border-rose-700 bg-rose-700 text-white" : "border-slate-200 text-slate-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function hasUnexplainedMovement(line) {
   return Number(line?.unexplained_movement_quantity || 0) !== 0;
+}
+
+function keepEnteredLineDetails(previous, next) {
+  if (!previous?.items || !next?.items) return next;
+  const localById = new Map(previous.items.map((line) => [line.id, line]));
+  return {
+    ...next,
+    items: next.items.map((line) => {
+      const local = localById.get(line.id);
+      if (!local) return line;
+      return {
+        ...line,
+        surplus_expiry_date: line.needs_new_lot ? (local.surplus_expiry_date ?? line.surplus_expiry_date) : line.surplus_expiry_date,
+        surplus_is_non_expiring: line.needs_new_lot ? Boolean(local.surplus_is_non_expiring) : line.surplus_is_non_expiring,
+        surplus_unit_cost: line.needs_new_lot ? (local.surplus_unit_cost ?? line.surplus_unit_cost) : line.surplus_unit_cost,
+        surplus_supplier_name: line.needs_new_lot ? (local.surplus_supplier_name ?? line.surplus_supplier_name) : line.surplus_supplier_name,
+        surplus_received_date: line.needs_new_lot ? (local.surplus_received_date ?? line.surplus_received_date) : line.surplus_received_date,
+        shortage_reason: line.needs_shortage ? (local.shortage_reason || line.shortage_reason) : line.shortage_reason,
+        shortage_doctor_id: null,
+      };
+    }),
+  };
 }
 
 function countStatusLabel(status) {
@@ -406,10 +437,11 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       });
       session = payload.session;
     }
-    setActive(session);
-    setLastSavedAt(session?.last_saved_at || new Date().toISOString());
+    const kept = keepEnteredLineDetails(active, session);
+    setActive(kept);
+    setLastSavedAt(kept?.last_saved_at || new Date().toISOString());
     setEditedIds({});
-    return session;
+    return kept;
   }
 
   async function saveProgress({ silent = false } = {}) {
@@ -443,8 +475,37 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     }
     setSaving(true);
     try {
+      let session = active;
       if (Object.keys(editedIds).length) {
-        await persistEditedLines();
+        session = await persistEditedLines();
+      }
+      const explanations = (session?.items || [])
+        .filter((line) => line.needs_new_lot || line.needs_shortage)
+        .map((line) => {
+          const local = (active.items || []).find((row) => row.id === line.id) || line;
+          return {
+            id: line.id,
+            surplus_expiry_date: local.surplus_expiry_date || "",
+            surplus_is_non_expiring: Boolean(local.surplus_is_non_expiring),
+            surplus_unit_cost: local.surplus_unit_cost ?? "",
+            surplus_supplier_name: local.surplus_supplier_name || "",
+            surplus_received_date: local.surplus_received_date || "",
+            shortage_reason: local.shortage_reason || "",
+            shortage_doctor_id: local.shortage_doctor_id || null,
+          };
+        });
+      if (explanations.length) {
+        const saved = await api.patch(`/inventory/stocktake/sessions/${active.id}/new-lots`, { lines: explanations });
+        session = saved.session;
+        setActive(session);
+      }
+      const missingLot = (session?.items || []).find((line) => line.needs_new_lot && !surplusLotReady(line));
+      const missingReason = (session?.items || []).find((line) => line.needs_shortage && !["wasted", "expired"].includes(line.shortage_reason));
+      if (missingLot || missingReason) {
+        toast.error(missingReason
+          ? "Mark the missing supply as wasted or expired."
+          : "Enter the expiry, supplier, and delivery date for the extra on this count.");
+        return;
       }
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`);
       setActive(payload.session);
@@ -537,7 +598,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
 
   function surplusPayloadLines() {
     return (active?.items || [])
-      .filter((line) => line.needs_new_lot && Number(line.pending_shipment_quantity || 0) === 0)
+      .filter((line) => line.needs_new_lot || line.needs_shortage)
       .map((line) => ({
         id: line.id,
         surplus_expiry_date: line.surplus_expiry_date || "",
@@ -545,6 +606,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
         surplus_unit_cost: line.surplus_unit_cost ?? "",
         surplus_supplier_name: line.surplus_supplier_name || "",
         surplus_received_date: line.surplus_received_date || "",
+        shortage_reason: line.shortage_reason || "",
+        shortage_doctor_id: line.shortage_doctor_id || null,
       }));
   }
 
@@ -620,14 +683,33 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       if (reviewUncounted) return;
     }
     const savedLine = (session?.items || []).find((line) => line.id === currentId);
-    if (
-      delta > 0 &&
-      savedLine?.needs_new_lot &&
-      Number(savedLine.pending_shipment_quantity || 0) === 0 &&
-      !surplusLotReady(savedLine)
-    ) {
+    if (delta > 0 && savedLine?.needs_new_lot && !surplusLotReady(savedLine)) {
       toast.error("Enter the expiry, supplier, and delivery date for this extra before the next item.");
       return;
+    }
+    if (delta > 0 && savedLine?.needs_shortage && !["wasted", "expired"].includes(savedLine.shortage_reason)) {
+      toast.error("Mark the missing supply as wasted or expired.");
+      return;
+    }
+    if (delta > 0 && savedLine && (savedLine.needs_new_lot || savedLine.needs_shortage)) {
+      try {
+        const payload = await api.patch(`/inventory/stocktake/sessions/${active.id}/new-lots`, {
+          lines: [{
+            id: savedLine.id,
+            surplus_expiry_date: savedLine.surplus_expiry_date || "",
+            surplus_is_non_expiring: Boolean(savedLine.surplus_is_non_expiring),
+            surplus_unit_cost: savedLine.surplus_unit_cost ?? "",
+            surplus_supplier_name: savedLine.surplus_supplier_name || "",
+            surplus_received_date: savedLine.surplus_received_date || "",
+            shortage_reason: savedLine.shortage_reason || "",
+            shortage_doctor_id: null,
+          }],
+        });
+        setActive(payload.session);
+      } catch (error) {
+        toast.error(error.message || "Could not save this line.");
+        return;
+      }
     }
     setMobileIndex(nextIndex);
   }
@@ -667,7 +749,6 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     (canCount || canReview) && active && ["draft", "in_progress", "recount_required", "submitted", "approved"].includes(active.status),
   );
   const surplusLotsReady = surplusRows.every((line) => surplusLotReady(line));
-  const surplusHeldByShipment = surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0);
   const mismatchRows = rows.filter((line) => !line.left_unchanged && (isCountMismatch(line) || hasUnexplainedMovement(line)));
   const sheetQueryText = sheetQuery.trim().toLowerCase();
   function matchesSheet(line) {
@@ -880,11 +961,9 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
           {sheetQueryText && !visibleRows.length ? (
             <p className="text-sm text-slate-500">No items match this search.</p>
           ) : null}
-          {!submitted && surplusRows.length ? (
+          {!submitted && rows.some((line) => line.needs_new_lot || line.delivery_in_count || line.needs_shortage) ? (
             <p className="text-sm text-amber-900">
-              {surplusHeldByShipment
-                ? "A higher count matches a Receive Delivery that is not on the shelf yet. Open that delivery, add it to stock, then recount."
-                : "A higher count needs the expiry, supplier, and delivery date on that line, while the box is still in hand."}
+              A higher count adds the delivery on that line. A lower count records wasted or expired supply. Supply given to a doctor is already on the transfer record.
             </p>
           ) : null}
 
@@ -904,8 +983,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
               ) : null}
               {surplusRows.length ? (
                 <p className="mt-2 text-sm text-amber-900">
-                  {surplusRows.some((line) => Number(line.pending_shipment_quantity || 0) > 0)
-                    ? "Some of this extra is already under Receive Delivery. Add it to stock, then recount. A new lot is only for stock that was never received there."
+                  {rows.some((line) => line.delivery_in_count)
+                    ? "A waiting delivery on a higher line is added when this count is recorded."
                     : `${surplusRows.length} ${surplusRows.length === 1 ? "line has" : "lines have"} more than expected. Expiry, supplier, and delivery date are on that line.`}
                 </p>
               ) : null}
@@ -940,11 +1019,10 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                   {submitted && !line.left_unchanged && isCountMismatch(line) ? (
                     <p className="mt-2 text-xs font-semibold text-rose-700">This physical count does not match expected.</p>
                   ) : null}
-                  {line.needs_new_lot && !line.left_unchanged ? (
-                    <div className="mt-3">
-                      {Number(line.pending_shipment_quantity || 0) > 0 ? (
-                        <ShipmentHold line={line} />
-                      ) : (
+                  {(line.delivery_in_count || line.needs_new_lot || line.needs_shortage) && !line.left_unchanged ? (
+                    <div className="mt-3 space-y-3">
+                      {line.delivery_in_count ? <ShipmentHold line={line} /> : null}
+                      {line.needs_new_lot ? (
                         <>
                           <SurplusLotFields
                             line={line}
@@ -956,13 +1034,32 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                               type="button"
                               disabled={saving}
                               onClick={() => void saveNewLots().catch(() => {})}
-                              className="mt-2 inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
+                              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
                             >
-                              {saving ? "Saving…" : "Save new lot details"}
+                              {saving ? "Saving…" : "Save line details"}
                             </button>
                           ) : null}
                         </>
-                      )}
+                      ) : null}
+                      {line.needs_shortage ? (
+                        <>
+                          <ShortageFields
+                            line={line}
+                            disabled={!canEditNewLots}
+                            onChange={(patch) => updateSurplus(line.id, patch)}
+                          />
+                          {canEditNewLots ? (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() => void saveNewLots().catch(() => {})}
+                              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-900 disabled:opacity-60"
+                            >
+                              {saving ? "Saving…" : "Save line details"}
+                            </button>
+                          ) : null}
+                        </>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -993,10 +1090,8 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                 >
                   Counted as zero
                 </button>
+                {mobileLine.delivery_in_count ? <ShipmentHold line={mobileLine} /> : null}
                 {mobileLine.needs_new_lot ? (
-                  Number(mobileLine.pending_shipment_quantity || 0) > 0 ? (
-                    <ShipmentHold line={mobileLine} />
-                  ) : (
                     <div className="space-y-2">
                       <SurplusLotFields
                         line={mobileLine}
@@ -1010,11 +1105,29 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                           onClick={() => void saveNewLots().catch(() => {})}
                           className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
                         >
-                          {saving ? "Saving…" : "Save new lot details"}
+                          {saving ? "Saving…" : "Save line details"}
                         </button>
                       ) : null}
                     </div>
-                  )
+                ) : null}
+                {mobileLine.needs_shortage ? (
+                  <div className="space-y-2">
+                    <ShortageFields
+                      line={mobileLine}
+                      disabled={!canEditNewLots}
+                      onChange={(patch) => updateSurplus(mobileLine.id, patch)}
+                    />
+                    {canEditNewLots ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => void saveNewLots().catch(() => {})}
+                        className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-rose-900 disabled:opacity-60"
+                      >
+                        {saving ? "Saving…" : "Save line details"}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -1135,33 +1248,39 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
                         </td>
                       ) : null}
                     </tr>
-                    {line.needs_new_lot && !line.left_unchanged ? (
-                      <tr className="bg-amber-50">
+                    {(line.delivery_in_count || line.needs_new_lot || line.needs_shortage) && !line.left_unchanged ? (
+                      <tr className={line.needs_shortage && !line.needs_new_lot ? "bg-rose-50" : "bg-amber-50"}>
                         <td colSpan={sheetColumnCount} className="px-3 py-3">
-                          {Number(line.pending_shipment_quantity || 0) > 0 ? (
-                            <ShipmentHold line={line} />
-                          ) : (
-                            <div className="max-w-xl space-y-2">
+                          <div className="max-w-xl space-y-3">
+                            {line.delivery_in_count ? <ShipmentHold line={line} /> : null}
+                            {line.needs_new_lot ? (
                               <SurplusLotFields
                                 line={line}
                                 disabled={!canEditNewLots}
                                 onChange={(patch) => updateSurplus(line.id, patch)}
                               />
-                              {canEditNewLots ? (
-                                <button
-                                  type="button"
-                                  disabled={saving}
-                                  onMouseDown={() => {
-                                    skipBlurSave.current = true;
-                                  }}
-                                  onClick={() => void saveNewLots().catch(() => {})}
-                                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
-                                >
-                                  {saving ? "Saving…" : "Save new lot details"}
-                                </button>
-                              ) : null}
-                            </div>
-                          )}
+                            ) : null}
+                            {line.needs_shortage ? (
+                              <ShortageFields
+                                line={line}
+                                disabled={!canEditNewLots}
+                                onChange={(patch) => updateSurplus(line.id, patch)}
+                              />
+                            ) : null}
+                            {canEditNewLots && (line.needs_new_lot || line.needs_shortage) ? (
+                              <button
+                                type="button"
+                                disabled={saving}
+                                onMouseDown={() => {
+                                  skipBlurSave.current = true;
+                                }}
+                                onClick={() => void saveNewLots().catch(() => {})}
+                                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-950 disabled:opacity-60"
+                              >
+                                {saving ? "Saving…" : "Save line details"}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     ) : null}
@@ -1294,7 +1413,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             {canReview && active.status === "approved" && !isClosedSession(active.status) ? (
               <button
                 type="button"
-                disabled={applying || surplusHeldByShipment || (surplusRows.length > 0 && !surplusLotsReady)}
+                disabled={applying || (surplusRows.length > 0 && !surplusLotsReady)}
                 onClick={applySession}
                 className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#2d8f98] px-3 text-sm font-bold text-white disabled:opacity-60"
               >

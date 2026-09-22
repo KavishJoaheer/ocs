@@ -738,7 +738,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("tab", { name: "Stock Count" }).click();
     await showStockCount(page, session.id);
     await page.getByRole("button", { name: new RegExp(`#${session.id}`) }).click();
-    await expect(page.getByText(/waiting to be added to stock/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/This count adds that delivery/i)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "This was a delivery that was not received" })).toHaveCount(0);
   });
 

@@ -982,21 +982,11 @@ test("extra counted stock waits for an incoming shipment instead of becoming a s
     token: operatorToken,
   });
   assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  assert.equal(submitted.data.session.items[0].delivery_in_count, true);
+  assert.equal(submitted.data.session.items[0].needs_new_lot, false);
   assert.equal(Number(submitted.data.session.items[0].pending_shipment_quantity), 50);
   assert.equal(Number(submitted.data.session.items[0].pending_shipments[0].shipment_id), shipmentId);
 
-  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
-    token: operatorToken,
-    body: {
-      lines: [{
-        id: lineId,
-        surplus_expiry_date: "2028-01-01",
-        surplus_supplier_name: "MedSupply Ltd",
-        surplus_received_date: "2026-01-10",
-      }],
-    },
-  });
-  assert.equal(saved.status, 409, JSON.stringify(saved.data));
   await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
     token: adminToken,
     body: { decision: "approved" },
@@ -1004,48 +994,55 @@ test("extra counted stock waits for an incoming shipment instead of becoming a s
   const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
     token: adminToken,
   });
-  assert.equal(applied.status, 409, JSON.stringify(applied.data));
-  assert.match(String(applied.data.error || ""), /Receive Delivery/i);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 30);
-
-  const released = await api("POST", `/api/inventory/shipments/${shipmentId}/release`, {
-    token: operatorToken,
-    body: { mode: "all_valid" },
-  });
-  assert.ok([200, 201].includes(released.status), JSON.stringify(released.data));
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  assert.equal(applied.data.session.status, "applied");
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
-  const blockedApply = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
-    token: adminToken,
-  });
-  assert.equal(blockedApply.status, 409, JSON.stringify(blockedApply.data));
-  assert.equal(blockedApply.data.session.status, "recount_required");
-  const conflicted = blockedApply.data.session.items[0];
-  const recounted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/recount`, {
-    token: operatorToken,
-    body: {
-      lines: [{
-        id: lineId,
-        physical_quantity: 80,
-        conflict_detected_at: conflicted.conflict_detected_at,
-        expected_row_version: conflicted.live_row_version,
-      }],
-    },
-  });
-  assert.equal(recounted.status, 200, JSON.stringify(recounted.data));
-  assert.equal(Number(recounted.data.session.items[0].variance), 0);
-  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, { token: operatorToken });
-  const reviewed = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
-    token: adminToken,
-    body: { decision: "approved" },
-  });
-  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.data));
-  assert.equal(reviewed.data.session.status, "applied");
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 80);
+  assert.equal(db.prepare("SELECT status FROM inventory_shipments WHERE id = ?").get(shipmentId).status, "released");
   const batches = db
     .prepare("SELECT quantity_remaining, supplier_name FROM inventory_batches WHERE item_id = ? AND quantity_remaining > 0")
     .all(itemId);
   assert.equal(batches.length, 2);
   assert.equal(batches.filter((batch) => String(batch.supplier_name || "") === "MedSupply Ltd").length, 1);
+});
+
+test("a lower stock count records waste separately from a count difference", async () => {
+  const itemId = insertOcsItem({ name: `Count waste ${Date.now()}`, qty: 10, expiry: "2027-06-01" });
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  const lineId = created.data.session.items[0].id;
+  await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, physical_quantity: 6 }] },
+  });
+  const counting = await api("GET", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+  });
+  assert.equal(counting.data.session.items[0].needs_shortage, true);
+  assert.equal(counting.data.session.items[0].variance, null);
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}/new-lots`, {
+    token: operatorToken,
+    body: { lines: [{ id: lineId, shortage_reason: "wasted" }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(saved.data.session.items[0].shortage_reason, "wasted");
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, { token: operatorToken });
+  await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/apply`, {
+    token: adminToken,
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  const movement = db.prepare(
+    "SELECT * FROM inventory_movements WHERE item_id = ? ORDER BY id DESC LIMIT 1",
+  ).get(itemId);
+  assert.equal(movement.action_type, "stock_out");
+  assert.equal(JSON.parse(movement.meta_json).stock_out_reason, "Wasted");
+  const { stockFinancials } = require("../src/lib/inventoryFinancials");
+  const totals = stockFinancials([movement]);
+  assert.equal(totals.wastage_value_rs, 20);
+  assert.equal(totals.stocktake_shortage_rs, 0);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
 test("a shipment cannot add a delivery that a stock count already recorded", async () => {

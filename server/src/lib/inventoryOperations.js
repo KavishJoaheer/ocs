@@ -1902,15 +1902,19 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
       const leftUnchanged = Number(row.left_unchanged || 0) === 1;
       const counted = !leftUnchanged && row.physical_quantity !== null && row.physical_quantity !== undefined;
       const expectedQty = Number(row.expected_quantity ?? row.system_quantity ?? 0);
+      const pending = pendingByItem.get(Number(row.inventory_id)) || { quantity: 0, shipments: [] };
       const physicalQty = row.physical_quantity == null ? null : Number(row.physical_quantity);
-      const needsNewLot = counted && physicalQty != null && physicalQty > expectedQty;
-      const showLot = showSystem || needsNewLot;
+      const varianceQty = physicalQty == null ? 0 : physicalQty - expectedQty;
+      const pendingQty = Number(pending.quantity || 0);
+      const needsNewLot = counted && varianceQty > pendingQty;
+      const deliveryInCount = counted && varianceQty > 0 && pendingQty > 0;
+      const needsShortage = counted && varianceQty < 0;
+      const showLot = showSystem || needsNewLot || deliveryInCount || needsShortage;
       const previousQty = row.previous_count_quantity == null ? null : Number(row.previous_count_quantity);
       const movementSince = previousQty == null ? null : expectedQty - previousQty;
       const movementsSince = showSystem ? intervalMovements.get(Number(row.inventory_id)) || [] : [];
       const explained = movementsSince.reduce((sum, entry) => sum + Number(entry.signed_quantity || 0), 0);
       const unexplained = movementSince == null ? null : movementSince - explained;
-      const pending = pendingByItem.get(Number(row.inventory_id)) || { quantity: 0, shipments: [] };
       return {
         ...row,
         counted,
@@ -1941,6 +1945,10 @@ function serializeStocktakeSession(session, { role = "", revealSystem = false } 
         surplus_supplier_name: showLot ? String(row.surplus_supplier_name || "").trim() : "",
         surplus_received_date: showLot ? row.surplus_received_date || null : null,
         needs_new_lot: needsNewLot,
+        delivery_in_count: deliveryInCount,
+        needs_shortage: needsShortage,
+        shortage_reason: showLot ? String(row.shortage_reason || "") : "",
+        shortage_doctor_id: showLot && row.shortage_doctor_id ? Number(row.shortage_doctor_id) : null,
         new_lot_quantity: showSystem && Number(row.variance || 0) > 0 ? Number(row.variance) : null,
         pending_shipment_quantity: showLot ? pending.quantity : 0,
         pending_shipments: showLot ? pending.shipments : [],
@@ -2109,11 +2117,26 @@ function persistStocktakeNewLots(sessionId, lines) {
       .prepare("SELECT * FROM inventory_stocktake_session_items WHERE session_id = ? AND id = ?")
       .get(sessionId, line.id);
     if (!current) continue;
-    if (!(Number(current.variance || 0) > 0)) continue;
+    const variance = Number(current.variance || 0);
+    if (variance < 0) {
+      const reason = String(line.shortage_reason || "").trim();
+      if (reason === "dispatched") {
+        throw HttpError(400, "Supply given to a doctor is already recorded on the transfer. A lower count records wasted or expired supply.");
+      }
+      if (reason && !["wasted", "expired"].includes(reason)) {
+        throw HttpError(400, "Say whether the missing supply was wasted or expired.");
+      }
+      db.prepare(`
+        UPDATE inventory_stocktake_session_items
+        SET shortage_reason = ?, shortage_doctor_id = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(reason, line.id);
+      continue;
+    }
+    if (!(variance > 0)) continue;
     const coverage = loadPendingShipmentsByCatalogueId().get(Number(current.inventory_id));
-    if (coverage?.quantity > 0) {
-      const item = db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(current.inventory_id);
-      throw HttpError(409, pendingShipmentHoldMessage(item || { item_name: "This item" }, coverage));
+    if (coverage?.quantity > 0 && variance <= coverage.quantity) {
+      continue;
     }
     const nonExpiring = parseSurplusNonExpiring(line.surplus_is_non_expiring);
     const expiryRaw = String(line.surplus_expiry_date ?? "").trim();
@@ -2213,7 +2236,70 @@ function pendingShipmentHoldMessage(item, coverage) {
   const where = shipments.length === 1 && first
     ? `Receive Delivery #${first.shipment_id}`
     : `${shipments.length} Receive Delivery records`;
-  return `${item.item_name} still has ${coverage.quantity} on ${where} that is not in stock yet. Add it to stock, then recount. This extra is not a second delivery.`;
+  return `${item.item_name} is already on ${where}. This count adds that delivery. Stay on this count.`;
+}
+
+function splitStagingPending(row, take) {
+  const updated = db.prepare(`
+    UPDATE inventory_staging
+    SET quantity = quantity - ?
+    WHERE id = ? AND status = 'pending' AND quantity > ?
+  `).run(take, row.id, take);
+  if (!updated.changes) throw HttpError(409, "The waiting delivery changed. Reload this count.");
+  const inserted = db.prepare(`
+    INSERT INTO inventory_staging (
+      folder_id, item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+      attributes, moa_notes, expiry_date, status, created_by_user_id, shipment_id, is_non_expiring
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    row.folder_id,
+    row.item_name,
+    take,
+    row.minimum_quantity || 0,
+    row.unit || "unit",
+    row.cost_price || 0,
+    row.selling_price || 0,
+    row.attributes || "",
+    row.moa_notes || "",
+    row.expiry_date || null,
+    row.created_by_user_id || null,
+    row.shipment_id || null,
+    Number(row.is_non_expiring || 0),
+  );
+  return db.prepare("SELECT * FROM inventory_staging WHERE id = ?").get(Number(inserted.lastInsertRowid));
+}
+
+function releasePendingQuantityForItem(item, quantity, userId, actor) {
+  let remaining = Number(quantity || 0);
+  if (!remaining) return 0;
+  const rows = db.prepare(`
+    SELECT * FROM inventory_staging
+    WHERE status = 'pending' AND quantity > 0
+    ORDER BY id ASC
+  `).all().filter((row) => {
+    const catalogue = findOcsCatalogueItemByName(row.item_name);
+    return catalogue && Number(catalogue.id) === Number(item.id);
+  });
+  let released = 0;
+  const shipmentIds = new Set();
+  for (const row of rows) {
+    if (remaining <= 0) break;
+    const take = Math.min(remaining, Number(row.quantity || 0));
+    if (!take) continue;
+    const piece = take === Number(row.quantity) ? row : splitStagingPending(row, take);
+    releaseStagingRows({
+      rows: [piece],
+      userId,
+      shipmentId: piece.shipment_id,
+      actor,
+    });
+    if (piece.shipment_id) shipmentIds.add(Number(piece.shipment_id));
+    remaining -= take;
+    released += take;
+  }
+  for (const shipmentId of shipmentIds) closeShipmentIfIdle(shipmentId, userId);
+  if (remaining > 0) throw HttpError(409, "The waiting delivery changed. Reload this count.");
+  return released;
 }
 
 function countedLotRepeatingShipment(itemId, { supplierName, receivedDate, quantity }) {
@@ -2361,6 +2447,13 @@ function saveStocktakeCounts(sessionId, lines, userId) {
             surplus_unit_cost = NULL,
             surplus_supplier_name = '',
             surplus_received_date = NULL
+          WHERE id = ?
+        `).run(line.id);
+      }
+      if (physical >= baselineQty) {
+        db.prepare(`
+          UPDATE inventory_stocktake_session_items
+          SET shortage_reason = '', shortage_doctor_id = NULL
           WHERE id = ?
         `).run(line.id);
       }
@@ -2803,6 +2896,12 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         );
       }
       let allocations = [];
+      let movementQuantity = Math.abs(variance);
+      let movementPrevious = previous;
+      let actionType = "adjustment";
+      let valuationBasis = "stocktake";
+      let stockOutReason = "";
+      const shortageReason = String(line.shortage_reason || "");
       if (variance < 0) {
         const preview = previewAllocations(item.id, Math.abs(variance), { includeExpired: true });
         if (!preview.can_fulfil) {
@@ -2810,67 +2909,82 @@ function applyStocktakeSession(sessionId, userId, actor = {}) {
         }
         consumeAllocatedBatches(preview.allocations);
         allocations = preview.allocations;
+        if (shortageReason === "wasted" || shortageReason === "expired") {
+          actionType = "stock_out";
+          valuationBasis = "batch_allocation";
+          stockOutReason = shortageReason === "wasted" ? "Wasted" : "Expired";
+        }
       } else {
         const coverage = pendingByItem.get(Number(item.id));
-        if (coverage?.quantity > 0) {
-          throw HttpError(409, pendingShipmentHoldMessage(item, coverage));
+        const fromDelivery = Math.min(variance, Number(coverage?.quantity || 0));
+        if (fromDelivery > 0) {
+          releasePendingQuantityForItem(item, fromDelivery, userId, actor);
+          movementPrevious = Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(item.id).quantity);
         }
-        const surplus = surplusLotForApply(line, item);
-        const inserted = db.prepare(`
-          INSERT INTO inventory_batches (
-            item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status,
-            supplier_name, received_date
-          ) VALUES (?, ?, ?, ?, ?, 'usable', ?, ?)
-        `).run(
-          item.id,
-          variance,
-          surplus.is_non_expiring ? null : surplus.expiry_date,
-          surplus.unit_cost,
-          surplus.is_non_expiring,
-          surplus.supplier_name,
-          surplus.received_date,
-        );
-        allocations = [{
-          batch_id: Number(inserted.lastInsertRowid),
-          quantity: variance,
-          expiry_date: surplus.is_non_expiring ? null : surplus.expiry_date,
-          is_non_expiring: Boolean(surplus.is_non_expiring),
-          unit_cost: surplus.unit_cost,
-          supplier_name: surplus.supplier_name,
-          received_date: surplus.received_date,
-        }];
+        const remainder = variance - fromDelivery;
+        movementQuantity = remainder;
+        if (remainder > 0) {
+          const surplus = surplusLotForApply({ ...line, variance: remainder }, item);
+          const inserted = db.prepare(`
+            INSERT INTO inventory_batches (
+              item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status,
+              supplier_name, received_date
+            ) VALUES (?, ?, ?, ?, ?, 'usable', ?, ?)
+          `).run(
+            item.id,
+            remainder,
+            surplus.is_non_expiring ? null : surplus.expiry_date,
+            surplus.unit_cost,
+            surplus.is_non_expiring,
+            surplus.supplier_name,
+            surplus.received_date,
+          );
+          allocations = [{
+            batch_id: Number(inserted.lastInsertRowid),
+            quantity: remainder,
+            expiry_date: surplus.is_non_expiring ? null : surplus.expiry_date,
+            is_non_expiring: Boolean(surplus.is_non_expiring),
+            unit_cost: surplus.unit_cost,
+            supplier_name: surplus.supplier_name,
+            received_date: surplus.received_date,
+          }];
+        }
       }
       updateInventoryQuantity(item.id, next);
       assertBatchBalance(item.id);
-      const movementId = recordOpsMovement({
-        itemId: item.id,
-        movementType: variance > 0 ? "in" : "out",
-        quantity: Math.abs(variance),
-        previousQuantity: previous,
-        nextQuantity: next,
-        actionType: "adjustment",
-        note: line.reason || `Stock count session #${sessionId}`,
-        userId,
-        skipPublish: true,
-        unitCost: movementLotCost(allocations, item.cost_price),
-        valuationBasis: "stocktake",
-        meta: {
-          stocktake_session_id: sessionId,
-          transaction_id: transactionId,
-          previous_quantity: previous,
-          counted_quantity: next,
-          expected_row_version: line.expected_row_version,
-          expected_quantity: line.expected_quantity,
-          performed_by_user_id: userId,
-          performed_by_name: actor.displayName || "",
-          performed_by_role: actor.role || "",
-          reference_type: "stocktake_session",
-          reference_id: sessionId,
-          allocations,
-          valuation_basis: variance > 0 ? "stocktake_surplus" : "batch_allocation",
-        },
-      });
-      recordMovementAllocations(movementId, allocations);
+      if (movementQuantity > 0) {
+        const movementId = recordOpsMovement({
+          itemId: item.id,
+          movementType: variance > 0 ? "in" : "out",
+          quantity: movementQuantity,
+          previousQuantity: movementPrevious,
+          nextQuantity: next,
+          actionType,
+          note: line.reason || `Stock count session #${sessionId}`,
+          userId,
+          skipPublish: true,
+          unitCost: movementLotCost(allocations, item.cost_price),
+          valuationBasis,
+          meta: {
+            stocktake_session_id: sessionId,
+            transaction_id: transactionId,
+            previous_quantity: movementPrevious,
+            counted_quantity: next,
+            expected_row_version: line.expected_row_version,
+            expected_quantity: line.expected_quantity,
+            performed_by_user_id: userId,
+            performed_by_name: actor.displayName || "",
+            performed_by_role: actor.role || "",
+            reference_type: "stocktake_session",
+            reference_id: sessionId,
+            allocations,
+            stock_out_reason: stockOutReason || undefined,
+            shortage_reason: shortageReason || undefined,
+            valuation_basis: variance > 0 ? "stocktake_surplus" : (stockOutReason ? "batch_allocation" : "batch_allocation"),
+          },
+        });
+        recordMovementAllocations(movementId, allocations);
+      }
     }
     const watermark = Number(
       db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM inventory_movements").get()?.id || 0,
