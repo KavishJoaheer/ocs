@@ -234,7 +234,11 @@ export default function OperatorWorkQueuesPanel({
         }
       >
         <div className="mb-4 flex flex-wrap gap-2 pb-1">
-          {QUEUE_DEFS.map((queue) => {
+          {QUEUE_DEFS.filter((queue) => {
+            if (queue.kind === "history") return true;
+            const count = Number(counts[queue.key] || 0);
+            return count > 0 || (Boolean(urlQueue) && active === queue.id);
+          }).map((queue) => {
             const count = queue.kind === "history" ? Number(history.total || 0) : Number(counts[queue.key] || 0);
             return (
               <button
@@ -277,7 +281,11 @@ export default function OperatorWorkQueuesPanel({
           <p className="text-sm text-slate-500">Loading history…</p>
         ) : !rows.length ? (
           <p className="text-sm text-slate-500">
-            {active === "history" ? "No archived supply requests yet." : "Nothing waiting in this queue."}
+            {active === "history"
+              ? "No archived supply requests yet."
+              : Number(counts[active] || 0) > 0
+                ? "Nothing waiting in this queue."
+                : "Nothing is waiting."}
           </p>
         ) : active === "incoming_shipments" ? (
           <button

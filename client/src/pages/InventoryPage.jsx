@@ -2779,8 +2779,9 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
   const atp = Number(item.available_to_promise ?? item.available_to_use ?? 0);
-  const availableLook = atp > 0 && !expired && !quarantined && !low;
-  const qtyTone = atp <= 0 || low ? "text-rose-700" : "text-slate-900";
+  const out = isOutOfStock(item);
+  const problem = !isService && (low || out || expired || quarantined);
+  const qtyTone = problem ? "text-rose-700" : "text-slate-900";
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -2788,7 +2789,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
         <span
           className={cx(
             "mt-1.5 inline-block size-2.5 shrink-0 rounded-full",
-            availableLook ? "bg-teal-500" : "bg-rose-500",
+            problem ? "bg-rose-500" : atp > 0 && !isService ? "bg-teal-500" : "bg-slate-300",
           )}
           aria-hidden
         />
@@ -2911,6 +2912,7 @@ function MobileDoctorBagLayout({
         </div>
       ) : null}
 
+      <div className="relative min-w-0">
       <div className="ocs-h-scroll pb-0.5">
         <button
           type="button"
@@ -2930,6 +2932,8 @@ function MobileDoctorBagLayout({
           </button>
         ))}
         <span className="w-1 shrink-0" aria-hidden />
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-slate-50 to-transparent" aria-hidden="true" />
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -3433,9 +3437,23 @@ export default function InventoryPage() {
   }, [isDoctor, data, doctorRestockCandidates, searchParams, setSearchParams]);
 
   useEffect(() => {
-    const selected = inventoryTabListRef.current?.querySelector('[aria-selected="true"]');
-    selected?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
-  }, [logisticsTab]);
+    const scroller = inventoryTabListRef.current;
+    const selected = scroller?.querySelector('[aria-selected="true"]');
+    if (!scroller || !(selected instanceof HTMLElement)) return undefined;
+    function alignSelectedTab() {
+      const target = selected.offsetLeft - scroller.offsetLeft;
+      const max = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      const reveal = target - Math.max(0, (scroller.clientWidth - selected.offsetWidth) / 2);
+      scroller.scrollLeft = Math.min(max, Math.max(0, reveal));
+    }
+    alignSelectedTab();
+    const frame = window.requestAnimationFrame(alignSelectedTab);
+    const timer = window.setTimeout(alignSelectedTab, 50);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [logisticsTab, pendingStagingCount, Boolean(data)]);
 
   useEffect(() => {
     const scroller = inventoryTabListRef.current;
@@ -3454,7 +3472,7 @@ export default function InventoryPage() {
       scroller.removeEventListener("scroll", updateOverflow);
       window.removeEventListener("resize", updateOverflow);
     };
-  }, [logisticsTab, canManageOcs]);
+  }, [logisticsTab, canManageOcs, Boolean(data)]);
 
   const unpricedProductKeys = useMemo(
     () => data?.tab_summaries?.bags?.unpriced_product_keys || [],
@@ -4526,6 +4544,32 @@ export default function InventoryPage() {
     }
   }
 
+  function renderMenuSummaries(className) {
+    if (!canUseAdminInventory || logisticsTab === "queues") return null;
+    return (
+      <div className={className}>
+        <InventoryTabSummaries
+          tab={logisticsTab}
+          summaries={data?.tab_summaries}
+          chaseCounts={chaseCounts}
+          warehouseValue={summary.total_amount_rs || 0}
+          filters={{ low: showLowStockOnly, out: showOutOfStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }}
+          onFilter={applyChaseFilter}
+          onOpenIncoming={() => setLogisticsTab("shipments")}
+          onOpenApproval={(status) => {
+            setLogisticsTab("count");
+            setStocktakeStatusFilter(status);
+          }}
+          onOpenUnpriced={() => {
+            applyUnpricedFilter();
+            setUnpricedFromBags(true);
+          }}
+          onOpenReconciliation={() => applyChaseFilter("reconciliation")}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
       {user?.role === "doctor" && <PendingInventorySync userId={user.id} />}
@@ -4579,7 +4623,21 @@ export default function InventoryPage() {
       <PageHeader
         className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
-        title={isDoctor ? (doctorViewIsOcs ? "OCS depot" : "My bag") : staffLocationHeading}
+        title={
+          isDoctor
+            ? doctorViewIsOcs
+              ? "OCS depot"
+              : "My bag"
+            : logisticsTab === "shipments"
+              ? "Receive a delivery"
+              : logisticsTab === "count"
+                ? "Stock count"
+                : logisticsTab === "bags"
+                  ? "Doctor bags"
+                  : logisticsTab === "queues"
+                    ? "Tasks"
+                    : staffLocationHeading
+        }
         actions={
           isDoctor ? (
             emergencyRestockEnabled ? (
@@ -4684,31 +4742,12 @@ export default function InventoryPage() {
         }
       />
 
-      {canUseAdminInventory && logisticsTab !== "queues" ? (
-        <InventoryTabSummaries
-          tab={logisticsTab}
-          summaries={data?.tab_summaries}
-          chaseCounts={chaseCounts}
-          warehouseValue={summary.total_amount_rs || 0}
-          filters={{ low: showLowStockOnly, out: showOutOfStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }}
-          onFilter={applyChaseFilter}
-          onOpenIncoming={() => setLogisticsTab("shipments")}
-          onOpenApproval={(status) => {
-            setLogisticsTab("count");
-            setStocktakeStatusFilter(status);
-          }}
-          onOpenUnpriced={() => {
-            applyUnpricedFilter();
-            setUnpricedFromBags(true);
-          }}
-          onOpenReconciliation={() => applyChaseFilter("reconciliation")}
-        />
-      ) : isDoctor ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
+      {renderMenuSummaries("hidden lg:block") || (isDoctor ? (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           <SummaryCard
             title="My bag at or below par"
             value={doctorMetrics.at_or_below_par}
-            tone="rose"
+            tone={Number(doctorMetrics.at_or_below_par) > 0 ? "rose" : "teal"}
             hint="Click to filter my bag"
             active={doctorViewIsMy && showLowStockOnly}
             onClick={() => applyDoctorBagFilter("low")}
@@ -4716,7 +4755,7 @@ export default function InventoryPage() {
           <SummaryCard
             title="My bag out of stock"
             value={doctorMetrics.out_of_stock}
-            tone="rose"
+            tone={Number(doctorMetrics.out_of_stock) > 0 ? "rose" : "teal"}
             hint="Click to filter my bag"
             active={doctorViewIsMy && showOutOfStockOnly}
             onClick={() => applyDoctorBagFilter("out")}
@@ -4731,7 +4770,7 @@ export default function InventoryPage() {
           <SummaryCard
             title="My bag near expiry"
             value={doctorMetrics.near_expiry}
-            tone="amber"
+            tone={Number(doctorMetrics.near_expiry) > 0 ? "amber" : "teal"}
             hint="Within 90 days"
             active={doctorViewIsMy && showNearExpiryOnly}
             onClick={() => applyDoctorBagFilter("near")}
@@ -4739,7 +4778,7 @@ export default function InventoryPage() {
           <SummaryCard
             title="My bag expired"
             value={doctorMetrics.expired}
-            tone="rose"
+            tone={Number(doctorMetrics.expired) > 0 ? "rose" : "teal"}
             hint="Unusable until written off"
             active={doctorViewIsMy && showExpiredOnly}
             onClick={() => applyDoctorBagFilter("expired")}
@@ -4751,15 +4790,15 @@ export default function InventoryPage() {
             onClick={() => navigate("/supply-requests")}
           />
         </div>
-      ) : null}
+      ) : null)}
 
       {canManageOcs ? (
-        <div className="relative min-w-0 overflow-hidden">
+        <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
           <div
             ref={inventoryTabListRef}
             role="tablist"
             aria-label="Inventory sections"
-            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
           {[
             ...(isOperator ? [{ id: "queues", label: "Tasks", shortLabel: "Tasks" }] : []),
@@ -4846,6 +4885,7 @@ export default function InventoryPage() {
       {canManageOcs && logisticsTab === "shipments" ? (
         <>
           <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
+          {renderMenuSummaries("lg:hidden")}
           <InventoryStagingQueue
             rows={data?.staging}
             shipments={data?.shipments}
@@ -4864,6 +4904,7 @@ export default function InventoryPage() {
           sessions={data?.stocktake_sessions || []}
           requestedStatus={stocktakeStatusFilter}
           requestedSessionId={searchParams.get("session") || ""}
+          afterStart={renderMenuSummaries("lg:hidden")}
           onApplied={() => load(undefined, undefined, { silent: true })}
         />
       ) : null}
@@ -4935,7 +4976,7 @@ export default function InventoryPage() {
               <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 sm:block">/</kbd>
             </label>
           </div>
-          <div className="flex items-center gap-2 lg:hidden">
+          <div className={cx("flex items-center gap-2", stickyInventoryActions ? "lg:hidden" : "md:hidden")}>
             <label className="min-w-0 flex-1">
               <span className="sr-only">Stock category</span>
               <select
@@ -4967,8 +5008,8 @@ export default function InventoryPage() {
               {showLowStockOnly || showOutOfStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? " · Active" : ""}
             </button>
           </div>
-          <div className={cx("flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : "hidden lg:flex")}>
-            <label className="hidden min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 lg:flex">
+          <div className={cx("flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : stickyInventoryActions ? "hidden lg:flex" : "hidden md:flex")}>
+            <label className={cx("hidden min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3", stickyInventoryActions ? "lg:flex" : "md:flex")}>
               <span className="text-xs font-semibold text-slate-500">Category</span>
               <select
                 aria-label="Stock category"
@@ -5089,13 +5130,15 @@ export default function InventoryPage() {
           </div>
         </div>
 
+        {renderMenuSummaries("mb-3 lg:hidden")}
+
         {listRefreshing ? (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
             Updating items…
           </div>
         ) : pagedItems.length ? (
           <>
-            <div className="hidden min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 bg-white lg:block">
+            <div className={cx("hidden min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 bg-white", stickyInventoryActions ? "lg:block" : "md:block")}>
               <div className={cx("min-w-0 overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
                 <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
@@ -5148,7 +5191,7 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && quantities.atp <= 0 ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : ATP_HELP_TEXT}>
+                              <strong className={cx("text-base tabular-nums", !isService && (isLow || isOut || itemHasExpiredStock(item)) ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : ATP_HELP_TEXT}>
                                 {isService ? "—" : quantities.atp}
                               </strong>
                               {!isService && quantities.onHand > quantities.atp ? (
@@ -5253,7 +5296,7 @@ export default function InventoryPage() {
               </div>
             </div>
 
-            <div className="mt-2 flex w-full flex-col gap-3.5 bg-slate-50 px-1 py-3 lg:hidden">
+            <div className={cx("mt-2 flex w-full flex-col gap-3.5 bg-slate-50 px-1 py-3", stickyInventoryActions ? "lg:hidden" : "md:hidden")}>
               {pagedItems.map((item) => (
                 <MobileInventoryStockCard
                   key={`m-${item.id}`}
@@ -5332,6 +5375,7 @@ export default function InventoryPage() {
               className="w-full min-w-0 shrink-0 overflow-x-auto sm:w-auto"
             />
           </div>
+          {renderMenuSummaries("lg:hidden")}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SectionCard
             title="Bag movement"

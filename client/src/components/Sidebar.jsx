@@ -238,6 +238,7 @@ function Sidebar() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const drawerRef = useRef(null);
+  const tabletNavRef = useRef(null);
   const locationKey = `${location.pathname}${location.search}`;
   const [lastLocationKey, setLastLocationKey] = useState(locationKey);
 
@@ -307,6 +308,20 @@ function Sidebar() {
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
+
+  useEffect(() => {
+    const nav = tabletNavRef.current;
+    const active = nav?.querySelector("a[aria-current='page']");
+    if (!nav || !(active instanceof HTMLElement)) return undefined;
+    function align() {
+      const target = active.offsetLeft - nav.offsetLeft;
+      const max = Math.max(0, nav.scrollWidth - nav.clientWidth);
+      nav.scrollLeft = Math.min(max, Math.max(0, target - 12));
+    }
+    align();
+    const timer = window.setTimeout(align, 50);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, user?.role]);
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
@@ -482,11 +497,8 @@ function Sidebar() {
           </div>
         </div>
 
-        <div className="min-w-0 overflow-x-hidden">
-          <nav
-            className="flex gap-3 overflow-x-auto pb-2"
-            style={{ paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
-          >
+        <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
+          <nav ref={tabletNavRef} className="flex w-full min-w-0 gap-3 overflow-x-auto pb-2">
           {persistentNavItems.map((item) => (
             <SidebarLink
               key={item.to}
@@ -496,6 +508,7 @@ function Sidebar() {
             />
           ))}
         </nav>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent" aria-hidden="true" />
         </div>
       </div>
 

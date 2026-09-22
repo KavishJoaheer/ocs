@@ -79,7 +79,7 @@ function StockAttentionButton({ label, compactLabel, accessibleLabel, value, ton
       aria-label={`${accessibleLabel || label}: ${value}`}
       aria-pressed={active}
       onClick={onClick}
-      className={`flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-semibold leading-tight transition hover:border-ocs-teal/50 sm:px-3 ${toneClass}`}
+      className={`flex min-h-11 min-w-0 shrink-0 items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left text-xs font-semibold leading-tight transition hover:border-ocs-teal/50 sm:px-3 lg:shrink lg:min-w-0 ${toneClass}`}
     >
       <span className="min-w-0 sm:hidden">{compactLabel || label}</span>
       <span className="hidden min-w-0 sm:inline">{label}</span>
@@ -134,7 +134,7 @@ export default function InventoryTabSummaries({
           <Card
             title="Awaiting approval"
             value={data.awaiting_approval || 0}
-            tone="amber"
+            tone={Number(data.awaiting_approval || 0) > 0 ? "amber" : "teal"}
             onClick={() => onOpenApproval?.("submitted")}
           />
           <Card
@@ -164,7 +164,7 @@ export default function InventoryTabSummaries({
         <Card
           title="Unpriced products"
           value={data.unpriced_catalogue_items ?? data.unpriced_items ?? 0}
-          tone="amber"
+          tone={Number(data.unpriced_catalogue_items ?? data.unpriced_items ?? 0) > 0 ? "amber" : "teal"}
           hint={
             Number(data.unpriced_bag_item_instances || 0) > 0
               ? `${Number(data.unpriced_bag_item_instances).toLocaleString()} bag-item record${Number(data.unpriced_bag_item_instances) === 1 ? "" : "s"} across ${Number(data.affected_doctor_bags || 0)} bag${Number(data.affected_doctor_bags || 0) === 1 ? "" : "s"}`
@@ -198,12 +198,12 @@ export default function InventoryTabSummaries({
           <p className="mt-0.5 text-sm font-semibold text-slate-950 sm:text-base">{valueDisplay.value}</p>
           {valueDisplay.hint ? <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-slate-400">{valueDisplay.hint}</p> : null}
         </div>
-        <div className={`grid w-full min-w-0 gap-1.5 sm:gap-2 ${chaseColumns}`}>
-          <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone="rose" active={filters?.low} onClick={() => onFilter?.("low")} />
-          <StockAttentionButton label="Out of stock" compactLabel="Out" value={out} tone="rose" active={filters?.out} onClick={() => onFilter?.("out")} />
-          <StockAttentionButton label="Needs expiry" compactLabel="Expiry" accessibleLabel="Needs expiry" value={missing} tone="amber" active={filters?.missing} onClick={() => onFilter?.("missing")} />
-          <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone="amber" active={filters?.near} onClick={() => onFilter?.("near")} />
-          <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone="rose" active={filters?.expired} onClick={() => onFilter?.("expired")} />
+        <div className={`flex w-full min-w-0 gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:overflow-visible lg:pb-0 ${chaseColumns}`}>
+          <StockAttentionButton label="Low stock" compactLabel="Low" value={low} tone={Number(low) > 0 ? "rose" : "slate"} active={filters?.low} onClick={() => onFilter?.("low")} />
+          <StockAttentionButton label="Out of stock" compactLabel="Out" value={out} tone={Number(out) > 0 ? "rose" : "slate"} active={filters?.out} onClick={() => onFilter?.("out")} />
+          <StockAttentionButton label="Needs expiry" compactLabel="Expiry" accessibleLabel="Needs expiry" value={missing} tone={Number(missing) > 0 ? "amber" : "slate"} active={filters?.missing} onClick={() => onFilter?.("missing")} />
+          <StockAttentionButton label="Near expiry" compactLabel="Near" value={near} tone={Number(near) > 0 ? "amber" : "slate"} active={filters?.near} onClick={() => onFilter?.("near")} />
+          <StockAttentionButton label="Expired" compactLabel="Expired" value={expired} tone={Number(expired) > 0 ? "rose" : "slate"} active={filters?.expired} onClick={() => onFilter?.("expired")} />
           {reconciliation > 0 ? (
             <StockAttentionButton
               label="Reconciliation"

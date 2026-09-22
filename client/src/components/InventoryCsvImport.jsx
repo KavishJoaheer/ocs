@@ -229,7 +229,7 @@ function InventoryCsvImport({ onImported }) {
           setDragActive(false);
           readFile(event.dataTransfer.files?.[0]);
         }}
-        className={`mt-3 flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed px-4 py-5 text-center ${
+        className={`mt-3 flex min-h-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed px-4 py-3 text-center sm:min-h-28 sm:py-5 ${
           dragActive ? "border-[#2d8f98] bg-[#ecf8f7] text-[#2d8f98]" : "border-slate-200 text-slate-700"
         }`}
       >

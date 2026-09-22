@@ -224,7 +224,7 @@ function countStatusLabel(status) {
   }[status] || status;
 }
 
-function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApplied, sessions = [], requestedStatus = "", requestedSessionId = "" }) {
+function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApplied, sessions = [], requestedStatus = "", requestedSessionId = "", afterStart = null }) {
   const { user } = useAuth();
   const canCount = canCountStocktake(user);
   const canReview = canReviewStocktake(user);
@@ -871,7 +871,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
       </div>
       <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
         <p>Scope: <strong>{selectedFolderName}</strong></p>
-        <p>Items in scope: <strong>{scopePreview?.item_count ?? scopedItems.length}</strong></p>
+        <p>Items in scope: <strong>{scopeChosen ? (scopePreview ? scopePreview.item_count : "…") : "Choose a location"}</strong></p>
         <p>Counter / assignee: <strong>{user?.full_name || user?.username || "You"}</strong></p>
         {scope === "all" ? (
           <p className="mt-2 font-semibold text-amber-800">
@@ -885,6 +885,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
           <p className="mt-2 text-slate-500">Choose a warehouse folder, all folders, or a doctor bag before starting.</p>
         ) : null}
       </div>
+      {afterStart}
       {!canCount ? (
         <p className="mb-4 text-sm text-slate-600">
           Operators start and submit a stock count. Administrators compare this count with the last recorded count before approving.

@@ -9,7 +9,6 @@ import {
   getPushPermissionRecoveryInstructions,
   getPushPermissionState,
   isPushBannerDismissed,
-  isPushRecoverySeen,
   isPushSupported,
   markPushRecoverySeen,
   subscribeToPushNotifications,
@@ -20,7 +19,7 @@ function PushNotificationBanner({ role, className = "" }) {
   const [isDenied, setIsDenied] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
-  const [compactRecovery, setCompactRecovery] = useState(false);
+  const [compactRecovery, setCompactRecovery] = useState(true);
   const copy = getPushBannerCopy(role);
   const recovery = getPushPermissionRecoveryInstructions();
 
@@ -44,11 +43,6 @@ function PushNotificationBanner({ role, className = "" }) {
       if (!cancelled) {
         const denied = permission === "denied";
         setIsDenied(denied);
-        if (denied) {
-          const recoverySeen = isPushRecoverySeen();
-          setCompactRecovery(recoverySeen);
-          if (!recoverySeen) markPushRecoverySeen();
-        }
         setVisible(
           denied ||
             (configured && permission === "default" && !isPushBannerDismissed()),
