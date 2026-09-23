@@ -1,5 +1,6 @@
 const { financialAction, stockFinancials, movementBusinessDateSql, movementRows } = require("../lib/inventoryFinancials");
 const { operationFor } = require("../lib/operationReceipts");
+const { randomUUID } = require("node:crypto");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
@@ -1684,6 +1685,11 @@ function omitItemLots(items) {
 function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
   ensureInfrastructure();
   const role = req.auth.role;
+  const requestedView = String(req.query.view || "full").trim().toLowerCase();
+  const workspaceView = ["stock", "shipments", "count", "bags", "queues"].includes(requestedView)
+    ? requestedView
+    : "full";
+  const includeStockRows = !isWarehouseManager(role) || ["full", "stock", "count"].includes(workspaceView);
   const doctorId = role === "doctor" ? Number(req.auth.doctor_id || 0) : null;
   const folders = getFolders();
   const ocsStock = getItems({ stockScope: "ocs" });
@@ -1717,16 +1723,16 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
     locationMeta.location_heading = "My bag";
   }
   const warehouseManager = isWarehouseManager(role);
-  const requestedView = String(req.query.view || "full").trim().toLowerCase();
-  const workspaceView = ["stock", "shipments", "count", "bags", "queues"].includes(requestedView)
-    ? requestedView
-    : "full";
   const includeShipments = workspaceView === "full" || workspaceView === "shipments";
   const includeStocktakes = workspaceView === "full" || workspaceView === "count";
   const includeBagReporting = workspaceView === "full" || workspaceView === "bags";
   const includeActivity = workspaceView === "full" || workspaceView === "stock" || workspaceView === "bags";
   const doctors = warehouseManager ? getDoctors() : [];
-  const shipments = warehouseManager && includeShipments ? listShipments() : [];
+  const shipments = warehouseManager && includeShipments
+    ? workspaceView === "shipments"
+      ? listShipments({ historyLimit: 6, lightweightHistory: true })
+      : listShipments()
+    : [];
   const stocktakeSessions = warehouseManager && includeStocktakes ? listStocktakeSessions() : [];
   const compareRows = warehouseManager && includeBagReporting ? getCompareRows(activityDateFrom, activityDateTo) : [];
   const shipmentStats = warehouseManager ? shipmentQueueStatsFromDatabase() : null;
@@ -1741,9 +1747,9 @@ function getPayload(req, selectedDoctorId = null, doctorContext = "my") {
 
   return {
     folders,
-    ocs_stock: omitItemLots(ocsStock),
+    ocs_stock: includeStockRows ? omitItemLots(ocsStock) : [],
     my_stock: omitItemLots(myStock),
-    selected_doctor_stock: omitItemLots(selectedDoctorStock),
+    selected_doctor_stock: includeStockRows ? omitItemLots(selectedDoctorStock) : [],
     doctors,
     summary: stripFinancialSummaryFields(rawSummary, role),
     tab_summaries: warehouseManager
@@ -2646,6 +2652,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
   }
 
   if (actionType === "stock_in") {
+    if (!item.folder_id) return res.status(409).json({ error: "Assign this item to a warehouse folder before receiving stock." });
     const standardCost = roundCurrency(item.cost_price);
     const costPrice = roundCurrency(req.body.cost_price ?? item.cost_price);
     const costVarianceReason = String(req.body.cost_variance_reason || "").trim();
@@ -2675,66 +2682,60 @@ router.post("/items/:id/ocs-actions", (req, res) => {
     } catch (error) {
       return res.status(error.status || 400).json({ error: error.message });
     }
-    db.transaction(() => {
-    const batchId = createBatch(itemId, quantity, expiry.expiryDate, costPrice, {
-      isNonExpiring: expiry.isNonExpiring,
-      supplierName,
-      receivedDate,
-    });
-      db.prepare(`
-        UPDATE inventory
-        SET quantity = quantity + ?, cost_price = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(quantity, costPrice, itemId);
-      const live = getInventoryRow(itemId);
-      const nextQuantity = Number(live?.quantity || 0);
-      const previousQuantity = nextQuantity - quantity;
-      const movementId = recordMovement({
-        itemId,
-        movementType: "in",
-        quantity,
-        previousQuantity,
-        nextQuantity,
-        actionType: "stock_in",
-        note: override.override
-          ? `Operational override receive: ${override.reason}`
-          : "Stock In batch added",
-        userId: req.auth.id,
-        metaJson: JSON.stringify({
-          performed_by_user_id: req.auth.id,
-          performed_by_role: req.auth.role,
-          performed_by_name: req.auth.full_name || req.auth.username || "",
-          operational_override: Boolean(override.override),
-          override_reason: override.reason || "",
-          is_non_expiring: expiry.isNonExpiring,
-          expiry_date: expiry.expiryDate,
-          catalogue_unit_cost: standardCost,
-          actual_batch_unit_cost: costPrice,
-          cost_variance_reason: costVarianceReason,
-          supplier_name: supplierName,
-          received_date: receivedDate,
-        }),
-      });
-      recordMovementAllocations(movementId, [{
-        batch_id: batchId,
-        quantity,
-        expiry_date: expiry.expiryDate,
-        is_non_expiring: expiry.isNonExpiring,
-        unit_cost: costPrice,
-      }]);
-      recordAudit({
-        actionType: override.override ? "operational_override_stock_in" : "stock_in",
-        itemId,
-        itemName: item.item_name,
-        quantity,
-        reason: override.reason || "",
-        performedByUserId: req.auth.id,
-        performedByRole: req.auth.role,
-        performedByName: req.auth.full_name || req.auth.username || "",
-      });
-    })();
-
-    return res.status(201).json(getPayload(req));
+    const operationId = String(req.body.operation_id || req.get("Idempotency-Key") || randomUUID()).trim();
+    const deliveryNote = String(req.body.delivery_note || "").trim() || `QUICK-${operationId}`;
+    if (deliveryNote.length < 2) return res.status(400).json({ error: "Enter a delivery-note reference." });
+    const existingDelivery = db.prepare(`
+      SELECT id FROM inventory_shipments
+      WHERE lower(trim(supplier)) = lower(trim(?)) AND lower(trim(delivery_note)) = lower(trim(?))
+      LIMIT 1
+    `).get(supplierName, deliveryNote);
+    if (existingDelivery) {
+      return res.status(409).json({ error: `This supplier delivery note is already recorded as Receive Delivery #${existingDelivery.id}.` });
+    }
+    try {
+      const receipt = db.transaction(() => {
+        const shipmentId = createShipmentFromImport({
+          supplier: supplierName,
+          deliveryNote,
+          receivedDate,
+          operationId,
+          userId: req.auth.id,
+          rows: [{}],
+          skipped: 0,
+        });
+        db.prepare(`
+          INSERT INTO inventory_staging (
+            folder_id, item_name, quantity, minimum_quantity, unit, cost_price, selling_price,
+            attributes, moa_notes, expiry_date, status, created_by_user_id, shipment_id, is_non_expiring
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        `).run(
+          item.folder_id, item.item_name, quantity, item.minimum_quantity || 0, item.unit || "unit",
+          costPrice, item.selling_price || 0, item.attributes || "", item.moa_notes || "",
+          expiry.expiryDate, req.auth.id, shipmentId, expiry.isNonExpiring ? 1 : 0,
+        );
+        const released = bulkReleaseShipment({
+          shipmentId,
+          userId: req.auth.id,
+          actor: { displayName: req.auth.full_name || req.auth.username || "", role: req.auth.role },
+        });
+        recordAudit({
+          actionType: override.override ? "operational_override_stock_in" : "stock_in",
+          itemId,
+          itemName: item.item_name,
+          quantity,
+          reason: override.reason || costVarianceReason,
+          performedByUserId: req.auth.id,
+          performedByRole: req.auth.role,
+          performedByName: req.auth.full_name || req.auth.username || "",
+          metaJson: JSON.stringify({ shipment_id: shipmentId, delivery_note: deliveryNote, cost_variance_reason: costVarianceReason }),
+        });
+        return { shipmentId, receipt: released.receipt };
+      })();
+      return res.status(201).json({ ...getPayload(req), shipment_id: receipt.shipmentId, receipt: receipt.receipt });
+    } catch (error) {
+      return res.status(error.status || 400).json({ error: error.message || "Unable to receive stock." });
+    }
   }
 
   let writeOff;

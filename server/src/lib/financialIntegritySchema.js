@@ -1055,6 +1055,18 @@ function ensureFinancialIntegritySchema(db) {
         SELECT RAISE(ABORT, 'Billing amounts must be non-negative currency values with no more than two decimal places');
       END;
     `);
+    // Existing live databases may already contain case-only duplicates. Do not
+    // fail startup or rewrite financial history; the API blocks new duplicates
+    // while those historical references are reviewed.
+    const duplicateInvoiceReference = db.prepare(`
+      SELECT 1 FROM finance_supplier_invoices
+      GROUP BY lower(trim(supplier_name)), lower(trim(invoice_number))
+      HAVING COUNT(*) > 1 LIMIT 1
+    `).get();
+    if (!duplicateInvoiceReference) {
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_invoice_reference_normalized
+        ON finance_supplier_invoices(lower(trim(supplier_name)), lower(trim(invoice_number)))`);
+    }
     if (process.env.NODE_ENV !== "test") {
       db.prepare(`
         INSERT INTO billing_system_settings (id, cutover_date, reset_reason)

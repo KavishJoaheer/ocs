@@ -2185,9 +2185,9 @@ test("new human movements return the acting user name, not Staff or System", asy
   const payload = await api("GET", "/api/inventory", { token: adminToken });
   assert.equal(payload.status, 200);
   const movement = (payload.data.movements || []).find(
-    (row) => Number(row.item_id) === itemId && row.action_type === "stock_in",
+    (row) => Number(row.item_id) === itemId && row.action_type === "add",
   );
-  assert.ok(movement, "stock_in movement should be listed");
+  assert.ok(movement, "receipt movement should be listed");
   assert.equal(movement.actor_name, operatorName);
   assert.notEqual(movement.actor_name, "Staff");
   assert.notEqual(movement.actor_name, "System");
@@ -2527,6 +2527,31 @@ test("one-item receive stores supplier and delivery date", async () => {
   `).get(itemId);
   assert.equal(batch.supplier_name, "MedSupply Ltd");
   assert.equal(String(batch.received_date || "").slice(0, 10), "2026-01-10");
+});
+
+test("one-item Receive creates a released delivery and replays without doubling stock", async () => {
+  const itemId = insertOcsItem({ name: `Quick receipt ${randomUUID()}`, qty: 2 });
+  const body = {
+    action_type: "stock_in", quantity: 3, expiry_date: "2029-06-01",
+    supplier_name: "Quick Medical", received_date: getTodayLocal(),
+    delivery_note: `QR-${randomUUID()}`, operation_id: randomUUID(),
+  };
+  const first = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, { token: operatorToken, body });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const shipmentId = Number(first.data.shipment_id);
+  assert.ok(shipmentId);
+  const receiptLine = db.prepare(`
+    SELECT status, released_inventory_id, released_batch_id FROM inventory_staging WHERE shipment_id=?
+  `).get(shipmentId);
+  assert.equal(receiptLine.status, "released");
+  assert.equal(Number(receiptLine.released_inventory_id), itemId);
+  assert.ok(Number(receiptLine.released_batch_id) > 0);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id=?").get(itemId).quantity, 5);
+  const replay = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, { token: operatorToken, body });
+  assert.equal(replay.status, 201, JSON.stringify(replay.data));
+  assert.equal(Number(replay.data.shipment_id), shipmentId);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id=?").get(itemId).quantity, 5);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM inventory_shipments WHERE id=?").get(shipmentId).n, 1);
 });
 
 test("blind stocktake hides expected quantities from operators until submission", async () => {

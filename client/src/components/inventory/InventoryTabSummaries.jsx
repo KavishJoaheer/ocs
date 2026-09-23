@@ -216,12 +216,12 @@ export default function InventoryTabSummaries({
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-2 sm:p-3 md:p-4">
       <div className="flex flex-col gap-3">
-        <div className="hidden min-w-0 sm:block">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <div className="min-w-0 px-2 pt-1 sm:px-0 sm:pt-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {stock.value_title || (isBag ? "Bag value" : "Stock value")}
           </p>
-          <p className="mt-0.5 text-sm font-semibold text-slate-950 sm:text-base">{valueDisplay.value}</p>
-          {valueDisplay.hint ? <p className="mt-0.5 max-w-xl text-[11px] leading-snug text-slate-400">{valueDisplay.hint}</p> : null}
+          <p className="mt-0.5 text-lg font-semibold text-slate-950">{valueDisplay.value}</p>
+          {valueDisplay.hint ? <p className="mt-0.5 max-w-xl text-xs leading-snug text-slate-600">{valueDisplay.hint}</p> : null}
         </div>
         <div className="relative min-w-0">
           <div ref={chaseRef} className={`flex w-full min-w-0 gap-1.5 overflow-x-auto pb-0.5 lg:grid lg:overflow-visible lg:pb-0 ${chaseColumns}`}>

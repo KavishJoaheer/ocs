@@ -48,13 +48,24 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
     [shipments],
   );
   const [openId, setOpenId] = useState(requestedShipmentId || null);
+  const [deliverySearch, setDeliverySearch] = useState("");
   const [selected, setSelected] = useState({});
   const [excludeReason, setExcludeReason] = useState({});
   const [overrideReason, setOverrideReason] = useState("");
   const [confirmMode, setConfirmMode] = useState(null);
   const [releasing, setReleasing] = useState(false);
 
-  const openShipment = grouped.find((row) => String(row.id) === String(openId)) || grouped[0] || null;
+  const matchingDeliveries = useMemo(() => {
+    const query = deliverySearch.trim().toLowerCase();
+    if (!query) return grouped;
+    return grouped.filter((shipment) => [
+      shipment.supplier, shipment.delivery_note, shipment.id,
+      ...(shipment.lines || []).map((line) => line.item_name),
+    ].some((value) => String(value || "").toLowerCase().includes(query)));
+  }, [grouped, deliverySearch]);
+  const readyDeliveries = matchingDeliveries.filter((shipment) => (shipment.lines || []).some((line) => line.status === "pending" && !(line.validation_errors || []).length));
+  const needsReviewDeliveries = matchingDeliveries.filter((shipment) => !readyDeliveries.includes(shipment));
+  const openShipment = matchingDeliveries.find((row) => String(row.id) === String(openId)) || matchingDeliveries[0] || null;
   const shipmentKey = String(openShipment?.id || "");
   const [syncedShipmentKey, setSyncedShipmentKey] = useState(shipmentKey);
 
@@ -179,22 +190,41 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
       {grouped.length ? (
         <div className="space-y-4">
           {grouped.length > 1 ? (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {grouped.map((shipment) => (
-                <button
-                  key={shipment.id}
-                  type="button"
-                  aria-current={String(openShipment?.id) === String(shipment.id) ? "true" : undefined}
-                  onClick={() => setOpenId(shipment.id)}
-                  className={`min-h-11 shrink-0 rounded-full px-3 text-xs font-semibold ${
-                    String(openShipment?.id) === String(shipment.id)
-                      ? "bg-[#2d8f98] text-white"
-                      : "border border-slate-200 text-slate-600"
-                  }`}
-                >
-                  {shipment.supplier || shipment.delivery_note || `Delivery #${shipment.id}`}
-                </button>
-              ))}
+            <div className="space-y-3">
+              <label className="block space-y-1">
+                <span className="text-sm font-semibold text-slate-700">Find a delivery</span>
+                <input
+                  type="search"
+                  value={deliverySearch}
+                  onChange={(event) => setDeliverySearch(event.target.value)}
+                  placeholder="Search supplier, reference or item"
+                  className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-[#2d8f98]"
+                />
+              </label>
+              {[['Ready to add', readyDeliveries], ['Needs review', needsReviewDeliveries]].map(([heading, deliveries]) => deliveries.length ? (
+                <div key={heading} className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{heading} · {deliveries.length}</p>
+                  <div className="max-h-64 space-y-1.5 overflow-y-auto">
+                    {deliveries.map((shipment) => (
+                      <button
+                        key={shipment.id}
+                        type="button"
+                        aria-current={String(openShipment?.id) === String(shipment.id) ? "true" : undefined}
+                        onClick={() => setOpenId(shipment.id)}
+                        className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-left text-sm ${
+                          String(openShipment?.id) === String(shipment.id)
+                            ? "border-[#2d8f98] bg-[#eef8f8] text-slate-950"
+                            : "border-slate-200 bg-white text-slate-700"
+                        }`}
+                      >
+                        <span className="min-w-0 truncate font-semibold">{shipment.supplier || `Delivery #${shipment.id}`}</span>
+                        <span className="shrink-0 text-xs text-slate-500">{shipment.delivery_note || `#${shipment.id}`}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null)}
+              {!matchingDeliveries.length ? <p className="text-sm text-slate-600">No delivery matches that search.</p> : null}
             </div>
           ) : null}
 

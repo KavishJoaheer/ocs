@@ -718,6 +718,15 @@ router.post("/supplier-invoices", upload.single("document"), (req, res) => {
     }
     const who = actor(req);
     const id = db.transaction(() => {
+      const existingReference = db.prepare(`
+        SELECT id FROM finance_supplier_invoices
+        WHERE lower(trim(supplier_name)) = lower(trim(?))
+          AND lower(trim(invoice_number)) = lower(trim(?))
+        LIMIT 1
+      `).get(supplier, invoiceNumber);
+      if (existingReference) {
+        throw Object.assign(new Error(`Supplier invoice ${invoiceNumber} is already recorded as #${existingReference.id}.`), { status: 409 });
+      }
       const result = db.prepare(`INSERT INTO finance_supplier_invoices (
         supplier_name,invoice_number,invoice_date,due_date,delivery_note,shipment_id,other_amount,
         document_stored_name,document_original_name,document_mime_type,document_size,

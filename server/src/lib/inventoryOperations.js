@@ -955,11 +955,13 @@ function decorateShipment(row) {
   };
 }
 
-function listShipments({ incomingOnly = false } = {}) {
+function listShipments({ incomingOnly = false, historyLimit = 100, lightweightHistory = false } = {}) {
+  const safeHistoryLimit = Math.max(0, Math.min(100, Number(historyLimit) || 0));
   const rows = db
     .prepare(
       `
-      SELECT s.*, u.full_name AS imported_by_name, r.full_name AS released_by_name
+      SELECT s.*, u.full_name AS imported_by_name, r.full_name AS released_by_name,
+        EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=s.id AND st.status='pending') AS has_pending
       FROM inventory_shipments s
       LEFT JOIN users u ON u.id = s.imported_by_user_id
       LEFT JOIN users r ON r.id = s.released_by_user_id
@@ -967,14 +969,19 @@ function listShipments({ incomingOnly = false } = {}) {
          OR s.id IN (
            SELECT recent.id FROM inventory_shipments recent
            WHERE NOT EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=recent.id AND st.status='pending')
-           ORDER BY recent.imported_at DESC, recent.id DESC LIMIT 100
+           ORDER BY recent.imported_at DESC, recent.id DESC LIMIT ${safeHistoryLimit}
          )
       ORDER BY CASE WHEN EXISTS (SELECT 1 FROM inventory_staging st WHERE st.shipment_id=s.id AND st.status='pending')
                     THEN 0 ELSE 1 END, s.imported_at DESC, s.id DESC
     `,
     )
     .all()
-    .map(decorateShipment);
+    .map((row) => {
+      if (lightweightHistory && !row.has_pending) {
+        return { ...row, lines: [], in_incoming_queue: false };
+      }
+      return decorateShipment(row);
+    });
   if (incomingOnly) {
     return rows.filter((row) => row.in_incoming_queue);
   }

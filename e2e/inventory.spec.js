@@ -1320,6 +1320,66 @@ test.describe("Inventory workflow", () => {
     expect(validate?.width || 0).toBeGreaterThan(200);
   });
 
+  test("operator quick Receive saves a linked delivery in one flow", async ({ page, request }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token, operatorToken: operator.token,
+      name: `E2E Quick Receive ${Date.now()}`, quantity: 0,
+    });
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    await page.getByLabel("Search stock items").fill(item.item_name);
+    await expect(page.getByText(item.item_name).filter({ visible: true }).first()).toBeVisible();
+    await page.getByRole("button", { name: "Receive stock" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Supplier", { exact: true }).fill("E2E Quick Supplier");
+    await dialog.getByLabel(/Delivery note or reference/i).fill(`E2E-QUICK-${Date.now()}`);
+    await dialog.getByLabel("Quantity to receive").fill("2");
+    await dialog.getByLabel("Batch expiry date").fill("2029-06-01");
+    await dialog.getByRole("button", { name: "Review receive" }).click();
+    await dialog.getByRole("button", { name: "Receive", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const db = openE2eDb();
+    const receipt = db.prepare(`
+      SELECT st.released_batch_id, s.id AS shipment_id
+      FROM inventory_staging st JOIN inventory_shipments s ON s.id=st.shipment_id
+      WHERE st.released_inventory_id=? AND st.status='released'
+      ORDER BY st.id DESC LIMIT 1
+    `).get(item.id);
+    db.close();
+    expect(Number(receipt?.shipment_id || 0)).toBeGreaterThan(0);
+    expect(Number(receipt?.released_batch_id || 0)).toBeGreaterThan(0);
+  });
+
+  test("phone delivery list filters pending work by supplier", async ({ page, request }) => {
+    const operator = await login(request, "operator01");
+    const db = openE2eDb();
+    const folderId = db.prepare("SELECT id FROM inventory_folders ORDER BY id LIMIT 1").get().id;
+    for (const supplier of ["E2E Alpha Delivery", "E2E Beta Delivery"]) {
+      const id = Number(db.prepare(`
+        INSERT INTO inventory_shipments (supplier,delivery_note,status,total_rows,valid_rows)
+        VALUES (?,?,'pending',1,1)
+      `).run(supplier, `SEARCH-${supplier}-${Date.now()}`).lastInsertRowid);
+      db.prepare(`
+        INSERT INTO inventory_staging (folder_id,item_name,quantity,cost_price,expiry_date,status,shipment_id)
+        VALUES (?,'Search test item',1,5,'2029-06-01','pending',?)
+      `).run(folderId, id);
+    }
+    db.close();
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.getByRole("combobox", { name: "Inventory section" }).selectOption("shipments");
+    const search = page.getByRole("searchbox", { name: "Find a delivery" });
+    await expect(search).toBeVisible();
+    await search.fill("Alpha Delivery");
+    await expect(page.getByRole("button", { name: /E2E Alpha Delivery/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /E2E Beta Delivery/ })).toHaveCount(0);
+  });
+
   test("last inventory control scrolls above bottom navigation", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     await injectStaffSession(page, operator.token);

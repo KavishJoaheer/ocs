@@ -30,6 +30,7 @@ import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import AddStockModal from "../components/inventory/AddStockModal.jsx";
+import { operationIdForIntent } from "../lib/inventoryOperationIntent.js";
 import BatchOpeningDataModal from "../components/inventory/BatchOpeningDataModal.jsx";
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
@@ -1585,9 +1586,10 @@ function InventoryMobileActionTray({ primary, menuItems = [], moreLabel = "More 
           aria-label={primary.title}
           disabled={primary.disabled}
           onClick={primary.onClick}
-          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700 transition-colors hover:bg-teal-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xl bg-teal-50 px-3 text-teal-700 transition-colors hover:bg-teal-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {primary.icon || <Plus className="h-4 w-4" strokeWidth={2.5} />}
+          {primary.label ? <span className="text-xs font-semibold">{primary.label}</span> : null}
         </button>
       ) : null}
       <div className="relative shrink-0" ref={menuRef}>
@@ -1698,6 +1700,14 @@ function InventoryOcsMasterActions({
   );
   const menuItems = [];
   if (isOperator) {
+    if (onRestockDoctor && onStockIn) {
+      menuItems.push({
+        key: "transfer",
+        label: "Transfer to doctor bag",
+        icon: <Truck className="size-3.5" />,
+        onClick: () => onRestockDoctor(item),
+      });
+    }
     if (onEdit && onRestockDoctor) {
       menuItems.push({
         key: "edit",
@@ -1765,18 +1775,28 @@ function InventoryOcsMasterActions({
   const primary = isAdmin
     ? {
         title: "Edit catalogue item",
+        label: "Edit",
         icon: <Pencil className="h-4 w-4" strokeWidth={2.5} />,
         onClick: () => onEdit(item),
       }
+    : onStockIn
+      ? {
+          title: "Receive stock",
+          label: "Receive",
+          icon: <Plus className="h-4 w-4" strokeWidth={2.5} />,
+          onClick: () => onStockIn(item),
+        }
     : onRestockDoctor
       ? {
           title: "Transfer to doctor bag",
+          label: "Transfer",
           icon: <Truck className="h-4 w-4" strokeWidth={2.5} />,
           onClick: () => onRestockDoctor(item),
         }
       : onEdit
         ? {
             title: "Edit catalogue item",
+            label: "Edit",
             icon: <Pencil className="h-4 w-4" strokeWidth={2.5} />,
             onClick: () => onEdit(item),
           }
@@ -1797,7 +1817,7 @@ function InventoryOcsMasterActions({
       {primary ? (
       <button type="button" title={primary.title} aria-label={primary.title} className={primaryBtn} onClick={primary.onClick}>
         {primary.icon}
-        <span>{isAdmin || !onRestockDoctor ? "Edit" : "Transfer"}</span>
+        <span>{primary.label}</span>
       </button>
       ) : null}
       <div className="relative shrink-0" ref={menuRef}>
@@ -3031,6 +3051,10 @@ export default function InventoryPage() {
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [addStock, setAddStock] = useState(null);
   const [removeStock, setRemoveStock] = useState(null);
+  const receiveIntentRef = useRef(null);
+  const writeOffIntentRef = useRef(null);
+  useEffect(() => { receiveIntentRef.current = null; }, [addStock]);
+  useEffect(() => { writeOffIntentRef.current = null; }, [removeStock]);
   const [stockOut, setStockOut] = useState(null);
   const [mobileDeductItem, setMobileDeductItem] = useState(null);
   const [assignedPatientsList, setAssignedPatientsList] = useState([]);
@@ -4022,28 +4046,32 @@ export default function InventoryPage() {
       return;
     }
 
+    const body = withOperationalOverride(
+      user,
+      {
+        action_type: "stock_in",
+        quantity,
+        expiry_date: payload.expiry_date || "",
+        is_non_expiring: Boolean(payload.is_non_expiring),
+        cost_price: Number(payload.cost_price || 0),
+        cost_variance_reason: payload.cost_variance_reason || "",
+        supplier_name: payload.supplier_name || "",
+        delivery_note: payload.delivery_note || "",
+        received_date: payload.received_date || "",
+      },
+      payload.override_reason,
+    );
+    body.operation_id = operationIdForIntent(receiveIntentRef, { itemId: addStock.item.id, body });
     setIsSaving(true);
     try {
       const next = await api.post(
         `/inventory/items/${addStock.item.id}/ocs-actions${inventoryListQuery}`,
-        withOperationalOverride(
-          user,
-          {
-            action_type: "stock_in",
-            quantity,
-            expiry_date: payload.expiry_date || "",
-            is_non_expiring: Boolean(payload.is_non_expiring),
-            cost_price: Number(payload.cost_price || 0),
-            cost_variance_reason: payload.cost_variance_reason || "",
-            supplier_name: payload.supplier_name || "",
-            received_date: payload.received_date || "",
-          },
-          payload.override_reason,
-        ),
+        body,
       );
+      receiveIntentRef.current = null;
       commitInventoryData(next);
       setAddStock(null);
-      toast.success("Stock received.");
+      toast.success(`Stock received. Delivery #${next.shipment_id} needs a supplier invoice.`);
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -4062,23 +4090,26 @@ export default function InventoryPage() {
       ? `/inventory/items/${item.id}/bag-actions`
       : `/inventory/items/${item.id}/ocs-actions`;
 
+    const body = withOperationalOverride(
+      user,
+      {
+        action_type: "remove",
+        quantity,
+        reason: payload.reason,
+        note: payload.note || "",
+        batch_id: payload.batch_id || null,
+        confirm: true,
+      },
+      payload.override_reason,
+    );
+    body.operation_id = operationIdForIntent(writeOffIntentRef, { itemId: item.id, body });
     setIsSaving(true);
     try {
       await api.post(
         `${endpoint}${inventoryListQuery}`,
-        withOperationalOverride(
-          user,
-          {
-            action_type: "remove",
-            quantity,
-            reason: payload.reason,
-            note: payload.note || "",
-            batch_id: payload.batch_id || null,
-            confirm: true,
-          },
-          payload.override_reason,
-        ),
+        body,
       );
+      writeOffIntentRef.current = null;
       setRemoveStock(null);
       await load(selectedContextDoctorId, doctorContext, { silent: true });
       toast.success(isDoctorBag ? "Doctor bag stock written off." : "Stock written off.");

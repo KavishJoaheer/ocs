@@ -547,6 +547,59 @@ test('supplier invoices cannot claim unrelated, partial, or already approved rec
   assert.deepEqual(receipt.data.shipment.lines, []);
 });
 
+test('supplier invoice references are unique regardless of supplier or number capitalization', async () => {
+  const supplier = `Case Supplier ${randomUUID()}`;
+  const firstStock = item(`Case first ${randomUUID()}`, 2, 'ocs');
+  const secondStock = item(`Case second ${randomUUID()}`, 3, 'ocs');
+  const firstShipment = receivedStock(firstStock, supplier, 2);
+  const secondShipment = receivedStock(secondStock, supplier, 3);
+  const number = `CASE-${randomUUID()}`;
+  const first = await api('POST', '/finance/supplier-invoices', 'accountant', {
+    supplier_name: supplier, invoice_number: number, invoice_date: today,
+    delivery_note: 'First receipt', shipment_id: firstShipment, operation_id: randomUUID(),
+    lines: [{ inventory_item_id: firstStock.id, batch_id: firstStock.batchId, description: 'First stock', quantity: 2, unit_cost: 10 }],
+  });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const duplicate = await api('POST', '/finance/supplier-invoices', 'accountant', {
+    supplier_name: supplier.toLowerCase(), invoice_number: number.toLowerCase(), invoice_date: today,
+    delivery_note: 'Second receipt', shipment_id: secondShipment, operation_id: randomUUID(),
+    lines: [{ inventory_item_id: secondStock.id, batch_id: secondStock.batchId, description: 'Second stock', quantity: 3, unit_cost: 10 }],
+  });
+  assert.equal(duplicate.status, 409, JSON.stringify(duplicate.data));
+});
+
+test('quick Receive is visible in finance follow-up and can be invoiced from its released batch', async () => {
+  const stock = item(`Quick finance ${randomUUID()}`, 2, 'ocs');
+  const supplier = `Quick supplier ${randomUUID()}`;
+  const received = await api('POST', `/inventory/items/${stock.id}/ocs-actions`, 'operator', {
+    action_type: 'stock_in', quantity: 3, expiry_date: '2031-12-31',
+    supplier_name: supplier, received_date: today,
+    delivery_note: `QUICK-DN-${randomUUID()}`, operation_id: randomUUID(),
+  });
+  assert.equal(received.status, 201, JSON.stringify(received.data));
+  const shipmentId = Number(received.data.shipment_id);
+  const batchId = Number(db.prepare(`
+    SELECT released_batch_id FROM inventory_staging WHERE shipment_id=? AND status='released'
+  `).get(shipmentId)?.released_batch_id);
+  assert.ok(batchId);
+  const before = await api('GET', '/billing/reconciliation', 'accountant');
+  assert.equal(before.status, 200);
+  assert.ok(before.data.stock_readiness.deliveries_without_invoice.some((row) => Number(row.id) === shipmentId));
+  const invoice = await api('POST', '/finance/supplier-invoices', 'accountant', {
+    supplier_name: supplier, invoice_number: `QUICK-INV-${randomUUID()}`, invoice_date: today,
+    delivery_note: 'Quick receipt invoice', shipment_id: shipmentId, operation_id: randomUUID(),
+    lines: [{ inventory_item_id: stock.id, batch_id: batchId, description: 'Quick received stock', quantity: 3, unit_cost: 10 }],
+  });
+  assert.equal(invoice.status, 201, JSON.stringify(invoice.data));
+  const approved = await api('POST', `/finance/supplier-invoices/${invoice.data.id}/decision`, 'admin', {
+    action: 'approved', note: 'Matched to quick receipt.', operation_id: randomUUID(),
+  });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  const after = await api('GET', '/billing/reconciliation', 'accountant');
+  assert.equal(after.status, 200);
+  assert.equal(after.data.stock_readiness.deliveries_without_invoice.some((row) => Number(row.id) === shipmentId), false);
+});
+
 test('a delivery follow-up stays open until every released line has an approved invoice', async () => {
   const supplier = 'Two Line Supplier';
   const firstStock = item(`First received ${randomUUID()}`, 3, 'ocs');
