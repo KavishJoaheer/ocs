@@ -1262,3 +1262,103 @@ test("enema and staple-removal services deduct the chosen bag supply", async () 
   assert.equal(bagItem("Cannula (Pink)").quantity, 3);
   assert.equal(bagItem("Cannula (Blue)").quantity, 5);
 });
+
+test("bladder procedures move to services and catheterisation or NGT takes the chosen tube", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const stockId = Number(db.prepare(`
+    SELECT id FROM inventory
+    WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = 'Bladder Training'
+  `).get(doctorId).id);
+  db.prepare(`
+    UPDATE inventory
+    SET item_kind = 'stock', folder_id = ?, quantity = 3, selling_price = 0, cost_price = 10
+    WHERE id = ?
+  `).run(consumableId, stockId);
+  db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(stockId);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+    VALUES (?, 3, '2032-12-31', 10, 0, 'usable')
+  `).run(stockId);
+
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '17:10', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const nextConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Catheter service test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+
+  const bladder = catalog.data.items.find((item) => item.item_name === "Bladder Training");
+  const washout = catalog.data.items.find((item) => item.item_name === "Bladder wash out + N/S");
+  const removal = catalog.data.items.find((item) => item.item_name === "Removal of catheter");
+  const catheterisation = catalog.data.items.find((item) => item.item_name === "Catherisation");
+  const ngt = catalog.data.items.find((item) => item.item_name === "NGT insertion");
+  for (const service of [bladder, washout, removal, catheterisation, ngt]) {
+    assert.ok(service);
+    assert.equal(service.is_service_charge, true);
+    assert.equal(service.category, "Services");
+    assert.equal(service.selling_price, 0);
+  }
+  assert.equal(catheterisation.requires_catheter, true);
+  assert.equal(catheterisation.included_label, "1 Foley catheter");
+  assert.equal(ngt.requires_ngt, true);
+  assert.equal(ngt.included_label, "1 NGT");
+  const moved = db.prepare("SELECT item_kind, quantity FROM inventory WHERE id = ?").get(stockId);
+  assert.equal(moved.item_kind, "service");
+  assert.equal(Number(moved.quantity), 0);
+  assert.equal(Number(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE item_id = ?").get(stockId).quantity_remaining), 0);
+
+  function addBagItem(name, quantity) {
+    const id = Number(db.prepare(`
+      INSERT INTO inventory (
+        item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+        unit, cost_price, selling_price, updated_at
+      ) VALUES (?, 'stock', ?, 'doctor', ?, ?, 0, 'unit', 12, 0, CURRENT_TIMESTAMP)
+    `).run(name, consumableId, doctorId, quantity).lastInsertRowid);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', 12, 0, 'usable')
+    `).run(id, quantity);
+  }
+  addBagItem("2 Way Foley Catheter (Ch/Fr 16)", 4);
+  addBagItem("2 Way Foley Catheter (Ch/Fr 18)", 2);
+  addBagItem("NGT (14fg x105cm)", 3);
+  db.prepare("UPDATE inventory SET selling_price = 1200 WHERE id = ?").run(catheterisation.id);
+  db.prepare("UPDATE inventory SET selling_price = 900 WHERE id = ?").run(ngt.id);
+
+  const missing = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("CATH"),
+    items: [{ inventory_item_id: catheterisation.id, quantity: 1, unit_price: 1200 }],
+  });
+  assert.equal(missing.status, 400, JSON.stringify(missing.data));
+  assert.equal(missing.data.code, "TREATMENT_CATHETER_REQUIRED");
+
+  const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("CATH-OK"),
+    items: [
+      { inventory_item_id: catheterisation.id, quantity: 1, unit_price: 1200, catheter_size: "16" },
+      { inventory_item_id: ngt.id, quantity: 1, unit_price: 900, ngt_size: "14" },
+    ],
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  const lines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(billed.data.submission.bill_id).items);
+  assert.equal(lines.some((line) => line.description === "Catherisation" && line.catheter_size === "16"), true);
+  assert.equal(lines.some((line) => line.description === "2 Way Foley Catheter (Ch/Fr 16)"), false);
+  function bagQuantity(name) {
+    return Number(db.prepare(`
+      SELECT quantity FROM inventory
+      WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = ?
+    `).get(doctorId, name).quantity);
+  }
+  assert.equal(bagQuantity("2 Way Foley Catheter (Ch/Fr 16)"), 3);
+  assert.equal(bagQuantity("2 Way Foley Catheter (Ch/Fr 18)"), 2);
+  assert.equal(bagQuantity("NGT (14fg x105cm)"), 2);
+});

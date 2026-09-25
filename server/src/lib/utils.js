@@ -118,6 +118,12 @@ function normalizeBillingItems(items) {
         ...(String(item?.cannula_size || "").trim()
           ? { cannula_size: String(item.cannula_size).trim().toLowerCase() }
           : {}),
+        ...(String(item?.catheter_size || "").trim()
+          ? { catheter_size: String(item.catheter_size).trim() }
+          : {}),
+        ...(String(item?.ngt_size || "").trim()
+          ? { ngt_size: String(item.ngt_size).trim() }
+          : {}),
         ...(isValidCurrencyAmount(item?.catalog_unit_price)
           ? {catalog_unit_price:Number(item.catalog_unit_price)}
           : {}),

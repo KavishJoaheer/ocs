@@ -20,6 +20,20 @@ const CANNULAS = Object.freeze({
   yellow: "Cannula (Yellow)",
 });
 
+const CATHETERS = Object.freeze({
+  "14": "2 Way Foley Catheter (Ch/Fr 14)",
+  "16": "2 Way Foley Catheter (Ch/Fr 16)",
+  "18": "2 Way Foley Catheter (Ch/Fr 18)",
+  "20": "2 Way Foley Catheter (Ch/Fr 20)",
+  "22": "2 Way Foley Catheter (Ch/Fr 22)",
+});
+
+const NG_TUBES = Object.freeze({
+  "14": "NGT (14fg x105cm)",
+  "16": "NGT (16fg x105cm)",
+  "18": "NGT (18fg x105cm)",
+});
+
 const SUPPLIES = Object.freeze([
   { itemName: "Dulopro nebule", unit: "nebule" },
   { itemName: "Pulmicort nebule", unit: "nebule" },
@@ -128,6 +142,26 @@ const SERVICES = Object.freeze([
     sellingPrice: 800,
     components: [],
   },
+  {
+    itemName: "Bladder wash out + N/S",
+    components: [],
+  },
+  {
+    itemName: "Removal of catheter",
+    components: [],
+  },
+  {
+    itemName: "Bladder Training",
+    components: [],
+  },
+  {
+    itemName: "Catherisation",
+    components: [{ role: "catheter", quantity: 1 }],
+  },
+  {
+    itemName: "NGT insertion",
+    components: [{ role: "ngt", quantity: 1 }],
+  },
 ]);
 
 const supplyNames = new Set(SUPPLIES.map((item) => item.itemName.toLowerCase()));
@@ -153,6 +187,14 @@ function serviceRequiresCannula(service) {
   return Boolean(service?.components?.some((component) => component.role === "cannula"));
 }
 
+function serviceRequiresCatheter(service) {
+  return Boolean(service?.components?.some((component) => component.role === "catheter"));
+}
+
+function serviceRequiresNgt(service) {
+  return Boolean(service?.components?.some((component) => component.role === "ngt"));
+}
+
 function includedLabel(service) {
   if (!service) return "";
   const parts = service.components.map((component) => {
@@ -162,7 +204,11 @@ function includedLabel(service) {
         ? "atomic enema"
         : component.role === "cannula"
           ? "cannula"
-          : component.itemName;
+          : component.role === "catheter"
+            ? "Foley catheter"
+            : component.role === "ngt"
+              ? "NGT"
+              : component.itemName;
     return `${component.quantity} ${name}`;
   });
   if (parts.length <= 1) return parts[0] || "";
@@ -170,7 +216,7 @@ function includedLabel(service) {
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
-function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, cannulaSize) {
+function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, cannulaSize, catheterSize, ngtSize) {
   const service = treatmentServiceByName(serviceName);
   if (!service) return null;
   const copies = Number(quantity || 0);
@@ -200,6 +246,20 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
     error.extra = { code: "TREATMENT_CANNULA_REQUIRED", service_name: service.itemName };
     throw error;
   }
+  const catheter = String(catheterSize || "").trim();
+  if (serviceRequiresCatheter(service) && !CATHETERS[catheter]) {
+    const error = new Error(`Choose a Foley catheter for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_CATHETER_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
+  const ngt = String(ngtSize || "").trim();
+  if (serviceRequiresNgt(service) && !NG_TUBES[ngt]) {
+    const error = new Error(`Choose an NGT for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_NGT_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
   return service.components.map((component) => ({
     itemName: component.role === "mask"
       ? MASKS[mask]
@@ -207,7 +267,11 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
         ? ENEMAS[enema]
         : component.role === "cannula"
           ? CANNULAS[cannula]
-          : component.itemName,
+          : component.role === "catheter"
+            ? CATHETERS[catheter]
+            : component.role === "ngt"
+              ? NG_TUBES[ngt]
+              : component.itemName,
     quantity: component.quantity * copies,
   }));
 }
@@ -286,7 +350,10 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           ELSE selling_price
         END,
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+    WHERE archived_at IS NULL
+      AND stock_scope = ?
+      AND COALESCE(owner_doctor_id, 0) = ?
+      AND lower(trim(item_name)) = lower(trim(?))
   `);
 
   const ensured = db.transaction(() => {
@@ -325,7 +392,26 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           );
           inserted += 1;
         } else {
-          placeService.run(serviceFolder, price, price, existing.id);
+          placeService.run(
+            serviceFolder,
+            price,
+            price,
+            location.scope,
+            location.ownerDoctorId || 0,
+            service.itemName,
+          );
+          db.prepare(`
+            UPDATE inventory_batches
+            SET quantity_remaining = 0
+            WHERE quantity_remaining != 0
+              AND item_id IN (
+                SELECT id FROM inventory
+                WHERE archived_at IS NULL
+                  AND stock_scope = ?
+                  AND COALESCE(owner_doctor_id, 0) = ?
+                  AND lower(trim(item_name)) = lower(trim(?))
+              )
+          `).run(location.scope, location.ownerDoctorId || 0, service.itemName);
         }
       }
     }
@@ -345,7 +431,9 @@ module.exports = {
   isTreatmentSupplyName,
   resolveTreatmentComponents,
   serviceRequiresCannula,
+  serviceRequiresCatheter,
   serviceRequiresEnema,
+  serviceRequiresNgt,
   serviceRequiresMask,
   treatmentServiceByName,
 };

@@ -168,6 +168,8 @@ function BillingLitePage() {
   const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [enemaSizeByItem, setEnemaSizeByItem] = useState({});
   const [cannulaSizeByItem, setCannulaSizeByItem] = useState({});
+  const [catheterSizeByItem, setCatheterSizeByItem] = useState({});
+  const [ngtSizeByItem, setNgtSizeByItem] = useState({});
   const [category, setCategory] = useState("All supplies");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [showUnavailable, setShowUnavailable] = useState(false);
@@ -508,6 +510,12 @@ function BillingLitePage() {
       if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
         return `Choose a cannula for ${item.item_name}.`;
       }
+      if (item.requires_catheter && !["14", "16", "18", "20", "22"].includes(catheterSizeByItem[item.id])) {
+        return `Choose a Foley catheter for ${item.item_name}.`;
+      }
+      if (item.requires_ngt && !["14", "16", "18"].includes(ngtSizeByItem[item.id])) {
+        return `Choose an NGT for ${item.item_name}.`;
+      }
     }
     return "";
   }
@@ -755,6 +763,44 @@ function BillingLitePage() {
             </select>
           </label>
         ) : null}
+        {item.requires_catheter ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Foley catheter</span>
+            <select
+              value={catheterSizeByItem[item.id] || ""}
+              onChange={(event) => setCatheterSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose Foley catheter</option>
+              <option value="14">Foley Catheter (Ch/Fr 14)</option>
+              <option value="16">Foley Catheter (Ch/Fr 16)</option>
+              <option value="18">Foley Catheter (Ch/Fr 18)</option>
+              <option value="20">Foley Catheter (Ch/Fr 20)</option>
+              <option value="22">Foley Catheter (Ch/Fr 22)</option>
+            </select>
+          </label>
+        ) : null}
+        {item.requires_ngt ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">NGT</span>
+            <select
+              value={ngtSizeByItem[item.id] || ""}
+              onChange={(event) => setNgtSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose NGT</option>
+              <option value="14">NGT (14fg x105cm)</option>
+              <option value="16">NGT (16fg x105cm)</option>
+              <option value="18">NGT (18fg x105cm)</option>
+            </select>
+          </label>
+        ) : null}
       </>
     );
   }
@@ -864,6 +910,8 @@ function BillingLitePage() {
         mask_size: item.requires_mask ? maskSizeByItem[item.id] : undefined,
         enema_size: item.requires_enema ? enemaSizeByItem[item.id] : undefined,
         cannula_size: item.requires_cannula ? cannulaSizeByItem[item.id] : undefined,
+        catheter_size: item.requires_catheter ? catheterSizeByItem[item.id] : undefined,
+        ngt_size: item.requires_ngt ? ngtSizeByItem[item.id] : undefined,
       })),
     };
     try {
