@@ -695,11 +695,6 @@ function BillingLitePage() {
       toast.error("Select the consultation doctor first.");
       return;
     }
-    const priceError = validatePriceAdjustments();
-    if (priceError) {
-      toast.error(priceError);
-      return;
-    }
     setView("review");
   }
 
@@ -1499,6 +1494,9 @@ function BillingLitePage() {
                                       ? "Out of stock"
                                       : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
+                          {item.requires_mask || item.requires_enema || item.requires_cannula ? (
+                            <p className="mt-1 text-xs font-bold text-[#17666a]">Choose which one on review</p>
+                          ) : null}
                         </div>
                         {quantity > 0 ? (
                           <div className="flex shrink-0 items-center rounded-xl bg-[#e6f7f4] p-1">
