@@ -28,6 +28,16 @@ const CATEGORY_RULES = [
   { itemName: "NGT (16fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "NGT (18fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "Urine bag", folderName: "Catherisation & NGT" },
+  {
+    itemName: "Atomic enema (Adult)",
+    aliases: ["Atomic Enema 20ml box of 2", "Atomic enema 20ml box of 2"],
+    folderName: "Consumable",
+  },
+  {
+    itemName: "Atomic enema (Paediatric)",
+    aliases: ["Atomic enema 10ml box of 2", "Atomic Enema 10ml box of 2"],
+    folderName: "Consumable",
+  },
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [

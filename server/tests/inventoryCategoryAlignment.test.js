@@ -309,3 +309,33 @@ test("alignment writes off leftover retired SKUs then archives them", () => {
   assert.equal(retry.blocked, 0);
   assert.equal(retry.written_off, 0);
 });
+
+test("adult and paediatric atomic enemas keep the counted quantity of the old sizes", () => {
+  assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === "Atomic enema (Adult)"), true);
+  assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === "Atomic enema (Paediatric)"), true);
+  assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === "Staple remover"), true);
+  const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const adultId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+      unit, cost_price, selling_price, updated_at
+    ) VALUES ('Atomic Enema 20ml box of 2', ?, 'ocs', NULL, 6, 0, 'enema', 40, 0, CURRENT_TIMESTAMP)
+  `).run(consumableId).lastInsertRowid);
+  const paediatricId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+      unit, cost_price, selling_price, updated_at
+    ) VALUES ('Atomic enema 10ml box of 2', ?, 'ocs', NULL, 4, 0, 'enema', 30, 0, CURRENT_TIMESTAMP)
+  `).run(consumableId).lastInsertRowid);
+
+  const aligned = alignInventoryCategories();
+  assert.ok(aligned.renamed >= 2);
+  const adult = db.prepare("SELECT item_name, quantity, cost_price FROM inventory WHERE id = ?").get(adultId);
+  const paediatric = db.prepare("SELECT item_name, quantity, cost_price FROM inventory WHERE id = ?").get(paediatricId);
+  assert.equal(adult.item_name, "Atomic enema (Adult)");
+  assert.equal(Number(adult.quantity), 6);
+  assert.equal(Number(adult.cost_price), 40);
+  assert.equal(paediatric.item_name, "Atomic enema (Paediatric)");
+  assert.equal(Number(paediatric.quantity), 4);
+  assert.equal(Number(paediatric.cost_price), 30);
+});

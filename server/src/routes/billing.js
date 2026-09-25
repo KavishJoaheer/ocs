@@ -42,6 +42,7 @@ const {
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  serviceRequiresEnema,
   serviceRequiresMask,
   treatmentServiceByName,
 } = require("../lib/treatmentSupplies");
@@ -872,7 +873,7 @@ function consumeDoctorBatches(itemId, quantity) {
 }
 
 function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
-  const components = resolveTreatmentComponents(line.description, line.mask_size, line.quantity);
+  const components = resolveTreatmentComponents(line.description, line.mask_size, line.quantity, line.enema_size);
   if (!components?.length) return { movementIds: [], touchedItemIds: [] };
   const movementIds = [];
   const touchedItemIds = [];
@@ -952,6 +953,7 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
         treatment_component: true,
         treatment_name: line.description,
         mask_size: line.mask_size || null,
+        enema_size: line.enema_size || null,
         performed_by_user_id: actor?.id || userId || null,
         performed_by_role: actor?.role || "",
         performed_by_name: actor?.full_name || actor?.username || "",
@@ -2249,6 +2251,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       item_kind: String(item.item_kind || "stock"),
       is_service_charge: isService,
       requires_mask: serviceRequiresMask(recipe),
+      requires_enema: serviceRequiresEnema(recipe),
       included_label: includedLabel(recipe),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),
@@ -2769,6 +2772,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const reviewedUnitPrices = new Map();
   const reviewedPriceReasons = new Map();
   const maskSizes = new Map();
+  const enemaSizes = new Map();
   for (const item of rawItems) {
     const itemId = Number(item?.inventory_item_id || 0);
     const quantity = Number(item?.quantity || 0);
@@ -2796,6 +2800,13 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         return res.status(400).json({ error: "A treatment cannot use two different face masks." });
       }
       maskSizes.set(itemId, maskSize);
+    }
+    const enemaSize = String(item?.enema_size || "").trim().toLowerCase();
+    if (enemaSize) {
+      if (enemaSizes.has(itemId) && enemaSizes.get(itemId) !== enemaSize) {
+        return res.status(400).json({ error: "A treatment cannot use two different atomic enemas." });
+      }
+      enemaSizes.set(itemId, enemaSize);
     }
     mergedQuantities.set(itemId, (mergedQuantities.get(itemId) || 0) + quantity);
   }
@@ -3033,6 +3044,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
                   is_service_charge: true,
                   service_catalog_item_id: itemId,
                   mask_size: maskSizes.get(itemId) || "",
+                  enema_size: enemaSizes.get(itemId) || "",
                 }
               : {}),
             ...(priceWasAdjusted

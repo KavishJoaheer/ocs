@@ -1118,3 +1118,87 @@ test("a billed nebulizer takes the chosen mask and nebule from the bag without c
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 5);
 });
+
+test("enema and staple-removal services deduct the chosen bag supply", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '16:40', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const nextConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Procedure supply test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  const prEnema = catalog.data.items.find((item) => item.item_name === "PR + Atomic enema");
+  const manualEnema = catalog.data.items.find((item) => item.item_name === "Manual Evac + Atomic enema");
+  const stapleService = catalog.data.items.find((item) => item.item_name === "Removal of sutures or staples removing + Dressing");
+  assert.ok(prEnema);
+  assert.equal(prEnema.requires_enema, true);
+  assert.equal(prEnema.included_label, "1 atomic enema");
+  assert.equal(prEnema.selling_price, 1000);
+  assert.ok(manualEnema);
+  assert.equal(manualEnema.requires_enema, true);
+  assert.equal(manualEnema.selling_price, 2000);
+  assert.ok(stapleService);
+  assert.equal(stapleService.requires_enema, false);
+  assert.equal(stapleService.included_label, "1 Staple remover");
+  assert.equal(stapleService.selling_price, 1500);
+  for (const name of ["Atomic enema (Adult)", "Atomic enema (Paediatric)", "Staple remover"]) {
+    assert.equal(catalog.data.items.some((item) => item.item_name === name), false, name);
+  }
+
+  function bagItem(name) {
+    return db.prepare(`
+      SELECT id, quantity
+      FROM inventory
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id = ?
+        AND lower(trim(item_name)) = lower(trim(?))
+    `).get(doctorId, name);
+  }
+  function stock(name, quantity) {
+    const row = bagItem(name);
+    assert.ok(row, name);
+    db.prepare("UPDATE inventory SET quantity = ?, cost_price = 12, selling_price = 0 WHERE id = ?").run(quantity, row.id);
+    db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', 12, 0, 'usable')
+    `).run(row.id, quantity);
+    return row.id;
+  }
+  stock("Atomic enema (Adult)", 3);
+  stock("Atomic enema (Paediatric)", 2);
+  stock("Staple remover", 4);
+
+  const missingSize = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("PR-ENEMA"),
+    items: [{ inventory_item_id: prEnema.id, quantity: 1, unit_price: 1000 }],
+  });
+  assert.equal(missingSize.status, 400, JSON.stringify(missingSize.data));
+  assert.equal(missingSize.data.code, "TREATMENT_ENEMA_REQUIRED");
+  assert.equal(bagItem("Atomic enema (Adult)").quantity, 3);
+
+  const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("PR-ENEMA-OK"),
+    items: [
+      { inventory_item_id: prEnema.id, quantity: 1, unit_price: 1000, enema_size: "adult" },
+      { inventory_item_id: stapleService.id, quantity: 1, unit_price: 1500 },
+    ],
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  const lines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(billed.data.submission.bill_id).items);
+  assert.equal(lines.some((line) => line.description === "PR + Atomic enema" && line.enema_size === "adult"), true);
+  assert.equal(lines.some((line) => line.description === "Atomic enema (Adult)"), false);
+  assert.equal(lines.some((line) => line.description === "Staple remover"), false);
+  assert.equal(bagItem("Atomic enema (Adult)").quantity, 2);
+  assert.equal(bagItem("Atomic enema (Paediatric)").quantity, 2);
+  assert.equal(bagItem("Staple remover").quantity, 3);
+});

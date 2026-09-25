@@ -112,6 +112,9 @@ function normalizeBillingItems(items) {
         ...(String(item?.mask_size || "").trim()
           ? { mask_size: String(item.mask_size).trim().toLowerCase() }
           : {}),
+        ...(String(item?.enema_size || "").trim()
+          ? { enema_size: String(item.enema_size).trim().toLowerCase() }
+          : {}),
         ...(isValidCurrencyAmount(item?.catalog_unit_price)
           ? {catalog_unit_price:Number(item.catalog_unit_price)}
           : {}),

@@ -8,11 +8,19 @@ const MASKS = Object.freeze({
   paediatric: "Paediatric Face Mask",
 });
 
+const ENEMAS = Object.freeze({
+  adult: "Atomic enema (Adult)",
+  paediatric: "Atomic enema (Paediatric)",
+});
+
 const SUPPLIES = Object.freeze([
   { itemName: "Dulopro nebule", unit: "nebule" },
   { itemName: "Pulmicort nebule", unit: "nebule" },
   { itemName: "Adult Face Mask", unit: "mask" },
   { itemName: "Paediatric Face Mask", unit: "mask" },
+  { itemName: "Atomic enema (Adult)", unit: "enema", folderName: "Consumable" },
+  { itemName: "Atomic enema (Paediatric)", unit: "enema", folderName: "Consumable" },
+  { itemName: "Staple remover", unit: "unit", folderName: "Consumable" },
 ]);
 
 const SERVICES = Object.freeze([
@@ -81,7 +89,7 @@ const SERVICES = Object.freeze([
   {
     itemName: "Removal of sutures or staples removing + Dressing",
     sellingPrice: 1500,
-    components: [],
+    components: [{ itemName: "Staple remover", quantity: 1 }],
   },
   {
     itemName: "Abdominal tapping",
@@ -96,7 +104,7 @@ const SERVICES = Object.freeze([
   {
     itemName: "PR + Atomic enema",
     sellingPrice: 1000,
-    components: [],
+    components: [{ role: "enema", quantity: 1 }],
   },
   {
     itemName: "Manual Evac only",
@@ -106,7 +114,7 @@ const SERVICES = Object.freeze([
   {
     itemName: "Manual Evac + Atomic enema",
     sellingPrice: 2000,
-    components: [],
+    components: [{ role: "enema", quantity: 1 }],
   },
   {
     itemName: "Ear Syringing",
@@ -130,10 +138,18 @@ function serviceRequiresMask(service) {
   return Boolean(service?.components?.some((component) => component.role === "mask"));
 }
 
+function serviceRequiresEnema(service) {
+  return Boolean(service?.components?.some((component) => component.role === "enema"));
+}
+
 function includedLabel(service) {
   if (!service) return "";
   const parts = service.components.map((component) => {
-    const name = component.role === "mask" ? "face mask" : component.itemName;
+    const name = component.role === "mask"
+      ? "face mask"
+      : component.role === "enema"
+        ? "atomic enema"
+        : component.itemName;
     return `${component.quantity} ${name}`;
   });
   if (parts.length <= 1) return parts[0] || "";
@@ -141,7 +157,7 @@ function includedLabel(service) {
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
-function resolveTreatmentComponents(serviceName, maskSize, quantity) {
+function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize) {
   const service = treatmentServiceByName(serviceName);
   if (!service) return null;
   const copies = Number(quantity || 0);
@@ -157,8 +173,19 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity) {
     error.extra = { code: "TREATMENT_MASK_REQUIRED", service_name: service.itemName };
     throw error;
   }
+  const enema = String(enemaSize || "").trim().toLowerCase();
+  if (serviceRequiresEnema(service) && !ENEMAS[enema]) {
+    const error = new Error(`Choose Adult or Paediatric atomic enema for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_ENEMA_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
   return service.components.map((component) => ({
-    itemName: component.role === "mask" ? MASKS[mask] : component.itemName,
+    itemName: component.role === "mask"
+      ? MASKS[mask]
+      : component.role === "enema"
+        ? ENEMAS[enema]
+        : component.itemName,
     quantity: component.quantity * copies,
   }));
 }
@@ -203,7 +230,6 @@ function findCatalogueRow(db, scope, ownerDoctorId, itemName) {
 }
 
 function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
-  const supplyFolder = folderId(db, SUPPLY_FOLDER);
   const serviceFolder = folderId(db, SERVICE_FOLDER);
   const locations = [{ scope: "ocs", ownerDoctorId: null }];
   const doctors = doctorId
@@ -246,11 +272,12 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
     for (const location of locations) {
       for (const supply of SUPPLIES) {
         const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, supply.itemName);
+        const supplyFolderId = folderId(db, supply.folderName || SUPPLY_FOLDER);
         if (!existing) {
           insert.run(
             supply.itemName,
             "stock",
-            supplyFolder,
+            supplyFolderId,
             location.scope,
             location.ownerDoctorId,
             supply.unit,
@@ -258,7 +285,7 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           );
           inserted += 1;
         } else {
-          keepSupplyUnpriced.run(supplyFolder, existing.id);
+          keepSupplyUnpriced.run(supplyFolderId, existing.id);
         }
       }
       for (const service of SERVICES) {
@@ -286,6 +313,7 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
 }
 
 module.exports = {
+  ENEMAS,
   MASKS,
   SERVICES,
   SUPPLIES,
@@ -293,6 +321,7 @@ module.exports = {
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  serviceRequiresEnema,
   serviceRequiresMask,
   treatmentServiceByName,
 };
