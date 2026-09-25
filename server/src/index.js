@@ -49,17 +49,17 @@ try {
     || categoryAlignment.archived > 0
   ) {
     console.log(
-      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s); archived ${categoryAlignment.archived} retired SKU row(s).`,
+      `[inventory] Aligned ${categoryAlignment.updated} catalogue category row(s); renamed ${categoryAlignment.renamed} row(s); added ${categoryAlignment.inserted} required row(s); archived ${categoryAlignment.archived} retired catalogue row(s).`,
     );
   }
   if (categoryAlignment.written_off > 0) {
     console.log(
-      `[inventory] Wrote off leftover stock on ${categoryAlignment.written_off} retired consumable row(s) before archive.`,
+      `[inventory] Wrote off leftover stock on ${categoryAlignment.written_off} retired catalogue row(s) before archive.`,
     );
   }
   if (categoryAlignment.blocked > 0) {
     console.warn(
-      `[inventory] ${categoryAlignment.blocked} retired consumable row(s) still have active reservations and were left visible.`,
+      `[inventory] ${categoryAlignment.blocked} retired catalogue row(s) still have active reservations and were left visible.`,
     );
   }
   if (categoryAlignment.conflicts > 0) {

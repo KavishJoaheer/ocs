@@ -15,6 +15,7 @@ const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
 const {
   alignInventoryCategories,
   RETIRED_OCS_CONSUMABLE_SKUS,
+  RETIRED_OCS_SERVICE_ITEMS,
 } = require("../src/lib/inventoryCategoryAlignment");
 
 const TARGET_FOLDER = "Catherisation & NGT";
@@ -34,8 +35,6 @@ const O2_FOLDER = "O2 & Nebuliser";
 const O2_ITEMS = [
   "Nebulizer Mask (Adult)",
   "Nebulizer Mask (Paediatric)",
-  "O2 first 30mins",
-  "O2 second 30 mins",
 ];
 
 before(() => initializeDatabase());
@@ -128,7 +127,7 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   const first = alignInventoryCategories();
   assert.ok(first.updated >= TARGET_ITEMS.length * 3);
   const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
-  assert.equal(first.inserted, (2 * (activeDoctorCount + 1)) + (activeDoctorCount + 1 - 3));
+  assert.equal(first.inserted, activeDoctorCount + 1 - 3);
   assert.equal(first.renamed, 3);
   assert.equal(first.conflicts, 0);
 
@@ -171,32 +170,43 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   assert.equal(retry.conflicts, 0);
 });
 
-test("required O2 time-charge rows are created once for warehouse and every doctor", () => {
-  const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
-  for (const itemName of O2_ITEMS.slice(2)) {
-    const rows = db.prepare(`
-      SELECT i.stock_scope, i.owner_doctor_id, i.item_kind, i.quantity, i.minimum_quantity,
-             i.unit, i.cost_price, i.selling_price, f.name AS folder_name
-      FROM inventory i
-      LEFT JOIN inventory_folders f ON f.id = i.folder_id
-      WHERE LOWER(TRIM(i.item_name)) = LOWER(TRIM(?))
-    `).all(itemName);
-    assert.equal(rows.length, activeDoctorCount + 1, itemName);
-    assert.equal(rows.filter((row) => row.stock_scope === "ocs").length, 1);
-    assert.equal(rows.filter((row) => row.stock_scope === "doctor").length, activeDoctorCount);
-    for (const row of rows) {
-      assert.equal(row.folder_name, O2_FOLDER);
-      assert.equal(row.item_kind, "service");
-      assert.equal(Number(row.quantity), 0);
-      assert.equal(Number(row.minimum_quantity), 0);
-      assert.equal(row.unit, "30 min session");
-      assert.equal(Number(row.cost_price), 0);
-      assert.equal(Number(row.selling_price), 0);
+test("removed O2 time charges are retired in warehouse and doctor bags, including billing catalogue", () => {
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(O2_FOLDER).id);
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all().map((row) => Number(row.id));
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'service', ?, ?, ?, 0, 0, '30 min session', 300, 600)
+  `);
+  const ids = [];
+  for (const name of RETIRED_OCS_SERVICE_ITEMS) {
+    assert.equal(ocsConsumablesPdfCatalog.some((row) => row.name === name), false);
+    assert.equal(ocsConsumablesExtension.some((row) => row.name === name), false);
+    ids.push(Number(insert.run(name, folderId, "ocs", null).lastInsertRowid));
+    for (const doctorId of doctorIds) {
+      ids.push(Number(insert.run(name, folderId, "doctor", doctorId).lastInsertRowid));
     }
   }
+
+  const result = alignInventoryCategories();
+  assert.equal(result.archived, ids.length);
+  assert.equal(result.written_off, 0);
+  for (const id of ids) {
+    const row = db.prepare("SELECT archived_at, selling_price FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at);
+    assert.equal(Number(row.selling_price), 600);
+  }
+  const activeBillingRows = db.prepare(`
+    SELECT COUNT(*) AS count FROM inventory
+    WHERE stock_scope = 'doctor' AND archived_at IS NULL
+      AND lower(trim(item_name)) IN ('o2 first 30mins', 'o2 second 30 mins')
+  `).get();
+  assert.equal(Number(activeBillingRows.count), 0);
+
   const retry = alignInventoryCategories();
   assert.equal(retry.inserted, 0);
-  assert.equal(retry.updated, 0);
+  assert.equal(retry.archived, 0);
 });
 
 test("retired consumable SKUs are absent from the warehouse catalogues", () => {

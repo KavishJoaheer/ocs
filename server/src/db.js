@@ -3050,10 +3050,6 @@ function ensureInventoryIntegritySchema() {
 
   if (tableExists("inventory")) {
     db.exec(`
-      UPDATE inventory
-      SET item_kind = 'service', quantity = 0, minimum_quantity = 0, expiry_date = NULL
-      WHERE lower(trim(item_name)) IN ('o2 first 30mins', 'o2 second 30 mins');
-
       UPDATE inventory_batches
       SET quantity_remaining = 0
       WHERE item_id IN (

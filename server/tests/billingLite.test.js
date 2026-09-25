@@ -465,7 +465,7 @@ test("Billing Lite atomically appends supplies, deducts stock, and prevents retr
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 6);
 });
 
-test("quick billing treats oxygen time as a non-stock service without inventory deduction", async () => {
+test("quick billing treats a non-stock service without inventory deduction", async () => {
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
   const appointmentId = Number(db.prepare(`
@@ -488,7 +488,7 @@ test("quick billing treats oxygen time as a non-stock service without inventory 
     INSERT INTO inventory (
       item_name, item_kind, folder_id, owner_doctor_id, stock_scope, quantity,
       minimum_quantity, unit, cost_price, selling_price
-    ) VALUES ('O2 first 30mins', 'service', ?, ?, 'doctor', 0, 0, 'service', 0, 350)
+    ) VALUES ('Non-stock service (test)', 'service', ?, ?, 'doctor', 0, 0, 'service', 0, 350)
   `).run(folderId, doctorId).lastInsertRowid);
 
   const catalog = await api("GET", `/billing/quick/catalog/${serviceConsultationId}`);
@@ -500,13 +500,13 @@ test("quick billing treats oxygen time as a non-stock service without inventory 
 
   const captured = await api("POST", `/billing/quick/visits/${serviceConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
-    ...quickIssueFields("OXYGEN-SERVICE"),
+    ...quickIssueFields("NONSTOCK-SERVICE"),
     items: [{ inventory_item_id: serviceId, quantity: 2, unit_price: 350 }],
   });
   assert.equal(captured.status, 201, JSON.stringify(captured.data));
   const bill = db.prepare("SELECT items FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
   const lines = JSON.parse(bill.items);
-  const serviceLine = lines.find((line) => line.description === "O2 first 30mins");
+  const serviceLine = lines.find((line) => line.description === "Non-stock service (test)");
   assert.ok(serviceLine);
   assert.equal(serviceLine.is_service_charge, true);
   assert.equal(serviceLine.amount, 700);

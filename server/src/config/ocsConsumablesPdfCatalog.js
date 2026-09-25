@@ -71,8 +71,6 @@ const ocsConsumablesPdfCatalog = [
   consumable("Nasal Oxygen Cannula"),
   o2AndNebuliser("Nebulizer Mask (Adult)"),
   o2AndNebuliser("Nebulizer Mask (Paediatric)"),
-  o2AndNebuliser("O2 first 30mins", 0, 0),
-  o2AndNebuliser("O2 second 30 mins", 0, 0),
   consumable("Needle box of 100 (Black 22G)", 0, 50),
   consumable("Needle box of 100 (Blue 22G)", 0, 50),
   consumable("Needle box of 100 (Pink 22G)", 0, 50),

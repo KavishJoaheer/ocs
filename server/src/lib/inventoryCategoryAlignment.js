@@ -30,26 +30,20 @@ const CATEGORY_RULES = [
   { itemName: "Urine bag", folderName: "Catherisation & NGT" },
   { itemName: "Nebulizer Mask (Adult)", folderName: "O2 & Nebuliser" },
   { itemName: "Nebulizer Mask (Paediatric)", folderName: "O2 & Nebuliser" },
-  {
-    itemName: "O2 first 30mins",
-    folderName: "O2 & Nebuliser",
-    ensureEverywhere: true,
-    unit: "30 min session",
-    itemKind: "service",
-  },
-  {
-    itemName: "O2 second 30 mins",
-    folderName: "O2 & Nebuliser",
-    ensureEverywhere: true,
-    unit: "30 min session",
-    itemKind: "service",
-  },
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [
   "Micropore 1 inch (Box of 12)",
   "Gown",
   "White Adhesive Tape",
+];
+const RETIRED_OCS_SERVICE_ITEMS = [
+  "O2 first 30mins",
+  "O2 second 30 mins",
+];
+const RETIRED_OCS_CATALOG_ITEMS = [
+  ...RETIRED_OCS_CONSUMABLE_SKUS,
+  ...RETIRED_OCS_SERVICE_ITEMS,
 ];
 
 function writeOffRetiredSkuRow(row, writeOffQty) {
@@ -84,7 +78,7 @@ function writeOffRetiredSkuRow(row, writeOffQty) {
     writeOffQty,
     Number(row.quantity || 0),
     row.owner_doctor_id || null,
-    `Catalogue retirement write-off: ${row.item_name} removed from OCS consumables.`,
+    `Catalogue retirement write-off: ${row.item_name} removed from the OCS catalogue.`,
     String(row.id),
     metaJson,
   );
@@ -105,12 +99,12 @@ function writeOffRetiredSkuRow(row, writeOffQty) {
   );
 }
 
-function retireRemovedOcsConsumableSkus() {
+function retireRemovedOcsCatalogItems() {
   return db.transaction(() => {
     let archived = 0;
     let blocked = 0;
     let writtenOff = 0;
-    for (const itemName of RETIRED_OCS_CONSUMABLE_SKUS) {
+    for (const itemName of RETIRED_OCS_CATALOG_ITEMS) {
       recordOcsCatalogExclusion(itemName);
       const rows = db.prepare(`
         SELECT i.*,
@@ -283,7 +277,7 @@ function alignInventoryCategories() {
   });
 
   const aligned = align();
-  const retired = retireRemovedOcsConsumableSkus();
+  const retired = retireRemovedOcsCatalogItems();
   return {
     ...aligned,
     archived: retired.archived,
@@ -296,5 +290,7 @@ module.exports = {
   alignInventoryCategories,
   CATEGORY_RULES,
   RETIRED_OCS_CONSUMABLE_SKUS,
-  retireRemovedOcsConsumableSkus,
+  RETIRED_OCS_SERVICE_ITEMS,
+  RETIRED_OCS_CATALOG_ITEMS,
+  retireRemovedOcsCatalogItems,
 };

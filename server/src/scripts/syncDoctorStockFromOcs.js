@@ -5,7 +5,7 @@
  */
 
 const { db, initializeDatabase } = require("../db");
-const { RETIRED_OCS_CONSUMABLE_SKUS } = require("../lib/inventoryCategoryAlignment");
+const { RETIRED_OCS_CATALOG_ITEMS } = require("../lib/inventoryCategoryAlignment");
 
 function getOcsMasterItems() {
   return db
@@ -129,7 +129,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
 
 function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
   const retiredNameKeys = new Set(
-    RETIRED_OCS_CONSUMABLE_SKUS.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean),
+    RETIRED_OCS_CATALOG_ITEMS.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean),
   );
   const doctorItems = db
     .prepare(`

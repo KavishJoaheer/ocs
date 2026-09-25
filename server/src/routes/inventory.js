@@ -394,17 +394,17 @@ function ensureInfrastructure() {
     const aligned = alignInventoryCategories();
     if (aligned.updated > 0 || aligned.inserted > 0 || aligned.renamed > 0 || aligned.archived > 0) {
       console.log(
-        `[inventory] Aligned ${aligned.updated} catalogue category row(s); renamed ${aligned.renamed} row(s); added ${aligned.inserted} required row(s); archived ${aligned.archived} retired SKU row(s).`,
+        `[inventory] Aligned ${aligned.updated} catalogue category row(s); renamed ${aligned.renamed} row(s); added ${aligned.inserted} required row(s); archived ${aligned.archived} retired catalogue row(s).`,
       );
     }
     if (aligned.written_off > 0) {
       console.log(
-        `[inventory] Wrote off leftover stock on ${aligned.written_off} retired consumable row(s) before archive.`,
+        `[inventory] Wrote off leftover stock on ${aligned.written_off} retired catalogue row(s) before archive.`,
       );
     }
     if (aligned.blocked > 0) {
       console.warn(
-        `[inventory] ${aligned.blocked} retired consumable row(s) still have active reservations and were left visible.`,
+        `[inventory] ${aligned.blocked} retired catalogue row(s) still have active reservations and were left visible.`,
       );
     }
     if (aligned.conflicts > 0) {
