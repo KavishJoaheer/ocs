@@ -999,3 +999,111 @@ test("directly issued invoices appear in searchable history and not the operator
   assert.equal(empty.data.total, 0);
   assert.deepEqual(empty.data.submissions, []);
 });
+
+test("a billed nebulizer takes the chosen mask and nebule from the bag without charging them", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  function visit() {
+    const appointmentId = Number(db.prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, ?, '16:10', 'completed')
+    `).run(patientId, doctorId, today).lastInsertRowid);
+    const nextConsultationId = Number(db.prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, ?, 'Treatment supply test')
+    `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+    ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+    return nextConsultationId;
+  }
+
+  const catalogConsultationId = visit();
+  const catalog = await api("GET", `/billing/quick/catalog/${catalogConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  const nebulizer = catalog.data.items.find((item) => item.item_name === "Nebulizer ( incl mask and 1 Dulopro nebule)");
+  const extraOxygen = catalog.data.items.find((item) => item.item_name === "Each additional 30 mins O2");
+  assert.ok(nebulizer);
+  assert.equal(nebulizer.is_service_charge, true);
+  assert.equal(nebulizer.requires_mask, true);
+  assert.equal(nebulizer.included_label, "1 face mask and 1 Dulopro nebule");
+  assert.equal(catalog.data.items.some((item) => item.item_name === "Adult Face Mask"), false);
+  assert.ok(extraOxygen);
+  assert.equal(extraOxygen.requires_mask, false);
+
+  function bagItem(name) {
+    return db.prepare(`
+      SELECT id, quantity
+      FROM inventory
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id = ?
+        AND lower(trim(item_name)) = lower(trim(?))
+    `).get(doctorId, name);
+  }
+  function stock(name, quantity) {
+    const row = bagItem(name);
+    assert.ok(row, name);
+    db.prepare("UPDATE inventory SET quantity = ?, cost_price = 12, selling_price = 0 WHERE id = ?").run(quantity, row.id);
+    db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', 12, 0, 'usable')
+    `).run(row.id, quantity);
+    return row.id;
+  }
+  const maskId = stock("Adult Face Mask", 4);
+  const paediatricId = stock("Paediatric Face Mask", 3);
+  const duloproId = stock("Dulopro nebule", 5);
+  const pulmicortId = stock("Pulmicort nebule", 5);
+  db.prepare("UPDATE inventory SET selling_price = 1800 WHERE id = ?").run(nebulizer.id);
+  db.prepare("UPDATE inventory SET selling_price = 600 WHERE id = ?").run(extraOxygen.id);
+
+  const missingMask = await api("POST", `/billing/quick/visits/${catalogConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("NEB-MASK"),
+    items: [{ inventory_item_id: nebulizer.id, quantity: 1, unit_price: 1800 }],
+  });
+  assert.equal(missingMask.status, 400, JSON.stringify(missingMask.data));
+  assert.equal(missingMask.data.code, "TREATMENT_MASK_REQUIRED");
+  assert.equal(bagItem("Adult Face Mask").quantity, 4);
+
+  const billed = await api("POST", `/billing/quick/visits/${catalogConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("NEB-OK"),
+    items: [{ inventory_item_id: nebulizer.id, quantity: 1, unit_price: 1800, mask_size: "adult" }],
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  const lines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(billed.data.submission.bill_id).items);
+  const serviceLine = lines.find((line) => line.description === nebulizer.item_name);
+  assert.ok(serviceLine);
+  assert.equal(serviceLine.amount, 1800);
+  assert.equal(serviceLine.inventory_item_id, null);
+  assert.equal(serviceLine.mask_size, "adult");
+  assert.equal(lines.some((line) => line.description === "Adult Face Mask" || line.description === "Dulopro nebule"), false);
+  assert.ok(serviceLine.inventory_movement_ids.length >= 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(duloproId).quantity, 4);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 5);
+
+  const shortConsultationId = visit();
+  db.prepare("UPDATE inventory SET quantity = 0 WHERE id = ?").run(duloproId);
+  db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(duloproId);
+  const blocked = await api("POST", `/billing/quick/visits/${shortConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("NEB-SHORT"),
+    items: [{ inventory_item_id: nebulizer.id, quantity: 1, unit_price: 1800, mask_size: "paediatric" }],
+  });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code, "INSUFFICIENT_ATP");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 3);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing_lite_submissions WHERE consultation_id = ?").get(shortConsultationId).count, 0);
+
+  const oxygenConsultationId = visit();
+  const oxygen = await api("POST", `/billing/quick/visits/${oxygenConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("O2-EXTRA"),
+    items: [{ inventory_item_id: extraOxygen.id, quantity: 2, unit_price: 600 }],
+  });
+  assert.equal(oxygen.status, 201, JSON.stringify(oxygen.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 5);
+});

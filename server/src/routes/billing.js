@@ -37,6 +37,14 @@ const {
 const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 const { financialAction, stockFinancials } = require("../lib/inventoryFinancials");
 const { getBillingCutoverDate } = require("../lib/billingCutover");
+const {
+  ensureTreatmentCatalogue,
+  includedLabel,
+  isTreatmentSupplyName,
+  resolveTreatmentComponents,
+  serviceRequiresMask,
+  treatmentServiceByName,
+} = require("../lib/treatmentSupplies");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -861,6 +869,105 @@ function calculateAppointmentLossRevenue(items) {
 
 function consumeDoctorBatches(itemId, quantity) {
   return consumeAvailableFefo(itemId, quantity);
+}
+
+function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
+  const components = resolveTreatmentComponents(line.description, line.mask_size, line.quantity);
+  if (!components?.length) return { movementIds: [], touchedItemIds: [] };
+  const movementIds = [];
+  const touchedItemIds = [];
+  for (const component of components) {
+    const stockItem = db.prepare(`
+      SELECT *
+      FROM inventory
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id = ?
+        AND archived_at IS NULL
+        AND COALESCE(item_kind, 'stock') = 'stock'
+        AND lower(trim(item_name)) = lower(trim(?))
+      ORDER BY id ASC
+      LIMIT 1
+    `).get(Number(consultation.doctor_id), component.itemName);
+    if (!stockItem) {
+      throw Object.assign(
+        new Error(`${component.itemName} is not in this doctor's bag, so ${line.description} cannot be billed.`),
+        { status: 409, extra: { code: "TREATMENT_SUPPLY_MISSING", item_name: component.itemName } },
+      );
+    }
+    const qty = Number(component.quantity || 0);
+    if (Number(stockItem.cost_price || 0) <= 0) {
+      throw Object.assign(
+        new Error(`${stockItem.item_name} has no cost price. Record its cost before ${line.description} can be billed.`),
+        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
+      );
+    }
+    const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
+    const atp = Number(decorated.available_to_promise ?? decorated.available_to_use ?? 0);
+    if (qty > atp) {
+      throw Object.assign(
+        new Error(`Not enough ${stockItem.item_name} in this doctor's bag for ${line.description}. ${atp} available; ${qty} needed.`),
+        {
+          status: 409,
+          extra: { code: "INSUFFICIENT_ATP", available_to_promise: atp, requested: qty, item_name: stockItem.item_name },
+        },
+      );
+    }
+    const locked = db.prepare("SELECT * FROM inventory WHERE id = ?").get(stockItem.id);
+    const previousQuantity = Number(locked?.quantity || 0);
+    const expectedVersion = Number(locked?.row_version || 1);
+    const consumed = consumeDoctorBatches(stockItem.id, qty);
+    const allocations = consumed.allocations || [];
+    const allocated = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    if (allocated !== qty) {
+      throw Object.assign(
+        new Error(`Eligible batches could not cover ${stockItem.item_name} for ${line.description}.`),
+        { status: 409, extra: { code: "INSUFFICIENT_ELIGIBLE_BATCHES" } },
+      );
+    }
+    const nextQuantity = previousQuantity - allocated;
+    try {
+      assertInventoryQuantityUpdate(stockItem.id, nextQuantity, expectedVersion);
+    } catch (error) {
+      if (error instanceof InventoryVersionConflictError || error.code === "INVENTORY_VERSION_CONFLICT") {
+        error.status = 409;
+      }
+      throw error;
+    }
+    const movementId = insertInventoryMovement({
+      itemId: stockItem.id,
+      quantity: qty,
+      previousQuantity,
+      nextQuantity,
+      actionType: "sell",
+      note: `Included in ${line.description}`,
+      userId,
+      appointmentId: consultation.appointment_id,
+      consultationId: consultation.id,
+      unitPriceSnapshot: 0,
+      meta: {
+        item_name: stockItem.item_name,
+        dispensed_quantity: qty,
+        billed_quantity: 0,
+        allocations,
+        treatment_component: true,
+        treatment_name: line.description,
+        mask_size: line.mask_size || null,
+        performed_by_user_id: actor?.id || userId || null,
+        performed_by_role: actor?.role || "",
+        performed_by_name: actor?.full_name || actor?.username || "",
+        source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
+        destination_text: "Patient treatment",
+        billing_id: billingId,
+        billing_line_description: line.description,
+        catalog_unit_price: 0,
+        billed_unit_price: 0,
+      },
+    });
+    recordMovementAllocations(movementId, allocations);
+    movementIds.push(movementId);
+    touchedItemIds.push(Number(stockItem.id));
+  }
+  return { movementIds, touchedItemIds };
 }
 
 function insertInventoryMovement({
@@ -2100,6 +2207,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
   const doctorId = Number(consultation.doctor_id);
+  ensureTreatmentCatalogue(db, { doctorId });
 
   const visit = getQuickVisit(Number(req.params.consultationId), doctorId);
   if (!visit) {
@@ -2127,21 +2235,28 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     .all(doctorId);
 
   const decorated = decorateInventoryItems(rows);
-  const items = decorated.map((item) => ({
-    id: Number(item.id),
-    item_name: String(item.item_name || ""),
-    folder_id: item.folder_id ? Number(item.folder_id) : null,
-    category: String(item.parent_folder_name || item.folder_name || "Other supplies"),
-    subcategory: String(item.parent_folder_name ? item.folder_name : ""),
-    unit: String(item.unit || "unit"),
-    item_kind: String(item.item_kind || "stock"),
-    is_service_charge: String(item.item_kind || "stock") === "service",
-    cost_price_ready: String(item.item_kind || "stock") === "service" || Number(item.cost_price || 0) > 0,
-    selling_price: roundCurrency(item.selling_price),
-    available_to_use: String(item.item_kind || "stock") === "service"
-      ? null
-      : Number(item.available_to_promise ?? item.available_to_use ?? 0),
-  }));
+  const items = decorated.flatMap((item) => {
+    if (isTreatmentSupplyName(item.item_name)) return [];
+    const recipe = treatmentServiceByName(item.item_name);
+    const isService = String(item.item_kind || "stock") === "service";
+    return [{
+      id: Number(item.id),
+      item_name: String(item.item_name || ""),
+      folder_id: item.folder_id ? Number(item.folder_id) : null,
+      category: String(item.parent_folder_name || item.folder_name || "Other supplies"),
+      subcategory: String(item.parent_folder_name ? item.folder_name : ""),
+      unit: String(item.unit || "unit"),
+      item_kind: String(item.item_kind || "stock"),
+      is_service_charge: isService,
+      requires_mask: serviceRequiresMask(recipe),
+      included_label: includedLabel(recipe),
+      cost_price_ready: isService || Number(item.cost_price || 0) > 0,
+      selling_price: roundCurrency(item.selling_price),
+      available_to_use: isService
+        ? null
+        : Number(item.available_to_promise ?? item.available_to_use ?? 0),
+    }];
+  });
 
   res.json({ visit, items });
 });
@@ -2653,6 +2768,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const mergedQuantities = new Map();
   const reviewedUnitPrices = new Map();
   const reviewedPriceReasons = new Map();
+  const maskSizes = new Map();
   for (const item of rawItems) {
     const itemId = Number(item?.inventory_item_id || 0);
     const quantity = Number(item?.quantity || 0);
@@ -2674,6 +2790,13 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       return res.status(400).json({ error: "A supply cannot contain conflicting price-adjustment reasons." });
     }
     reviewedPriceReasons.set(itemId, priceAdjustmentReason);
+    const maskSize = String(item?.mask_size || "").trim().toLowerCase();
+    if (maskSize) {
+      if (maskSizes.has(itemId) && maskSizes.get(itemId) !== maskSize) {
+        return res.status(400).json({ error: "A treatment cannot use two different face masks." });
+      }
+      maskSizes.set(itemId, maskSize);
+    }
     mergedQuantities.set(itemId, (mergedQuantities.get(itemId) || 0) + quantity);
   }
 
@@ -2906,7 +3029,11 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             quantity,
             inventory_item_id: item.item_kind === "service" ? null : itemId,
             ...(item.item_kind === "service"
-              ? { is_service_charge: true, service_catalog_item_id: itemId }
+              ? {
+                  is_service_charge: true,
+                  service_catalog_item_id: itemId,
+                  mask_size: maskSizes.get(itemId) || "",
+                }
               : {}),
             ...(priceWasAdjusted
               ? {
@@ -2943,11 +3070,26 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           },
         );
       }
+      const componentItemIds = [];
+      const servicesWithStock = serviceChargeLines.map((serviceLine) => {
+        const consumed = deductTreatmentSupplies({
+          consultation,
+          line: serviceLine,
+          userId: req.auth.id,
+          actor: req.auth,
+          billingId: bill.id,
+        });
+        componentItemIds.push(...consumed.touchedItemIds);
+        return consumed.movementIds.length
+          ? { ...serviceLine, inventory_movement_ids: consumed.movementIds }
+          : serviceLine;
+      });
       touchedItemIds = [...new Set([
         ...(correctionReversal.touchedItemIds || []),
         ...(applied.touchedItemIds || []),
+        ...componentItemIds,
       ])];
-      const addedItems = normalizeBillingItems([...applied.items, ...serviceChargeLines]);
+      const addedItems = normalizeBillingItems([...applied.items, ...servicesWithStock]);
 
       if (addedItems.length || feeChanged || feeConfirmed || sourceReference || latestSubmission?.workflow_status === "needs_doctor") {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);

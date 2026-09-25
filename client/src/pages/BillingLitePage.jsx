@@ -165,6 +165,7 @@ function BillingLitePage() {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [cart, setCart] = useState({});
+  const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [category, setCategory] = useState("All supplies");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [showUnavailable, setShowUnavailable] = useState(false);
@@ -496,6 +497,9 @@ function BillingLitePage() {
       if (supplyPriceWasAdjusted(item) && String(supplyPriceEdits[item.id]?.reason || "").trim().length < 8) {
         return `Explain the price adjustment for ${item.item_name} in at least 8 characters.`;
       }
+      if (item.requires_mask && !["adult", "paediatric"].includes(maskSizeByItem[item.id])) {
+        return `Choose Adult or Paediatric face mask for ${item.item_name}.`;
+      }
     }
     return "";
   }
@@ -692,6 +696,13 @@ function BillingLitePage() {
   }
 
   function changeQuantity(item, delta) {
+    if (item.is_service_charge) {
+      setCart((current) => ({
+        ...current,
+        [item.id]: Math.max(0, Number(current[item.id] || 0) + delta),
+      }));
+      return;
+    }
     const available = Number(item.available_to_use || 0);
     setCart((current) => {
       const next = Math.max(0, Math.min(available, Number(current[item.id] || 0) + delta));
@@ -786,6 +797,7 @@ function BillingLitePage() {
         price_adjustment_reason: supplyPriceWasAdjusted(item)
           ? String(supplyPriceEdits[item.id]?.reason || "").trim()
           : undefined,
+        mask_size: item.requires_mask ? maskSizeByItem[item.id] : undefined,
       })),
     };
     try {
@@ -1465,15 +1477,17 @@ function BillingLitePage() {
                         <div className="min-w-0">
                           <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {item.is_service_charge && Number(item.selling_price || 0) <= 0
-                              ? "Price and reason required"
-                              : priceMissing
-                              ? "Pricing required"
-                              : item.is_service_charge
-                                ? "Non-stock service"
-                                : isUnavailable
-                                  ? "Out of stock"
-                                  : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                            {item.included_label
+                              ? `From the bag: ${item.included_label}`
+                              : item.is_service_charge && Number(item.selling_price || 0) <= 0
+                                ? "Price and reason required"
+                                : priceMissing
+                                  ? "Pricing required"
+                                  : item.is_service_charge
+                                    ? "Non-stock service"
+                                    : isUnavailable
+                                      ? "Out of stock"
+                                      : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
                         </div>
                         {quantity > 0 ? (
@@ -1615,6 +1629,26 @@ function BillingLitePage() {
                           <p className="mt-1 text-sm font-semibold text-slate-500">
                             Quantity {item.quantity} · Standard price {formatRupees(item.selling_price)}
                           </p>
+                          {item.included_label ? (
+                            <p className="mt-1 text-sm font-semibold text-[#17666a]">From the bag: {item.quantity} × {item.included_label}</p>
+                          ) : null}
+                          {item.requires_mask ? (
+                            <label className="mt-3 block">
+                              <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask</span>
+                              <select
+                                value={maskSizeByItem[item.id] || ""}
+                                onChange={(event) => setMaskSizeByItem((current) => ({
+                                  ...current,
+                                  [item.id]: event.target.value,
+                                }))}
+                                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                              >
+                                <option value="">Choose face mask</option>
+                                <option value="adult">Adult face mask</option>
+                                <option value="paediatric">Paediatric face mask</option>
+                              </select>
+                            </label>
+                          ) : null}
                         </div>
                         <label>
                           <span className="text-xs font-black uppercase tracking-wide text-slate-500">Unit price</span>
@@ -1667,7 +1701,7 @@ function BillingLitePage() {
                 ) : (
                   <div className="my-5 rounded-2xl bg-[#edf8f6] px-5 py-4">
                     <p className="font-black text-[#17666a]">Consultation only</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-600">No supplies will be deducted from your bag.</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-600">No treatment supplies will be taken from the bag.</p>
                   </div>
                 )}
 

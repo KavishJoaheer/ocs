@@ -1,5 +1,5 @@
 const { createApp } = require("./app");
-const { initializeDatabase } = require("./db");
+const { db, initializeDatabase } = require("./db");
 const { ensureOcsCatalogSync } = require("./lib/ensureOcsCatalog");
 const { prepareOcsMasterInventoryIntegrity } = require("./lib/dedupeOcsMasterInventory");
 const { seedOcsMasterStockSync } = require("./scripts/seedOcsMasterStock");
@@ -7,6 +7,7 @@ const { purgeOcsTestInventoryItems } = require("./scripts/purgeOcsTestInventory"
 const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs");
 const { isEnvTrue } = require("./lib/envFlags");
 const { alignInventoryCategories } = require("./lib/inventoryCategoryAlignment");
+const { ensureTreatmentCatalogue } = require("./lib/treatmentSupplies");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -67,6 +68,15 @@ try {
   }
 } catch (error) {
   console.warn("[inventory] Catalogue category alignment failed:", error.message);
+}
+
+try {
+  const treatmentCatalogue = ensureTreatmentCatalogue(db);
+  if (treatmentCatalogue.inserted > 0) {
+    console.log(`[inventory] Added ${treatmentCatalogue.inserted} treatment service or included supply row(s).`);
+  }
+} catch (error) {
+  console.warn("[inventory] Treatment supply catalogue failed:", error.message);
 }
 
 if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {
