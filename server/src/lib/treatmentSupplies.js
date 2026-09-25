@@ -13,6 +13,13 @@ const ENEMAS = Object.freeze({
   paediatric: "Atomic enema (Paediatric)",
 });
 
+const CANNULAS = Object.freeze({
+  blue: "Cannula (Blue)",
+  pink: "Cannula (Pink)",
+  green: "Cannula (Green)",
+  yellow: "Cannula (Yellow)",
+});
+
 const SUPPLIES = Object.freeze([
   { itemName: "Dulopro nebule", unit: "nebule" },
   { itemName: "Pulmicort nebule", unit: "nebule" },
@@ -84,7 +91,7 @@ const SERVICES = Object.freeze([
   {
     itemName: "IV Cannulation only",
     sellingPrice: 1000,
-    components: [],
+    components: [{ role: "cannula", quantity: 1 }],
   },
   {
     itemName: "Removal of sutures or staples removing + Dressing",
@@ -142,6 +149,10 @@ function serviceRequiresEnema(service) {
   return Boolean(service?.components?.some((component) => component.role === "enema"));
 }
 
+function serviceRequiresCannula(service) {
+  return Boolean(service?.components?.some((component) => component.role === "cannula"));
+}
+
 function includedLabel(service) {
   if (!service) return "";
   const parts = service.components.map((component) => {
@@ -149,7 +160,9 @@ function includedLabel(service) {
       ? "face mask"
       : component.role === "enema"
         ? "atomic enema"
-        : component.itemName;
+        : component.role === "cannula"
+          ? "cannula"
+          : component.itemName;
     return `${component.quantity} ${name}`;
   });
   if (parts.length <= 1) return parts[0] || "";
@@ -157,7 +170,7 @@ function includedLabel(service) {
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
-function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize) {
+function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, cannulaSize) {
   const service = treatmentServiceByName(serviceName);
   if (!service) return null;
   const copies = Number(quantity || 0);
@@ -180,12 +193,21 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize) 
     error.extra = { code: "TREATMENT_ENEMA_REQUIRED", service_name: service.itemName };
     throw error;
   }
+  const cannula = String(cannulaSize || "").trim().toLowerCase();
+  if (serviceRequiresCannula(service) && !CANNULAS[cannula]) {
+    const error = new Error(`Choose a cannula for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_CANNULA_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
   return service.components.map((component) => ({
     itemName: component.role === "mask"
       ? MASKS[mask]
       : component.role === "enema"
         ? ENEMAS[enema]
-        : component.itemName,
+        : component.role === "cannula"
+          ? CANNULAS[cannula]
+          : component.itemName,
     quantity: component.quantity * copies,
   }));
 }
@@ -313,6 +335,7 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
 }
 
 module.exports = {
+  CANNULAS,
   ENEMAS,
   MASKS,
   SERVICES,
@@ -321,6 +344,7 @@ module.exports = {
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  serviceRequiresCannula,
   serviceRequiresEnema,
   serviceRequiresMask,
   treatmentServiceByName,

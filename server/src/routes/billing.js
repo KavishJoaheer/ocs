@@ -42,6 +42,7 @@ const {
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  serviceRequiresCannula,
   serviceRequiresEnema,
   serviceRequiresMask,
   treatmentServiceByName,
@@ -873,7 +874,13 @@ function consumeDoctorBatches(itemId, quantity) {
 }
 
 function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
-  const components = resolveTreatmentComponents(line.description, line.mask_size, line.quantity, line.enema_size);
+  const components = resolveTreatmentComponents(
+    line.description,
+    line.mask_size,
+    line.quantity,
+    line.enema_size,
+    line.cannula_size,
+  );
   if (!components?.length) return { movementIds: [], touchedItemIds: [] };
   const movementIds = [];
   const touchedItemIds = [];
@@ -954,6 +961,7 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
         treatment_name: line.description,
         mask_size: line.mask_size || null,
         enema_size: line.enema_size || null,
+        cannula_size: line.cannula_size || null,
         performed_by_user_id: actor?.id || userId || null,
         performed_by_role: actor?.role || "",
         performed_by_name: actor?.full_name || actor?.username || "",
@@ -2252,6 +2260,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       is_service_charge: isService,
       requires_mask: serviceRequiresMask(recipe),
       requires_enema: serviceRequiresEnema(recipe),
+      requires_cannula: serviceRequiresCannula(recipe),
       included_label: includedLabel(recipe),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),
@@ -2773,6 +2782,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const reviewedPriceReasons = new Map();
   const maskSizes = new Map();
   const enemaSizes = new Map();
+  const cannulaSizes = new Map();
   for (const item of rawItems) {
     const itemId = Number(item?.inventory_item_id || 0);
     const quantity = Number(item?.quantity || 0);
@@ -2807,6 +2817,13 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         return res.status(400).json({ error: "A treatment cannot use two different atomic enemas." });
       }
       enemaSizes.set(itemId, enemaSize);
+    }
+    const cannulaSize = String(item?.cannula_size || "").trim().toLowerCase();
+    if (cannulaSize) {
+      if (cannulaSizes.has(itemId) && cannulaSizes.get(itemId) !== cannulaSize) {
+        return res.status(400).json({ error: "A treatment cannot use two different cannulas." });
+      }
+      cannulaSizes.set(itemId, cannulaSize);
     }
     mergedQuantities.set(itemId, (mergedQuantities.get(itemId) || 0) + quantity);
   }
@@ -3045,6 +3062,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
                   service_catalog_item_id: itemId,
                   mask_size: maskSizes.get(itemId) || "",
                   enema_size: enemaSizes.get(itemId) || "",
+                  cannula_size: cannulaSizes.get(itemId) || "",
                 }
               : {}),
             ...(priceWasAdjusted

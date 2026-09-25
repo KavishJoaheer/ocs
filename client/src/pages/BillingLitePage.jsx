@@ -167,6 +167,7 @@ function BillingLitePage() {
   const [cart, setCart] = useState({});
   const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [enemaSizeByItem, setEnemaSizeByItem] = useState({});
+  const [cannulaSizeByItem, setCannulaSizeByItem] = useState({});
   const [category, setCategory] = useState("All supplies");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [showUnavailable, setShowUnavailable] = useState(false);
@@ -504,6 +505,9 @@ function BillingLitePage() {
       if (item.requires_enema && !["adult", "paediatric"].includes(enemaSizeByItem[item.id])) {
         return `Choose Adult or Paediatric atomic enema for ${item.item_name}.`;
       }
+      if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
+        return `Choose a cannula for ${item.item_name}.`;
+      }
     }
     return "";
   }
@@ -803,6 +807,7 @@ function BillingLitePage() {
           : undefined,
         mask_size: item.requires_mask ? maskSizeByItem[item.id] : undefined,
         enema_size: item.requires_enema ? enemaSizeByItem[item.id] : undefined,
+        cannula_size: item.requires_cannula ? cannulaSizeByItem[item.id] : undefined,
       })),
     };
     try {
@@ -1668,6 +1673,25 @@ function BillingLitePage() {
                                 <option value="">Choose atomic enema</option>
                                 <option value="adult">Adult atomic enema</option>
                                 <option value="paediatric">Paediatric atomic enema</option>
+                              </select>
+                            </label>
+                          ) : null}
+                          {item.requires_cannula ? (
+                            <label className="mt-3 block">
+                              <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
+                              <select
+                                value={cannulaSizeByItem[item.id] || ""}
+                                onChange={(event) => setCannulaSizeByItem((current) => ({
+                                  ...current,
+                                  [item.id]: event.target.value,
+                                }))}
+                                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                              >
+                                <option value="">Choose cannula</option>
+                                <option value="blue">Cannula (Blue)</option>
+                                <option value="pink">Cannula (Pink)</option>
+                                <option value="green">Cannula (Green)</option>
+                                <option value="yellow">Cannula (Yellow)</option>
                               </select>
                             </label>
                           ) : null}

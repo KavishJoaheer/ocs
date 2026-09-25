@@ -1201,4 +1201,64 @@ test("enema and staple-removal services deduct the chosen bag supply", async () 
   assert.equal(bagItem("Atomic enema (Adult)").quantity, 2);
   assert.equal(bagItem("Atomic enema (Paediatric)").quantity, 2);
   assert.equal(bagItem("Staple remover").quantity, 3);
+  const enemaFolder = db.prepare(`
+    SELECT f.name
+    FROM inventory i
+    JOIN inventory_folders f ON f.id = i.folder_id
+    WHERE i.stock_scope = 'ocs'
+      AND i.owner_doctor_id IS NULL
+      AND i.item_name IN ('Atomic enema (Adult)', 'Atomic enema (Paediatric)')
+  `).all();
+  assert.equal(enemaFolder.length, 2);
+  assert.equal(enemaFolder.every((row) => row.name === "Consumable"), true);
+
+  const iv = catalog.data.items.find((item) => item.item_name === "IV Cannulation only");
+  assert.ok(iv);
+  assert.equal(iv.requires_cannula, true);
+  assert.equal(iv.included_label, "1 cannula");
+  assert.equal(iv.selling_price, 1000);
+  const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  function addBagCannula(name, quantity) {
+    const id = Number(db.prepare(`
+      INSERT INTO inventory (
+        item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
+        unit, cost_price, selling_price, updated_at
+      ) VALUES (?, 'stock', ?, 'doctor', ?, ?, 0, 'unit', 12, 0, CURRENT_TIMESTAMP)
+    `).run(name, consumableId, doctorId, quantity).lastInsertRowid);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', 12, 0, 'usable')
+    `).run(id, quantity);
+    return id;
+  }
+  addBagCannula("Cannula (Blue)", 5);
+  addBagCannula("Cannula (Pink)", 4);
+  const ivAppointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '16:50', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const ivConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Cannula supply test')
+  `).run(ivAppointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(ivConsultationId, patientId, null, "Day Consultation");
+  const missingCannula = await api("POST", `/billing/quick/visits/${ivConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("IV-CANNULA"),
+    items: [{ inventory_item_id: iv.id, quantity: 1, unit_price: 1000 }],
+  });
+  assert.equal(missingCannula.status, 400, JSON.stringify(missingCannula.data));
+  assert.equal(missingCannula.data.code, "TREATMENT_CANNULA_REQUIRED");
+  assert.equal(bagItem("Cannula (Pink)").quantity, 4);
+  const cannulated = await api("POST", `/billing/quick/visits/${ivConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("IV-OK"),
+    items: [{ inventory_item_id: iv.id, quantity: 1, unit_price: 1000, cannula_size: "pink" }],
+  });
+  assert.equal(cannulated.status, 201, JSON.stringify(cannulated.data));
+  const ivLines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(cannulated.data.submission.bill_id).items);
+  assert.equal(ivLines.some((line) => line.description === "IV Cannulation only" && line.cannula_size === "pink"), true);
+  assert.equal(ivLines.some((line) => line.description === "Cannula (Pink)"), false);
+  assert.equal(bagItem("Cannula (Pink)").quantity, 3);
+  assert.equal(bagItem("Cannula (Blue)").quantity, 5);
 });
