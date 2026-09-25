@@ -15,6 +15,7 @@ const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
 const {
   alignInventoryCategories,
   RETIRED_OCS_CONSUMABLE_SKUS,
+  RETIRED_OCS_IV_COMBINATION_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
 } = require("../src/lib/inventoryCategoryAlignment");
 
@@ -338,4 +339,40 @@ test("adult and paediatric atomic enemas keep the counted quantity of the old si
   assert.equal(paediatric.item_name, "Atomic enema (Paediatric)");
   assert.equal(Number(paediatric.quantity), 4);
   assert.equal(Number(paediatric.cost_price), 30);
+});
+
+test("IV N/S combination stock charges leave the list", () => {
+  for (const itemName of RETIRED_OCS_IV_COMBINATION_SKUS) {
+    assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === itemName), false, itemName);
+  }
+  assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === "IV Ocid 40mg"), true);
+
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'IV Drugs' AND owner_doctor_id IS NULL LIMIT 1").get()?.id
+    || Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('IV Drugs')").run().lastInsertRowid);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, 'ocs', NULL, 0, 0, 'unit', 0, 0)
+  `);
+  const ids = RETIRED_OCS_IV_COMBINATION_SKUS.map((name) => Number(insert.run(name, folderId).lastInsertRowid));
+  let ocid = db.prepare(`
+    SELECT id, archived_at FROM inventory
+    WHERE stock_scope = 'ocs' AND owner_doctor_id IS NULL
+      AND lower(trim(item_name)) = lower(trim('IV Ocid 40mg'))
+    ORDER BY id ASC LIMIT 1
+  `).get();
+  if (!ocid) {
+    ocid = { id: Number(insert.run("IV Ocid 40mg", folderId).lastInsertRowid), archived_at: null };
+  }
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= ids.length);
+  for (const id of ids) {
+    const row = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at, String(id));
+    assert.equal(Number(row.quantity), 0);
+  }
+  const kept = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(ocid.id);
+  assert.equal(kept.archived_at, null);
 });
