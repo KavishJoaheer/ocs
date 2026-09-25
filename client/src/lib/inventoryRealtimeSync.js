@@ -182,9 +182,10 @@ export function startInventoryRealtimeSync(user) {
   source.addEventListener("connected", () => {
     if (eventSource !== source || buildSessionKey(user) !== activeSessionKey) return;
     clearReconnectTimer();
-    // A reconnect has no event replay. Reload every view which could have missed a change.
-    notifyDoctorBagInventoryUpdated();
-    notifyOcsInventoryUpdated();
+    // A reconnect has no event replay. One inventory signal per role is enough
+    // to refresh its combined stock view; sending both caused duplicate GETs.
+    if (user.role === "doctor") notifyDoctorBagInventoryUpdated();
+    else if (user.role === "admin" || user.role === "operator" || user.role === "accountant") notifyOcsInventoryUpdated();
     notifySupplyRequestsUpdated();
     notifyPatientsLiveUpdated();
     notifyLongTermReviewUpdated();
@@ -192,10 +193,8 @@ export function startInventoryRealtimeSync(user) {
   });
 
   source.addEventListener("inventory_resync", () => {
-    notifyDoctorBagInventoryUpdated();
-    if (user.role === "admin" || user.role === "operator" || user.role === "accountant") {
-      notifyOcsInventoryUpdated();
-    }
+    if (user.role === "doctor") notifyDoctorBagInventoryUpdated();
+    else if (user.role === "admin" || user.role === "operator" || user.role === "accountant") notifyOcsInventoryUpdated();
   });
 
   source.addEventListener("supply_request_change", () => {

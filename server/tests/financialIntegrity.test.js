@@ -1332,7 +1332,12 @@ test('reconnect refreshes financial, inventory and supply views and ignores an o
   sandbox.start({role:'doctor',id:1,doctor_id:1});await new Promise(r=>setImmediate(r));sources[0].handlers.connected();events.length=0;
   sources[0].onerror();for(const fn of [...timers.values()])fn();await new Promise(r=>setImmediate(r));sources[1].handlers.connected();
   assert.ok(events.includes('notifyPatientsLiveUpdated'));assert.ok(events.includes('notifyDoctorBagInventoryUpdated'));assert.ok(events.includes('notifySupplyRequestsUpdated'));
+  assert.equal(events.filter(name=>name==='notifyDoctorBagInventoryUpdated').length,1);
+  assert.equal(events.includes('notifyOcsInventoryUpdated'),false);
   events.length=0;sources[0].handlers.connected();assert.equal(events.length,0);
+  sandbox.start({role:'admin',id:2});await new Promise(r=>setImmediate(r));sources[2].handlers.connected();
+  assert.equal(events.filter(name=>name==='notifyOcsInventoryUpdated').length,1);
+  assert.equal(events.includes('notifyDoctorBagInventoryUpdated'),false);
 });
 
 test('financial review catches duplicate lines and malformed history, and excludes reversed pending dispensing', async () => {

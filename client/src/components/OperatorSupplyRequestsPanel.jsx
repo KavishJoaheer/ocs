@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, ClipboardList, Inbox } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
@@ -175,6 +175,12 @@ export default function OperatorSupplyRequestsPanel() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [activeLoaded, setActiveLoaded] = useState(false);
+  const [loadedHistoryQuery, setLoadedHistoryQuery] = useState(null);
+  const activeLoadedRef = useRef(false);
+  const loadedHistoryQueryRef = useRef(null);
+  const activeLoadIdRef = useRef(0);
+  const historyLoadIdRef = useRef(0);
   const [error, setError] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
@@ -188,15 +194,20 @@ export default function OperatorSupplyRequestsPanel() {
   const [overrideTarget, setOverrideTarget] = useState(null);
 
   const loadActive = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const loadId = ++activeLoadIdRef.current;
+    if (!activeLoadedRef.current) setLoading(true);
     try {
       const payload = await api.get("/restock-requests");
+      if (loadId !== activeLoadIdRef.current) return;
       setRequests(Array.isArray(payload?.requests) ? payload.requests : []);
+      setError(null);
+      activeLoadedRef.current = true;
+      setActiveLoaded(true);
     } catch (err) {
+      if (loadId !== activeLoadIdRef.current) return;
       setError(err instanceof ApiError ? err.message : "Could not load restock requests.");
     } finally {
-      setLoading(false);
+      if (loadId === activeLoadIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -219,10 +230,11 @@ export default function OperatorSupplyRequestsPanel() {
   }, [filters, historyOffset]);
 
   const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    setHistoryError(null);
+    const loadId = ++historyLoadIdRef.current;
+    if (loadedHistoryQueryRef.current !== historyQuery) setHistoryLoading(true);
     try {
       const payload = await api.get(`/restock-requests?${historyQuery}`);
+      if (loadId !== historyLoadIdRef.current) return;
       setHistory({
         requests: Array.isArray(payload?.requests) ? payload.requests : [],
         total: Number(payload?.total || 0),
@@ -234,10 +246,14 @@ export default function OperatorSupplyRequestsPanel() {
       });
       if (Array.isArray(payload?.operators)) setOperators(payload.operators);
       if (Array.isArray(payload?.folders)) setFolders(payload.folders);
+      setHistoryError(null);
+      loadedHistoryQueryRef.current = historyQuery;
+      setLoadedHistoryQuery(historyQuery);
     } catch (err) {
+      if (loadId !== historyLoadIdRef.current) return;
       setHistoryError(err instanceof ApiError ? err.message : "Could not load supply request history.");
     } finally {
-      setHistoryLoading(false);
+      if (loadId === historyLoadIdRef.current) setHistoryLoading(false);
     }
   }, [historyQuery]);
 
@@ -328,7 +344,7 @@ export default function OperatorSupplyRequestsPanel() {
     onReceipt: (request) => setDetailRequestId(request.id),
   };
 
-  if (!loading && !error && tab === "active" && requests.length === 0) {
+  if (activeLoaded && !error && tab === "active" && requests.length === 0) {
     return (
       <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -338,7 +354,6 @@ export default function OperatorSupplyRequestsPanel() {
         <button
           type="button"
           onClick={() => {
-            setHistoryLoading(true);
             setTab("history");
           }}
           className="min-h-11 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700"
@@ -349,7 +364,7 @@ export default function OperatorSupplyRequestsPanel() {
     );
   }
 
-  if (!historyLoading && !historyError && tab === "history" && history.total === 0) {
+  if (loadedHistoryQuery === historyQuery && !historyError && tab === "history" && history.total === 0) {
     return (
       <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -372,11 +387,9 @@ export default function OperatorSupplyRequestsPanel() {
       <SectionCard
         title="Supply Requests"
         subtitle={
-          loading
-            ? "Loading…"
-            : tab === "history"
-              ? `${history.total} archived request${history.total === 1 ? "" : "s"}`
-              : summaryLabel
+          tab === "history"
+            ? `${history.total} archived request${history.total === 1 ? "" : "s"}`
+            : loading && !activeLoaded ? "Loading…" : summaryLabel
         }
         actions={
           <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#ba5a32]/10 px-3 py-1.5 text-xs font-bold text-[#ba5a32]">

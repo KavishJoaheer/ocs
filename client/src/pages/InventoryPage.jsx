@@ -2966,7 +2966,9 @@ function MobileDoctorBagLayout({
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {backgroundRefreshing && !showScopeLoading ? <p className="mb-1 text-xs text-slate-500" role="status">Updating stock…</p> : null}
+        <p className="min-h-4 text-xs text-slate-500" role="status" aria-live="polite">
+          {backgroundRefreshing && !showScopeLoading ? "Updating stock…" : ""}
+        </p>
         {showScopeLoading ? (
           <InventoryScopeLoading failed={scopeLoadFailed} onRetry={onRetryScope} />
         ) : mobileBagItems.length ? (
@@ -3051,6 +3053,7 @@ export default function InventoryPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
+  const [showRefreshStatus, setShowRefreshStatus] = useState(false);
   const [loadedInventoryContentKey, setLoadedInventoryContentKey] = useState(null);
   const [failedInventoryQuery, setFailedInventoryQuery] = useState(null);
   const hasInventoryDataRef = useRef(false);
@@ -3065,6 +3068,14 @@ export default function InventoryPage() {
   const doctorContextRef = useRef(doctorContext);
   doctorContextRef.current = doctorContext;
   const latestInventoryLoadRef = useRef(0);
+  useEffect(() => {
+    if (!listRefreshing) {
+      setShowRefreshStatus(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setShowRefreshStatus(true), 400);
+    return () => window.clearTimeout(timer);
+  }, [listRefreshing]);
   const [contextSearch, setContextSearch] = useState("OCS Stock");
   const [editor, setEditor] = useState(null);
   const [movement, setMovement] = useState(null);
@@ -3371,14 +3382,20 @@ export default function InventoryPage() {
   }, [load]);
 
   useEffect(() => {
+    let refreshTimer = null;
     const handleInventoryRefresh = () => {
-      void load(selectedContextDoctorId, doctorContext, { silent: true });
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void load(selectedContextDoctorId, doctorContext, { silent: true });
+      }, 120);
     };
     window.addEventListener("focus", handleInventoryRefresh);
     window.addEventListener("online", handleInventoryRefresh);
     window.addEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
     window.addEventListener(DOCTOR_BAG_INVENTORY_EVENT, handleInventoryRefresh);
     return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
       window.removeEventListener("focus", handleInventoryRefresh);
       window.removeEventListener("online", handleInventoryRefresh);
       window.removeEventListener(OCS_INVENTORY_EVENT, handleInventoryRefresh);
@@ -4658,7 +4675,7 @@ export default function InventoryPage() {
             showScopeLoading={showScopeLoading}
             scopeLoadFailed={scopeLoadFailed}
             onRetryScope={() => void load()}
-            backgroundRefreshing={listRefreshing}
+            backgroundRefreshing={showRefreshStatus}
             folderCounts={folderCounts}
             bagItemCount={items.length}
           />
@@ -5191,7 +5208,9 @@ export default function InventoryPage() {
             <span className="text-xs font-medium text-slate-500" aria-live="polite">
               Showing {sortedItems.length} of {items.length}
             </span>
-            {listRefreshing && !showScopeLoading ? <span className="text-xs text-slate-500" role="status">Updating stock…</span> : null}
+            <span className="w-28 shrink-0 whitespace-nowrap text-xs text-slate-500" role="status" aria-live="polite">
+              {showRefreshStatus && !showScopeLoading ? "Updating stock…" : ""}
+            </span>
             {search || (selectedView && selectedView !== "all") || showLowStockOnly || showOutOfStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? (
               <button
                 type="button"
