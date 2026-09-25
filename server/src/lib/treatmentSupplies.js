@@ -1,6 +1,7 @@
 "use strict";
 
-const FOLDER_NAME = "O2 & Nebuliser";
+const SUPPLY_FOLDER = "O2 & Nebuliser";
+const SERVICE_FOLDER = "Services";
 
 const MASKS = Object.freeze({
   adult: "Adult Face Mask",
@@ -67,6 +68,51 @@ const SERVICES = Object.freeze([
     itemName: "Each additional 30 mins O2",
     components: [],
   },
+  {
+    itemName: "Administration Fees (only when administration is done)",
+    sellingPrice: 500,
+    components: [],
+  },
+  {
+    itemName: "IV Cannulation only",
+    sellingPrice: 1000,
+    components: [],
+  },
+  {
+    itemName: "Removal of sutures or staples removing + Dressing",
+    sellingPrice: 1500,
+    components: [],
+  },
+  {
+    itemName: "Abdominal tapping",
+    sellingPrice: 2500,
+    components: [],
+  },
+  {
+    itemName: "PR (including sterile gloves and gel)",
+    sellingPrice: 800,
+    components: [],
+  },
+  {
+    itemName: "PR + Atomic enema",
+    sellingPrice: 1000,
+    components: [],
+  },
+  {
+    itemName: "Manual Evac only",
+    sellingPrice: 1500,
+    components: [],
+  },
+  {
+    itemName: "Manual Evac + Atomic enema",
+    sellingPrice: 2000,
+    components: [],
+  },
+  {
+    itemName: "Ear Syringing",
+    sellingPrice: 800,
+    components: [],
+  },
 ]);
 
 const supplyNames = new Set(SUPPLIES.map((item) => item.itemName.toLowerCase()));
@@ -117,7 +163,7 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity) {
   }));
 }
 
-function folderId(db) {
+function folderId(db, name) {
   const existing = db.prepare(`
     SELECT id
     FROM inventory_folders
@@ -125,12 +171,12 @@ function folderId(db) {
       AND owner_doctor_id IS NULL
     ORDER BY id ASC
     LIMIT 1
-  `).get(FOLDER_NAME);
+  `).get(name);
   if (existing) return Number(existing.id);
   return Number(db.prepare(`
     INSERT INTO inventory_folders (name, parent_id, owner_doctor_id, updated_at)
     VALUES (?, NULL, NULL, CURRENT_TIMESTAMP)
-  `).run(FOLDER_NAME).lastInsertRowid);
+  `).run(name).lastInsertRowid);
 }
 
 function findCatalogueRow(db, scope, ownerDoctorId, itemName) {
@@ -157,7 +203,8 @@ function findCatalogueRow(db, scope, ownerDoctorId, itemName) {
 }
 
 function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
-  const folder = folderId(db);
+  const supplyFolder = folderId(db, SUPPLY_FOLDER);
+  const serviceFolder = folderId(db, SERVICE_FOLDER);
   const locations = [{ scope: "ocs", ownerDoctorId: null }];
   const doctors = doctorId
     ? [{ id: Number(doctorId) }]
@@ -180,15 +227,18 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `);
-  const markService = db.prepare(`
+  const placeService = db.prepare(`
     UPDATE inventory
     SET item_kind = 'service',
         folder_id = ?,
         quantity = 0,
         minimum_quantity = 0,
+        selling_price = CASE
+          WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
+          ELSE selling_price
+        END,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-      AND COALESCE(item_kind, 'stock') != 'service'
   `);
 
   const ensured = db.transaction(() => {
@@ -200,7 +250,7 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           insert.run(
             supply.itemName,
             "stock",
-            folder,
+            supplyFolder,
             location.scope,
             location.ownerDoctorId,
             supply.unit,
@@ -208,24 +258,25 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           );
           inserted += 1;
         } else {
-          keepSupplyUnpriced.run(folder, existing.id);
+          keepSupplyUnpriced.run(supplyFolder, existing.id);
         }
       }
       for (const service of SERVICES) {
+        const price = Number(service.sellingPrice || 0);
         const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, service.itemName);
         if (!existing) {
           insert.run(
             service.itemName,
             "service",
-            folder,
+            serviceFolder,
             location.scope,
             location.ownerDoctorId,
             "service",
-            0,
+            price,
           );
           inserted += 1;
         } else {
-          markService.run(folder, existing.id);
+          placeService.run(serviceFolder, price, price, existing.id);
         }
       }
     }

@@ -1025,6 +1025,17 @@ test("a billed nebulizer takes the chosen mask and nebule from the bag without c
   assert.equal(nebulizer.is_service_charge, true);
   assert.equal(nebulizer.requires_mask, true);
   assert.equal(nebulizer.included_label, "1 face mask and 1 Dulopro nebule");
+  assert.equal(nebulizer.category, "Services");
+  const administration = catalog.data.items.find((item) => item.item_name === "Administration Fees (only when administration is done)");
+  const ear = catalog.data.items.find((item) => item.item_name === "Ear Syringing");
+  assert.ok(administration);
+  assert.equal(administration.is_service_charge, true);
+  assert.equal(administration.category, "Services");
+  assert.equal(administration.selling_price, 500);
+  assert.equal(administration.requires_mask, false);
+  assert.ok(ear);
+  assert.equal(ear.selling_price, 800);
+  assert.equal(ear.category, "Services");
   assert.equal(catalog.data.items.some((item) => item.item_name === "Adult Face Mask"), false);
   assert.ok(extraOxygen);
   assert.equal(extraOxygen.requires_mask, false);
