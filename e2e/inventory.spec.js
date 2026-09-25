@@ -1172,6 +1172,46 @@ test.describe("Inventory workflow", () => {
     await expect(itemRow.getByLabel("Stock status: Expired")).toBeVisible();
   });
 
+  test("background stock refresh keeps the current rows visible", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    const operator = await login(request, "operator01");
+    const name = `E2E Refresh ${Date.now()}`;
+    await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name,
+      quantity: 0,
+    });
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+    await page.getByLabel("Search stock items").fill(name);
+    const itemRow = page.getByRole("row").filter({ hasText: name }).first();
+    await expect(itemRow).toBeVisible({ timeout: 20_000 });
+
+    let releaseRefresh;
+    const heldRefresh = new Promise((resolve) => { releaseRefresh = resolve; });
+    let refreshStarted;
+    const startedRefresh = new Promise((resolve) => { refreshStarted = resolve; });
+    await page.route((url) => url.pathname === "/api/inventory", async (route) => {
+      refreshStarted();
+      await heldRefresh;
+      await route.continue();
+    });
+    try {
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await startedRefresh;
+      await expect(page.getByText("Updating stock…")).toBeVisible();
+      await expect(itemRow).toBeVisible();
+      await expect(page.getByText("Updating items…")).toHaveCount(0);
+    } finally {
+      releaseRefresh();
+    }
+    await expect(page.getByText("Updating stock…")).toHaveCount(0);
+    await expect(itemRow).toBeVisible();
+  });
+
   test("missing expiry and non-expiring stock use different labels", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");

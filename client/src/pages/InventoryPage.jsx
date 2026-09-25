@@ -2875,7 +2875,10 @@ function MobileDoctorBagLayout({
   onToggleLowStock,
   onToggleMissingExpiry,
   onToggleExpired,
-  listRefreshing = false,
+  showScopeLoading = false,
+  scopeLoadFailed = false,
+  onRetryScope,
+  backgroundRefreshing = false,
   folderCounts,
   bagItemCount = 0,
 }) {
@@ -2963,10 +2966,9 @@ function MobileDoctorBagLayout({
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {listRefreshing ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
-            Updating items…
-          </div>
+        {backgroundRefreshing && !showScopeLoading ? <p className="mb-1 text-xs text-slate-500" role="status">Updating stock…</p> : null}
+        {showScopeLoading ? (
+          <InventoryScopeLoading failed={scopeLoadFailed} onRetry={onRetryScope} />
         ) : mobileBagItems.length ? (
           <>
             <div className="flex w-full min-w-0 flex-col gap-2.5">
@@ -3022,6 +3024,26 @@ function MobileDoctorBagLayout({
   );
 }
 
+function InventoryScopeLoading({ failed, onRetry }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500" role="status">
+      {failed ? (
+        <>
+          <p>Could not load this stock location.</p>
+          <button type="button" onClick={onRetry} className="mt-3 min-h-11 rounded-xl border border-slate-200 bg-white px-4 font-semibold text-slate-700">Retry</button>
+        </>
+      ) : "Updating items…"}
+    </div>
+  );
+}
+
+function inventoryContentKey(query) {
+  const params = new URLSearchParams(String(query || "").replace(/^\?/, ""));
+  // One doctor response contains both bag and depot stock. Their toggle is local.
+  params.delete("context");
+  return params.toString();
+}
+
 export default function InventoryPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -3029,6 +3051,8 @@ export default function InventoryPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
+  const [loadedInventoryContentKey, setLoadedInventoryContentKey] = useState(null);
+  const [failedInventoryQuery, setFailedInventoryQuery] = useState(null);
   const hasInventoryDataRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -3190,6 +3214,8 @@ export default function InventoryPage() {
   );
   const currentInventoryQueryRef = useRef(inventoryListQuery);
   currentInventoryQueryRef.current = inventoryListQuery;
+  const showScopeLoading = Boolean(data) && loadedInventoryContentKey !== inventoryContentKey(inventoryListQuery);
+  const scopeLoadFailed = failedInventoryQuery === inventoryListQuery;
   const summary = data?.summary || {};
   const folderCounts = useMemo(() => {
     const map = new Map();
@@ -3290,18 +3316,21 @@ export default function InventoryPage() {
       if (query !== currentInventoryQueryRef.current) return;
       const loadId = ++latestInventoryLoadRef.current;
       const keepShell = silent || hasInventoryDataRef.current;
+      setFailedInventoryQuery(null);
       if (!keepShell) setLoading(true);
       else setListRefreshing(true);
       try {
         const payload = await api.get(`/inventory${query}`);
         if (loadId !== latestInventoryLoadRef.current || query !== currentInventoryQueryRef.current) return;
         commitInventoryData(payload, { silent: true });
+        setLoadedInventoryContentKey(inventoryContentKey(query));
         if (isDoctor) {
           setEmergencyRestockEnabled(Boolean(payload.emergency_restock_enabled));
         }
       } catch (error) {
         if (loadId !== latestInventoryLoadRef.current || query !== currentInventoryQueryRef.current) return;
         toast.error(error.message);
+        setFailedInventoryQuery(query);
         if (!keepShell) setData(null);
       } finally {
         if (loadId === latestInventoryLoadRef.current) {
@@ -4626,7 +4655,10 @@ export default function InventoryPage() {
             onToggleLowStock={() => applyDoctorBagFilter("low")}
             onToggleMissingExpiry={() => applyDoctorBagFilter("missing")}
             onToggleExpired={() => applyDoctorBagFilter("expired")}
-            listRefreshing={listRefreshing}
+            showScopeLoading={showScopeLoading}
+            scopeLoadFailed={scopeLoadFailed}
+            onRetryScope={() => void load()}
+            backgroundRefreshing={listRefreshing}
             folderCounts={folderCounts}
             bagItemCount={items.length}
           />
@@ -5159,6 +5191,7 @@ export default function InventoryPage() {
             <span className="text-xs font-medium text-slate-500" aria-live="polite">
               Showing {sortedItems.length} of {items.length}
             </span>
+            {listRefreshing && !showScopeLoading ? <span className="text-xs text-slate-500" role="status">Updating stock…</span> : null}
             {search || (selectedView && selectedView !== "all") || showLowStockOnly || showOutOfStockOnly || showNearExpiryOnly || showMissingExpiryOnly || showExpiredOnly || showUnpricedOnly ? (
               <button
                 type="button"
@@ -5173,10 +5206,8 @@ export default function InventoryPage() {
 
         {renderMenuSummaries("mb-3 lg:hidden")}
 
-        {listRefreshing ? (
-          <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500" aria-live="polite">
-            Updating items…
-          </div>
+        {showScopeLoading ? (
+          <InventoryScopeLoading failed={scopeLoadFailed} onRetry={() => void load()} />
         ) : pagedItems.length ? (
           <>
             <div className={cx("hidden min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 bg-white", stickyInventoryActions ? "lg:block" : "md:block")}>
@@ -5382,7 +5413,7 @@ export default function InventoryPage() {
           />
         )}
 
-        <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")} data-testid="inventory-pagination">
+        {!showScopeLoading ? <div className={cx("flex items-center justify-between", isOperator ? "mt-2" : "mt-3")} data-testid="inventory-pagination">
           <p className="text-xs text-slate-500">
             Page {currentPage} of {totalPages} - {sortedItems.length} filtered item(s)
           </p>
@@ -5394,7 +5425,7 @@ export default function InventoryPage() {
               Next
             </button>
           </div>
-        </div>
+        </div> : null}
       </SectionCard>
       ) : null}
 
