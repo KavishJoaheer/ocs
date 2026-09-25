@@ -234,7 +234,7 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
   }
   const enema = String(enemaSize || "").trim().toLowerCase();
   if (serviceRequiresEnema(service) && !ENEMAS[enema]) {
-    const error = new Error(`Choose Adult or Paediatric atomic enema for ${service.itemName}.`);
+    const error = new Error(`Choose Atomic enema (Adult) or Atomic enema (Paediatric) for ${service.itemName}.`);
     error.status = 400;
     error.extra = { code: "TREATMENT_ENEMA_REQUIRED", service_name: service.itemName };
     throw error;

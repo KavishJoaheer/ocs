@@ -505,7 +505,7 @@ function BillingLitePage() {
         return `Choose Adult or Paediatric face mask for ${item.item_name}.`;
       }
       if (item.requires_enema && !["adult", "paediatric"].includes(enemaSizeByItem[item.id])) {
-        return `Choose Adult or Paediatric atomic enema for ${item.item_name}.`;
+        return `Choose Atomic enema (Adult) or Atomic enema (Paediatric) for ${item.item_name}.`;
       }
       if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
         return `Choose a cannula for ${item.item_name}.`;
@@ -739,8 +739,8 @@ function BillingLitePage() {
               className={selectClass}
             >
               <option value="">Choose atomic enema</option>
-              <option value="adult">Adult atomic enema</option>
-              <option value="paediatric">Paediatric atomic enema</option>
+              <option value="adult">Atomic enema (Adult)</option>
+              <option value="paediatric">Atomic enema (Paediatric)</option>
             </select>
           </label>
         ) : null}
