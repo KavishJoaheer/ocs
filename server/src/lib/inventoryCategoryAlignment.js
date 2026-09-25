@@ -28,14 +28,14 @@ const CATEGORY_RULES = [
   { itemName: "NGT (16fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "NGT (18fg x105cm)", folderName: "Catherisation & NGT" },
   { itemName: "Urine bag", folderName: "Catherisation & NGT" },
-  { itemName: "Nebulizer Mask (Adult)", folderName: "O2 & Nebuliser" },
-  { itemName: "Nebulizer Mask (Paediatric)", folderName: "O2 & Nebuliser" },
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [
   "Micropore 1 inch (Box of 12)",
   "Gown",
   "White Adhesive Tape",
+  "Nebulizer Mask (Adult)",
+  "Nebulizer Mask (Paediatric)",
 ];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
@@ -99,34 +99,51 @@ function writeOffRetiredSkuRow(row, writeOffQty) {
   );
 }
 
+function legacyOxygenStockNames(db) {
+  return db.prepare(`
+    SELECT DISTINCT item_name
+    FROM inventory
+    WHERE archived_at IS NULL
+      AND COALESCE(item_kind, 'stock') = 'stock'
+      AND (
+        lower(replace(trim(item_name), '₂', '2')) LIKE 'o2 with mask%'
+        OR lower(replace(trim(item_name), '₂', '2')) LIKE 'each additional 30 min%'
+      )
+  `).all().map((row) => row.item_name);
+}
+
 function retireRemovedOcsCatalogItems() {
   return db.transaction(() => {
     let archived = 0;
     let blocked = 0;
     let writtenOff = 0;
-    for (const itemName of RETIRED_OCS_CATALOG_ITEMS) {
+    const names = [...new Set([
+      ...RETIRED_OCS_CATALOG_ITEMS,
+      ...legacyOxygenStockNames(db),
+    ])];
+    const loadRows = db.prepare(`
+      SELECT i.*,
+        COALESCE((
+          SELECT SUM(b.quantity_remaining)
+          FROM inventory_batches b
+          WHERE b.item_id = i.id AND b.quantity_remaining > 0
+        ), 0) AS live_batch_quantity,
+        COALESCE((
+          SELECT SUM(r.quantity)
+          FROM inventory_reservations r
+          WHERE r.inventory_id = i.id AND r.status = 'active'
+        ), 0) AS reserved_quantity
+      FROM inventory i
+      WHERE LOWER(TRIM(i.item_name)) = LOWER(TRIM(?))
+        AND i.archived_at IS NULL
+        AND (
+          (i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
+          OR (i.stock_scope = 'doctor' AND i.owner_doctor_id IS NOT NULL)
+        )
+    `);
+    for (const itemName of names) {
       recordOcsCatalogExclusion(itemName);
-      const rows = db.prepare(`
-        SELECT i.*,
-          COALESCE((
-            SELECT SUM(b.quantity_remaining)
-            FROM inventory_batches b
-            WHERE b.item_id = i.id AND b.quantity_remaining > 0
-          ), 0) AS live_batch_quantity,
-          COALESCE((
-            SELECT SUM(r.quantity)
-            FROM inventory_reservations r
-            WHERE r.inventory_id = i.id AND r.status = 'active'
-          ), 0) AS reserved_quantity
-        FROM inventory i
-        WHERE LOWER(TRIM(i.item_name)) = LOWER(TRIM(?))
-          AND i.archived_at IS NULL
-          AND (
-            (i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
-            OR (i.stock_scope = 'doctor' AND i.owner_doctor_id IS NOT NULL)
-          )
-      `).all(itemName);
-      for (const row of rows) {
+      for (const row of loadRows.all(itemName)) {
         if (Number(row.reserved_quantity || 0) > 0) {
           blocked += 1;
           continue;

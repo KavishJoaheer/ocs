@@ -32,10 +32,6 @@ const TARGET_ITEMS = [
   "Urine bag",
 ];
 const O2_FOLDER = "O2 & Nebuliser";
-const O2_ITEMS = [
-  "Nebulizer Mask (Adult)",
-  "Nebulizer Mask (Paediatric)",
-];
 
 before(() => initializeDatabase());
 
@@ -52,11 +48,10 @@ test("catheterisation and NGT catalogue metadata uses the dedicated folder", () 
   }
 });
 
-test("oxygen and nebuliser catalogue metadata uses the dedicated folder", () => {
-  for (const itemName of O2_ITEMS) {
-    const row = ocsConsumablesPdfCatalog.find((item) => item.name === itemName);
-    assert.ok(row, itemName);
-    assert.equal(row.category, O2_FOLDER, itemName);
+test("nebulizer masks are no longer catalogue supplies", () => {
+  for (const itemName of ["Nebulizer Mask (Adult)", "Nebulizer Mask (Paediatric)"]) {
+    assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === itemName), false, itemName);
+    assert.equal(RETIRED_OCS_CONSUMABLE_SKUS.includes(itemName), true, itemName);
   }
 });
 
@@ -170,8 +165,14 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   assert.equal(retry.conflicts, 0);
 });
 
+function oxygenFolderId() {
+  const existing = db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(O2_FOLDER);
+  if (existing) return Number(existing.id);
+  return Number(db.prepare("INSERT INTO inventory_folders (name, owner_doctor_id) VALUES (?, NULL)").run(O2_FOLDER).lastInsertRowid);
+}
+
 test("removed O2 time charges are retired in warehouse and doctor bags, including billing catalogue", () => {
-  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(O2_FOLDER).id);
+  const folderId = oxygenFolderId();
   const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all().map((row) => Number(row.id));
   const insert = db.prepare(`
     INSERT INTO inventory (
@@ -207,6 +208,31 @@ test("removed O2 time charges are retired in warehouse and doctor bags, includin
   const retry = alignInventoryCategories();
   assert.equal(retry.inserted, 0);
   assert.equal(retry.archived, 0);
+});
+
+test("old oxygen stock charges leave the list and the billing service stays", () => {
+  const folderId = oxygenFolderId();
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, ?, ?, 'ocs', NULL, ?, 0, 'unit', 10, 0)
+  `);
+  const firstOxygenId = Number(insert.run("O2 with mask - first 30 min", "stock", folderId, 0).lastInsertRowid);
+  const combinedId = Number(insert.run("O2 with mask - first 30 min + nebule Pulmicort / Dulopro, or Pulmicort + Dulopro", "stock", folderId, 0).lastInsertRowid);
+  const extraId = Number(insert.run("Each additional 30 min of O2", "stock", folderId, 0).lastInsertRowid);
+  const serviceId = Number(insert.run("Each additional 30 mins O2", "service", folderId, 0).lastInsertRowid);
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= 3);
+  for (const id of [firstOxygenId, combinedId, extraId]) {
+    const row = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at, String(id));
+    assert.equal(Number(row.quantity), 0);
+  }
+  const service = db.prepare("SELECT archived_at, item_kind FROM inventory WHERE id = ?").get(serviceId);
+  assert.equal(service.archived_at, null);
+  assert.equal(service.item_kind, "service");
 });
 
 test("retired consumable SKUs are absent from the warehouse catalogues", () => {

@@ -20,10 +20,6 @@ function catherisationAndNgt(name, current_quantity = 0, par_level = null, neare
   return catalogItem(name, "Catherisation & NGT", current_quantity, par_level, nearest_expiry);
 }
 
-function o2AndNebuliser(name, current_quantity = 0, par_level = null, nearest_expiry = null) {
-  return catalogItem(name, "O2 & Nebuliser", current_quantity, par_level, nearest_expiry);
-}
-
 function catalogItem(name, category, current_quantity = 0, par_level = null, nearest_expiry = null) {
   return {
     name,
@@ -69,8 +65,6 @@ const ocsConsumablesPdfCatalog = [
   catherisationAndNgt("NGT (16fg x105cm)"),
   catherisationAndNgt("NGT (18fg x105cm)"),
   consumable("Nasal Oxygen Cannula"),
-  o2AndNebuliser("Nebulizer Mask (Adult)"),
-  o2AndNebuliser("Nebulizer Mask (Paediatric)"),
   consumable("Needle box of 100 (Black 22G)", 0, 50),
   consumable("Needle box of 100 (Blue 22G)", 0, 50),
   consumable("Needle box of 100 (Pink 22G)", 0, 50),
