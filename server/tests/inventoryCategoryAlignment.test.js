@@ -346,7 +346,7 @@ test("IV N/S combination stock charges leave the list", () => {
   for (const itemName of RETIRED_OCS_IV_COMBINATION_SKUS) {
     assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === itemName), false, itemName);
   }
-  assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === "IV Ocid 40mg"), true);
+  assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === "IV Perfalgan 1g (Paracetamol)"), true);
 
   const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'IV Drugs' AND owner_doctor_id IS NULL LIMIT 1").get()?.id
     || Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('IV Drugs')").run().lastInsertRowid);
@@ -357,14 +357,14 @@ test("IV N/S combination stock charges leave the list", () => {
     ) VALUES (?, 'stock', ?, 'ocs', NULL, 0, 0, 'unit', 0, 0)
   `);
   const ids = RETIRED_OCS_IV_COMBINATION_SKUS.map((name) => Number(insert.run(name, folderId).lastInsertRowid));
-  let ocid = db.prepare(`
+  let keptRow = db.prepare(`
     SELECT id, archived_at FROM inventory
     WHERE stock_scope = 'ocs' AND owner_doctor_id IS NULL
-      AND lower(trim(item_name)) = lower(trim('IV Ocid 40mg'))
+      AND lower(trim(item_name)) = lower(trim('IV Perfalgan 1g (Paracetamol)'))
     ORDER BY id ASC LIMIT 1
   `).get();
-  if (!ocid) {
-    ocid = { id: Number(insert.run("IV Ocid 40mg", folderId).lastInsertRowid), archived_at: null };
+  if (!keptRow) {
+    keptRow = { id: Number(insert.run("IV Perfalgan 1g (Paracetamol)", folderId).lastInsertRowid), archived_at: null };
   }
 
   const result = alignInventoryCategories();
@@ -374,7 +374,7 @@ test("IV N/S combination stock charges leave the list", () => {
     assert.ok(row.archived_at, String(id));
     assert.equal(Number(row.quantity), 0);
   }
-  const kept = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(ocid.id);
+  const kept = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(keptRow.id);
   assert.equal(kept.archived_at, null);
 });
 
@@ -389,7 +389,7 @@ test("discontinued drug stock leaves warehouse and doctor bags", () => {
     ) VALUES (?, 'stock', ?, ?, ?, ?, 0, 'unit', 10, 0)
   `);
   const warehouseIds = RETIRED_OCS_DISCONTINUED_DRUG_SKUS.map((name) => {
-    const qty = name === "Dextrose inj 50% 50ml" ? 3 : 0;
+    const qty = name === "Dextrose inj 50% 50ml" || name === "IV Ocid 40mg" ? 3 : 0;
     return Number(insert.run(name, folderId, "ocs", null, qty).lastInsertRowid);
   });
   const bagIds = RETIRED_OCS_DISCONTINUED_DRUG_SKUS.map((name) => (

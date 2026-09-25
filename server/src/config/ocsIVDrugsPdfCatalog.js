@@ -24,7 +24,6 @@ const ocsIVDrugsPdfCatalog = [
   ivDrug("Augmentin 1g"),
   ivDrug("Gentamycin 80mg"),
   ivDrug("IV Flagyl (Metrodinazole)"),
-  ivDrug("IV Ocid 40mg"),
   ivDrug("IV Perfalgan 1g (Paracetamol)"),
   ivDrug("Levofloxacin 500mg/ Levobact/ Leflox"),
   ivDrug("Nexium"),

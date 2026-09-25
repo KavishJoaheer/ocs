@@ -60,6 +60,7 @@ const RETIRED_OCS_DISCONTINUED_DRUG_SKUS = [
   "Lasilix 40mg",
   "Dextrose inj 50% 50ml",
   "Spasfon (IM/IV)",
+  "IV Ocid 40mg",
 ];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
