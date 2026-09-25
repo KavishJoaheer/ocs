@@ -54,6 +54,13 @@ const RETIRED_OCS_IV_COMBINATION_SKUS = [
   "IV N/S + PPI",
   "IV N/S + Solucortef",
 ];
+const RETIRED_OCS_DISCONTINUED_DRUG_SKUS = [
+  "Ranitidine / Aciloc 50mg",
+  "Fentanyl patch",
+  "Lasilix 40mg",
+  "Dextrose inj 50% 50ml",
+  "Spasfon (IM/IV)",
+];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
   "O2 second 30 mins",
@@ -61,6 +68,7 @@ const RETIRED_OCS_SERVICE_ITEMS = [
 const RETIRED_OCS_CATALOG_ITEMS = [
   ...RETIRED_OCS_CONSUMABLE_SKUS,
   ...RETIRED_OCS_IV_COMBINATION_SKUS,
+  ...RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
   ...RETIRED_OCS_SERVICE_ITEMS,
 ];
 
@@ -326,6 +334,7 @@ module.exports = {
   CATEGORY_RULES,
   RETIRED_OCS_CONSUMABLE_SKUS,
   RETIRED_OCS_IV_COMBINATION_SKUS,
+  RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
   RETIRED_OCS_CATALOG_ITEMS,
   retireRemovedOcsCatalogItems,

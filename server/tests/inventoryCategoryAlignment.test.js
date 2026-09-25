@@ -16,6 +16,7 @@ const {
   alignInventoryCategories,
   RETIRED_OCS_CONSUMABLE_SKUS,
   RETIRED_OCS_IV_COMBINATION_SKUS,
+  RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
 } = require("../src/lib/inventoryCategoryAlignment");
 
@@ -375,4 +376,32 @@ test("IV N/S combination stock charges leave the list", () => {
   }
   const kept = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(ocid.id);
   assert.equal(kept.archived_at, null);
+});
+
+test("discontinued drug stock leaves warehouse and doctor bags", () => {
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'IM Drugs' AND owner_doctor_id IS NULL LIMIT 1").get()?.id
+    || Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('IM Drugs')").run().lastInsertRowid);
+  const doctorId = Number(db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 1").get().id);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, ?, ?, ?, 0, 'unit', 10, 0)
+  `);
+  const warehouseIds = RETIRED_OCS_DISCONTINUED_DRUG_SKUS.map((name) => {
+    const qty = name === "Dextrose inj 50% 50ml" ? 3 : 0;
+    return Number(insert.run(name, folderId, "ocs", null, qty).lastInsertRowid);
+  });
+  const bagIds = RETIRED_OCS_DISCONTINUED_DRUG_SKUS.map((name) => (
+    Number(insert.run(name, folderId, "doctor", doctorId, 0).lastInsertRowid)
+  ));
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= warehouseIds.length + bagIds.length);
+  assert.ok(result.written_off >= 1);
+  for (const id of [...warehouseIds, ...bagIds]) {
+    const row = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at, String(id));
+    assert.equal(Number(row.quantity), 0);
+  }
 });
