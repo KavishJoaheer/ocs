@@ -698,6 +698,67 @@ function BillingLitePage() {
     setView("review");
   }
 
+  function supplyChoiceFields(item) {
+    const selectClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]";
+    return (
+      <>
+        {item.requires_mask ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask</span>
+            <select
+              value={maskSizeByItem[item.id] || ""}
+              onChange={(event) => setMaskSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose face mask</option>
+              <option value="adult">Adult face mask</option>
+              <option value="paediatric">Paediatric face mask</option>
+            </select>
+          </label>
+        ) : null}
+        {item.requires_enema ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Atomic enema</span>
+            <select
+              value={enemaSizeByItem[item.id] || ""}
+              onChange={(event) => setEnemaSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose atomic enema</option>
+              <option value="adult">Adult atomic enema</option>
+              <option value="paediatric">Paediatric atomic enema</option>
+            </select>
+          </label>
+        ) : null}
+        {item.requires_cannula ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
+            <select
+              value={cannulaSizeByItem[item.id] || ""}
+              onChange={(event) => setCannulaSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose cannula</option>
+              <option value="blue">Cannula (Blue)</option>
+              <option value="pink">Cannula (Pink)</option>
+              <option value="green">Cannula (Green)</option>
+              <option value="yellow">Cannula (Yellow)</option>
+            </select>
+          </label>
+        ) : null}
+      </>
+    );
+  }
+
   function changeQuantity(item, delta) {
     if (item.is_service_charge) {
       setCart((current) => ({
@@ -1478,7 +1539,8 @@ function BillingLitePage() {
                         <p className="line-clamp-2 text-base font-black leading-6 text-[#173f47]">{item.item_name}</p>
                         <p className="mt-1 line-clamp-1 text-sm font-semibold text-slate-400">{item.subcategory || item.category}</p>
                       </div>
-                      <div className="mt-auto flex items-end justify-between gap-3 pt-5">
+                      <div className="mt-auto pt-5">
+                      <div className="flex items-end justify-between gap-3">
                         <div className="min-w-0">
                           <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
@@ -1494,9 +1556,6 @@ function BillingLitePage() {
                                       ? "Out of stock"
                                       : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
                           </p>
-                          {item.requires_mask || item.requires_enema || item.requires_cannula ? (
-                            <p className="mt-1 text-xs font-bold text-[#17666a]">Choose which one on review</p>
-                          ) : null}
                         </div>
                         {quantity > 0 ? (
                           <div className="flex shrink-0 items-center rounded-xl bg-[#e6f7f4] p-1">
@@ -1527,6 +1586,8 @@ function BillingLitePage() {
                             <Plus className="size-5" /> Add
                           </button>
                         ) : null}
+                      </div>
+                      {quantity > 0 ? supplyChoiceFields(item) : null}
                       </div>
                     </article>
                   );
@@ -1640,59 +1701,7 @@ function BillingLitePage() {
                           {item.included_label ? (
                             <p className="mt-1 text-sm font-semibold text-[#17666a]">From the bag: {item.quantity} × {item.included_label}</p>
                           ) : null}
-                          {item.requires_mask ? (
-                            <label className="mt-3 block">
-                              <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask</span>
-                              <select
-                                value={maskSizeByItem[item.id] || ""}
-                                onChange={(event) => setMaskSizeByItem((current) => ({
-                                  ...current,
-                                  [item.id]: event.target.value,
-                                }))}
-                                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                              >
-                                <option value="">Choose face mask</option>
-                                <option value="adult">Adult face mask</option>
-                                <option value="paediatric">Paediatric face mask</option>
-                              </select>
-                            </label>
-                          ) : null}
-                          {item.requires_enema ? (
-                            <label className="mt-3 block">
-                              <span className="text-xs font-black uppercase tracking-wide text-slate-500">Atomic enema</span>
-                              <select
-                                value={enemaSizeByItem[item.id] || ""}
-                                onChange={(event) => setEnemaSizeByItem((current) => ({
-                                  ...current,
-                                  [item.id]: event.target.value,
-                                }))}
-                                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                              >
-                                <option value="">Choose atomic enema</option>
-                                <option value="adult">Adult atomic enema</option>
-                                <option value="paediatric">Paediatric atomic enema</option>
-                              </select>
-                            </label>
-                          ) : null}
-                          {item.requires_cannula ? (
-                            <label className="mt-3 block">
-                              <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
-                              <select
-                                value={cannulaSizeByItem[item.id] || ""}
-                                onChange={(event) => setCannulaSizeByItem((current) => ({
-                                  ...current,
-                                  [item.id]: event.target.value,
-                                }))}
-                                className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                              >
-                                <option value="">Choose cannula</option>
-                                <option value="blue">Cannula (Blue)</option>
-                                <option value="pink">Cannula (Pink)</option>
-                                <option value="green">Cannula (Green)</option>
-                                <option value="yellow">Cannula (Yellow)</option>
-                              </select>
-                            </label>
-                          ) : null}
+                          {supplyChoiceFields(item)}
                         </div>
                         <label>
                           <span className="text-xs font-black uppercase tracking-wide text-slate-500">Unit price</span>
