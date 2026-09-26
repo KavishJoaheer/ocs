@@ -354,7 +354,6 @@ export default function OperatorCommandCentre({
   return (
     <div className="ocs-cc space-y-4">
       <section className="ocs-cc-hero px-5 py-5 lg:px-6 lg:py-5">
-        <OperatorCareNetworkArtwork />
         <div className="ocs-cc-hero-body">
           <div className="min-w-0">
             <h1 className="font-display text-[1.7rem] font-semibold leading-tight tracking-tight text-white lg:text-[1.85rem]">
@@ -374,6 +373,7 @@ export default function OperatorCommandCentre({
               />
             </div>
           </div>
+          <OperatorCareNetworkArtwork />
           <div className="ocs-cc-hero-summary relative z-[2] min-w-0 lg:text-right">
             <div className="ocs-cc-hero-on-call">
               <p className="font-display text-4xl font-semibold tabular-nums leading-none text-white lg:text-[2.65rem]">
