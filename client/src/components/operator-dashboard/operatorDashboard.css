@@ -48,25 +48,12 @@
 @media (min-width: 1024px) {
   .ocs-cc-network-art {
     display: block;
-    transform: translateX(clamp(0.75rem, 1.4vw, 1.25rem));
   }
-}
 
-.ocs-cc-network-art::before {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  background:
-    linear-gradient(
-      90deg,
-      #0c2529 0%,
-      rgba(12, 37, 41, 0.18) 16%,
-      rgba(12, 37, 41, 0) 34%,
-      rgba(12, 37, 41, 0) 66%,
-      rgba(12, 37, 41, 0.18) 84%,
-      #0c2529 100%
-    );
-  content: "";
+  .ocs-cc-network-island,
+  .ocs-cc-network-mark {
+    left: calc(50% + clamp(0.75rem, 1.4vw, 1.25rem));
+  }
 }
 
 .ocs-cc-network-island {
