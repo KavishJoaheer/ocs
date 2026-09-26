@@ -7,11 +7,11 @@ function PageHeader({ eyebrow, title, description, actions, align = "end", class
     >
       <div className="min-w-0">
         {eyebrow ? (
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ocs-slate">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className={`${eyebrow ? "mt-1 " : ""}flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-3xl`}>
+        <h1 className={`${eyebrow ? "mt-1 " : ""}flex flex-wrap items-center gap-y-2 break-words font-display text-2xl font-bold leading-tight tracking-[-0.02em] text-ocs-slate md:text-3xl`}>
           {title}
         </h1>
         {description ? (

@@ -4,10 +4,10 @@ import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 function MobileBottomNav() {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 w-full border-t-2 border-brand-teal/20 bg-white/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl lg:hidden"
+      className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 w-full px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden"
       aria-label="Main navigation"
     >
-      <div className="flex h-[80px] items-center justify-between px-6">
+      <div className="pointer-events-auto mx-auto flex min-h-[68px] max-w-md items-center justify-between rounded-[26px] border border-white/80 bg-white/88 p-1.5 shadow-[0_18px_48px_rgba(59,89,92,0.2)] backdrop-blur-2xl">
         {PATIENT_NAV_ITEMS.map((item) => {
           const InactiveIcon = item.mobileIcon;
           const ActiveIcon = item.mobileIconActive ?? item.mobileIcon;
@@ -17,40 +17,30 @@ function MobileBottomNav() {
               key={item.to}
               end={item.end}
               to={item.to}
-              className="mobile-nav-item flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1.5"
+              className={({ isActive }) => [
+                "mobile-nav-item flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[20px] px-1.5 py-2 transition-all duration-200",
+                isActive ? "bg-brand-dark-grey text-white shadow-[0_8px_18px_rgba(59,89,92,0.2)]" : "text-brand-cool-grey",
+              ].join(" ")}
             >
               {({ isActive }) => {
                 const Icon = isActive ? ActiveIcon : InactiveIcon;
 
                 return (
                   <>
-                    <span className="relative flex size-[28px] items-center justify-center">
-                      {isActive ? (
-                        <span
-                          className="pointer-events-none absolute inset-0 rounded-full bg-brand-teal/15 blur-md"
-                          aria-hidden="true"
-                        />
-                      ) : null}
+                    <span className="relative flex size-[24px] items-center justify-center">
                       <Icon
                         className={[
-                          "relative size-[28px] transition-colors duration-200",
-                          isActive ? "text-brand-teal" : "text-gray-400",
+                          "relative size-[22px] transition-colors duration-200",
+                          isActive ? "text-white" : "text-brand-cool-grey",
                         ].join(" ")}
                         strokeWidth={isActive ? 2.25 : 1.75}
-                        fill={isActive ? "currentColor" : "none"}
                       />
                     </span>
-                    <span className="relative">
-                      {isActive ? (
-                        <span
-                          className="pointer-events-none absolute -bottom-1 left-1/2 h-1.5 w-8 -translate-x-1/2 rounded-full bg-brand-teal/35 blur-[3px]"
-                          aria-hidden="true"
-                        />
-                      ) : null}
+                    <span className="relative max-w-full">
                       <span
                         className={[
-                          "relative block whitespace-nowrap text-[11px] leading-none tracking-tight transition-colors duration-200",
-                          isActive ? "font-semibold text-brand-teal" : "font-semibold text-gray-400",
+                          "relative block max-w-full truncate whitespace-nowrap text-[10px] font-semibold leading-none tracking-tight transition-colors duration-200",
+                          isActive ? "text-white" : "text-brand-cool-grey",
                         ].join(" ")}
                       >
                         {item.mobileLabel}

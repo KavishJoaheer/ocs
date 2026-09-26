@@ -49,14 +49,14 @@ function Sidebar() {
       <MobileBottomNav />
 
       {/* ─── Desktop sidebar ─── */}
-      <aside className="hidden w-72 shrink-0 border-r border-[rgba(0,0,0,0.04)] bg-white shadow-[2px_0_20px_-6px_rgba(0,0,0,0.03)] lg:flex lg:flex-col">
+      <aside className="hidden w-72 shrink-0 border-r border-brand-teal/15 bg-white/88 shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:flex-col">
         <div className="flex flex-1 flex-col px-5 py-6">
           {/* Brand */}
           <div className="flex flex-col items-start gap-2">
             <img
               src="/ocs-medecins-logo.png"
               alt="OCS Médecins"
-              className="h-10 w-auto drop-shadow-[0_8px_24px_rgba(34,72,91,0.08)]"
+              className="h-10 w-auto"
             />
             <p className="text-[0.62rem] font-semibold uppercase tracking-[0.32em] text-brand-teal">
               OCS Care

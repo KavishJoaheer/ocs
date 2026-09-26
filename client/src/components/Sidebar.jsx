@@ -200,22 +200,22 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
         return cx(
           "group flex items-center transition-all",
           drawer
-            ? "gap-3.5 px-4 py-3 text-[15px] font-bold text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            ? "gap-3.5 px-4 py-3 text-[15px] font-semibold text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate"
             : "gap-3 rounded-2xl px-4 py-3 text-sm font-semibold",
           mobile
-            ? "min-w-fit border border-[rgba(65,200,198,0.16)] bg-white/80 text-slate-600 hover:bg-white"
-            : !drawer && "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+            ? "min-w-fit border border-ocs-teal/20 bg-white/80 text-ocs-grey hover:bg-white"
+            : !drawer && "text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate",
           drawer && !isActive && "rounded-xl",
           isActive &&
             (mobile
-              ? "border-[rgba(65,200,198,0.35)] bg-[#2d8f98] text-white shadow-lg shadow-[rgba(45,143,152,0.18)]"
+              ? "border-ocs-slate bg-ocs-slate text-white shadow-[0_8px_18px_rgba(59,89,92,0.18)]"
               : drawer
-                ? "rounded-r-xl border-l-4 border-l-[#d9744b] bg-[#fcf3ee] font-extrabold text-[#ba5a32] shadow-sm"
-                : "bg-gradient-to-r from-ocs-teal to-[#22a8a1] font-semibold text-white"),
+                ? "rounded-xl border-l-4 border-l-ocs-yellow bg-ocs-yellow/10 font-bold text-ocs-slate"
+                : "bg-ocs-slate font-semibold text-white shadow-[0_8px_18px_rgba(59,89,92,0.16)]"),
         );
       }}
     >
-      <Icon className="size-4 shrink-0 text-current" />
+      <Icon className="size-[18px] shrink-0 text-current" strokeWidth={1.9} />
       <span>{item.label}</span>
       {badgeCount > 0 ? (
         <span
@@ -366,7 +366,7 @@ function Sidebar() {
       {/* ─── Phone: slim top bar ─── */}
       <div
         id="ocs-mobile-topbar"
-        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-slate-100 bg-white px-4 md:hidden"
+        className="sticky top-0 z-30 flex h-16 w-full min-w-0 items-center justify-between border-b border-ocs-teal/15 bg-white/88 px-4 backdrop-blur-xl md:hidden"
         style={{ paddingTop: `max(0px, var(--sat))`, paddingLeft: `max(1rem, var(--sal))`, paddingRight: `max(1rem, var(--sar))` }}
       >
         <button
@@ -513,12 +513,11 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-full min-w-0 border-r border-slate-200 bg-white text-slate-900 lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
+      <aside className="hidden w-full min-w-0 border-r border-ocs-teal/15 bg-white/88 text-ocs-slate shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-5 py-5">
           <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <BrandMark
               maxWidth={220}
-              logoClassName="drop-shadow-sm"
               size={48}
             />
           </div>
@@ -526,7 +525,7 @@ function Sidebar() {
           {user.role === "operator" ? (
             <OperatorDesktopIdentity user={user} onSignOut={logout} />
           ) : (
-            <div className="mt-4 rounded-2xl border border-ocs-yellow/30 bg-[#f7c747] p-4 text-slate-900 shadow-sm">
+            <div className="mt-4 rounded-[22px] border border-ocs-yellow/40 bg-[rgba(247,186,36,0.16)] p-4 text-ocs-slate">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-base font-bold text-slate-900">

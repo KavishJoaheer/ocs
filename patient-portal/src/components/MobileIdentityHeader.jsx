@@ -3,7 +3,7 @@ import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 /** Slim brand identity strip — logo left, avatar right. Mobile only. */
 function MobileIdentityHeader({ centerLabel = null }) {
   return (
-    <header className="mobile-identity-header relative sticky top-0 z-40 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 pt-safe shadow-sm lg:hidden">
+    <header className="mobile-identity-header relative sticky top-0 z-40 flex items-center justify-between border-b border-brand-teal/15 bg-white/88 px-4 py-3 pt-safe backdrop-blur-xl lg:hidden">
       <img
         src="/ocs-medecins-mark.png"
         alt="OCS Care"

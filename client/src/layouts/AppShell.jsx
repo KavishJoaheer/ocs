@@ -263,8 +263,8 @@ function AppShell() {
     <div
       className={
         isLinkhamPortal
-          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-slate-50 text-slate-900 lg:bg-slate-50"
-          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-slate-50 text-slate-900 lg:bg-slate-50"
+          ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-transparent text-slate-900"
+          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-transparent text-slate-900"
       }
     >
       <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
@@ -273,7 +273,7 @@ function AppShell() {
         <main id="ocs-app-main" className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
           {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
-              className="hidden border-b border-white/70 bg-white/65 px-5 py-3 backdrop-blur md:block lg:px-8"
+              className="hidden border-b border-ocs-teal/15 bg-white/68 px-5 py-3 backdrop-blur-xl md:block lg:px-8"
               style={{ paddingRight: `max(1.25rem, var(--sar))` }}
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

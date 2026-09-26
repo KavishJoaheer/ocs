@@ -42,7 +42,7 @@ function appointmentDateLabel(value) {
 
 function DesktopRequestHero() {
   return (
-    <section className="relative overflow-hidden rounded-[28px] bg-[#102f36] px-7 py-4 text-white shadow-[0_24px_54px_rgba(23,63,74,0.2)] animate-fade-in-up stagger-1">
+    <section className="relative overflow-hidden rounded-[28px] bg-brand-dark-grey px-7 py-4 text-white shadow-[0_24px_54px_rgba(59,89,92,0.2)] animate-fade-in-up stagger-1">
       <div className="pointer-events-none absolute -right-14 -top-24 size-72 rounded-full bg-brand-teal/25 blur-3xl" />
       <div className="desktop-care-hero-content relative z-10">
         <div className="max-w-lg">
@@ -54,7 +54,7 @@ function DesktopRequestHero() {
           <div className="mt-4 flex flex-wrap gap-2.5">
             <RequestVisitCta
               leading={<HousePlus className="size-4.5" />}
-              className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-[#173f4a] shadow-sm transition hover:brightness-105"
+              className="items-center justify-center gap-2 rounded-xl bg-brand-gold px-5 py-3 text-sm font-bold text-brand-dark-grey shadow-sm transition hover:brightness-105"
             />
             <a href={CLINIC_TEL_HREF} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-5 py-2.5 text-sm font-semibold text-white/85 transition hover:bg-white/10 hover:text-white">
               <Phone className="size-4" />
@@ -103,7 +103,7 @@ function DesktopConciergeCard() {
         href={OCS_CARE_WHATSAPP_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-gold px-4 py-3 text-sm font-bold text-[#173f4a] transition hover:brightness-105"
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-gold px-4 py-3 text-sm font-bold text-brand-dark-grey transition hover:brightness-105"
       >
         <WhatsAppIcon className="size-4" />
         Chat on WhatsApp

@@ -1,10 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&family=Nunito+Sans:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Quicksand:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Nunito Sans", "Segoe UI", sans-serif;
-  --font-display: "Poppins", "Segoe UI", sans-serif;
-  --font-montserrat: "Montserrat", "Nunito Sans", "Segoe UI", sans-serif;
+  --font-sans: "Montserrat", "Myriad Pro", "Segoe UI", sans-serif;
+  --font-display: "Quicksand", "Montserrat", "Segoe UI", sans-serif;
+  --font-montserrat: "Montserrat", "Myriad Pro", "Segoe UI", sans-serif;
   --color-brand-gold: #d97706;
   --color-brand-gold-dark: #b45309;
   --color-ocs-teal: #2bccc4;
@@ -16,19 +16,24 @@
 
 :root {
   --ocs-mobile-nav-clearance: 0px;
-  --ocs-teal-strong: #2d8f98;
-  --ocs-teal: #41c8c6;
-  --ocs-teal-soft: #70ddd2;
-  --ocs-gold: #f2c14d;
-  --ocs-ink: #22485b;
+  --ocs-teal-strong: #3b595c;
+  --ocs-teal: #2bccc4;
+  --ocs-teal-soft: #d9f6f3;
+  --ocs-gold: #f7ba24;
+  --ocs-ink: #263f42;
+  --ocs-canvas: #f4faf9;
+  --ocs-surface: rgba(255, 255, 255, 0.9);
+  --ocs-border: rgba(43, 204, 196, 0.18);
+  --ocs-shadow-soft: 0 16px 44px rgba(59, 89, 92, 0.09);
+  --ocs-shadow-float: 0 20px 55px rgba(59, 89, 92, 0.14);
   --color-text-hero-muted: #3b595c;
   --color-hero-navy: #14213d;
   --color-hero-accent-amber: #f7ba24;
   --color-hero-teal-deep: #065a60;
   --gradient-hero-excellence-start: #2bccc4;
   --gradient-hero-excellence-end: #1aada6;
-  --gradient-staff-start: #327a7a;
-  --gradient-staff-end: #165454;
+  --gradient-staff-start: #3b595c;
+  --gradient-staff-end: #244548;
   --gradient-patient-start: #f7ba24;
   --gradient-patient-end: #de9e0b;
   --sat: env(safe-area-inset-top, 0px);
@@ -48,7 +53,7 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
-  background-color: #f5fbfb;
+  background-color: var(--ocs-canvas);
 }
 
 .billing-integrated-review-bar {
@@ -127,9 +132,9 @@ body {
   font-family: var(--font-sans);
   color: var(--ocs-ink);
   background:
-    radial-gradient(circle at top right, rgba(112, 221, 210, 0.18), transparent 24%),
-    radial-gradient(circle at 10% 20%, rgba(65, 200, 198, 0.12), transparent 16%),
-    linear-gradient(180deg, #f7fcfc 0%, #edf8f8 100%);
+    radial-gradient(circle at 92% 4%, rgba(43, 204, 196, 0.2), transparent 28rem),
+    radial-gradient(circle at 8% 26%, rgba(247, 186, 36, 0.1), transparent 23rem),
+    linear-gradient(180deg, #fbfefd 0%, var(--ocs-canvas) 100%);
 }
 
 #root {
@@ -152,7 +157,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid #2d8f98;
+  outline: 2px solid var(--ocs-teal-strong);
   outline-offset: 2px;
 }
 
@@ -360,7 +365,7 @@ table {
 }
 
 .from-sky-500 {
-  --tw-gradient-from: #41c8c6 var(--tw-gradient-from-position);
+  --tw-gradient-from: #2bccc4 var(--tw-gradient-from-position);
   --tw-gradient-to: rgba(65, 200, 198, 0) var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
 }
@@ -372,13 +377,13 @@ table {
 }
 
 .via-blue-600 {
-  --tw-gradient-via: #2d8f98 var(--tw-gradient-via-position);
+  --tw-gradient-via: #3b595c var(--tw-gradient-via-position);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to);
 }
 
 .to-blue-600,
 .to-sky-600 {
-  --tw-gradient-to: #2d8f98 var(--tw-gradient-to-position);
+  --tw-gradient-to: #3b595c var(--tw-gradient-to-position);
 }
 
 .to-teal-600 {
@@ -905,5 +910,65 @@ table {
 
   .auth-canvas-panel--staff .auth-tagline {
     padding-left: calc(0.4375rem + 1.75rem);
+  }
+}
+
+
+/* Responsive auth shell: compact brand masthead + accessible form on phones. */
+@media (max-width: 767px) {
+  .auth-canvas-panel {
+    min-height: 0;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    padding: max(1.25rem, env(safe-area-inset-top, 0px)) 1.25rem 1.25rem;
+    border-bottom: 1px solid rgba(43, 204, 196, 0.18);
+    background:
+      radial-gradient(circle at 88% 0%, rgba(247, 186, 36, 0.13), transparent 11rem),
+      linear-gradient(145deg, #f5fcfb 0%, #eaf7f5 100%);
+  }
+
+  .auth-canvas-panel .auth-hero-body,
+  .auth-canvas-panel .auth-canvas-footer {
+    display: none;
+  }
+
+  .auth-canvas-panel .auth-logo-frame {
+    width: 220px;
+    height: 42px;
+  }
+
+  .auth-canvas-panel .auth-sub-brand {
+    margin-top: 0.35rem;
+    font-size: 0.625rem;
+  }
+
+  .auth-form-panel {
+    min-height: calc(100svh - 106px);
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding: 2rem 1.25rem max(1.5rem, env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.94);
+  }
+
+  .auth-form-panel > .h-8,
+  .auth-form-panel > .h-4 {
+    display: none;
+  }
+
+  .auth-form-body {
+    margin: 0 auto;
+    max-width: 28rem;
+    padding: 0;
+  }
+
+  .auth-form-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .auth-form-title {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    line-height: 1.2;
   }
 }

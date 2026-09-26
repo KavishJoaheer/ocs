@@ -18,14 +18,14 @@ function SectionCard({
         "max-w-full min-w-0",
         variant === "demographic"
           ? "rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] shadow-sm md:border-transparent md:bg-white md:shadow-md"
-          : "border border-slate-100 bg-white shadow-sm lg:border-transparent lg:bg-white lg:shadow-md",
+          : "border border-ocs-teal/15 bg-white/92 shadow-[0_14px_38px_rgba(59,89,92,0.07)] backdrop-blur-sm",
         variant === "demographic"
           ? compact
             ? "p-4"
             : "p-6"
           : compact
-            ? "rounded-2xl p-4"
-            : "rounded-[28px] p-5",
+            ? "rounded-[18px] p-4"
+            : "rounded-[26px] p-5",
         className,
       )}
     >
