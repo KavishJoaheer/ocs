@@ -166,21 +166,6 @@ function CareNetworkVisual() {
   );
 }
 
-function PromiseLine() {
-  return (
-    <p
-      className="landing-promise-line"
-      aria-label="One Commitment | One Promise | Bringing healthcare to every Mauritian doorstep"
-    >
-      <span>One Commitment</span>
-      <b aria-hidden="true">|</b>
-      <span>One Promise</span>
-      <b aria-hidden="true">|</b>
-      <span>Bringing healthcare to every Mauritian doorstep</span>
-    </p>
-  );
-}
-
 function LandingPage() {
   const [mounted, setMounted] = useState(false);
 
@@ -234,9 +219,8 @@ function LandingPage() {
 
             <FadeInSection delay={180}>
               <p className="landing-community-line">
-                WE ARE MORE THAN A HEALTHCARE SERVICE — WE ARE A COMMUNITY OF CARE.
+                We are more than a healthcare service — we are a community of care.
               </p>
-              <PromiseLine />
             </FadeInSection>
 
             <FadeInSection delay={260}>
