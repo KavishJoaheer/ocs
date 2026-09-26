@@ -48,6 +48,7 @@
 @media (min-width: 1024px) {
   .ocs-cc-network-art {
     display: block;
+    transform: translateX(clamp(0.75rem, 1.4vw, 1.25rem));
   }
 }
 
