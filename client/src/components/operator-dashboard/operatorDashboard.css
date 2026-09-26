@@ -53,13 +53,22 @@
   position: absolute;
   z-index: 2;
   inset: 0;
-  background: linear-gradient(90deg, #0c2529 0%, rgba(12, 37, 41, 0.98) 43%, rgba(12, 37, 41, 0.28) 65%, transparent 82%);
+  background:
+    linear-gradient(
+      90deg,
+      #0c2529 0%,
+      rgba(12, 37, 41, 0.98) 38%,
+      rgba(12, 37, 41, 0.2) 55%,
+      rgba(12, 37, 41, 0.28) 66%,
+      rgba(12, 37, 41, 0.94) 79%,
+      #0c2529 100%
+    );
   content: "";
 }
 
 .ocs-cc-network-island {
   position: absolute;
-  right: 8.35rem;
+  right: 17rem;
   top: 50%;
   z-index: 1;
   width: 13.65rem;
@@ -73,7 +82,7 @@
 
 .ocs-cc-network-mark {
   position: absolute;
-  right: 11.8rem;
+  right: 20.45rem;
   top: 50%;
   z-index: 4;
   width: 6.35rem;
@@ -184,7 +193,7 @@
 @media (min-width: 1024px) {
   .ocs-cc-hero-body {
     min-height: 12rem;
-    grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.55fr);
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 16rem);
   }
 }
 
@@ -203,6 +212,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1.45;
+  text-wrap: balance;
   opacity: 0;
   text-shadow: 0 1px 10px rgba(4, 27, 29, 0.72);
   animation: ocs-cc-tagline-arrive 520ms ease-out 1.72s forwards;
@@ -214,12 +224,19 @@
     flex-direction: column;
     align-items: flex-end;
     justify-content: space-between;
+    padding-left: 1rem;
   }
 
   .ocs-cc-hero-on-call {
+    width: 100%;
     min-width: 8.75rem;
     padding-top: 0.25rem;
     text-shadow: 0 2px 16px rgba(3, 20, 22, 0.52);
+  }
+
+  .ocs-cc-hero-on-call > p {
+    margin-left: auto;
+    max-width: 11rem;
   }
 
   .ocs-cc-hero-tagline {
