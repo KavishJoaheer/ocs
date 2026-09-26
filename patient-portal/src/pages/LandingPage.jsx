@@ -1,55 +1,74 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-
-const AMBIENT_BLUR_CROSSES = [
-  {
-    color: "text-[#2bccc4]",
-    position: "left-[5%] top-[10%] h-72 w-72",
-    duration: "22s",
-    delay: "0s",
-  },
-  {
-    color: "text-[#f7ba24]",
-    position: "right-[12%] top-[22%] h-64 w-64",
-    duration: "26s",
-    delay: "-4s",
-  },
-  {
-    color: "text-[#3b595c]",
-    position: "bottom-[15%] left-[20%] h-56 w-56",
-    duration: "18s",
-    delay: "-2s",
-  },
-  {
-    color: "text-[#f7ba24]",
-    position: "bottom-[5%] right-[5%] h-80 w-80",
-    duration: "28s",
-    delay: "-6s",
-  },
-  {
-    color: "text-[#2bccc4]",
-    position: "right-[8%] top-[48%] h-40 w-40",
-    duration: "24s",
-    delay: "-3s",
-  },
-];
+import { Link } from "react-router-dom";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Clock,
+  Home,
+  Lock,
+  MapPin,
+  Stethoscope,
+  UserPlus,
+} from "lucide-react";
 
 const BRAND_CROSS_PATH = "M9 20h6v-5h5V9h-5V4H9v5H4v6h5v5z";
 
-/* High-blur, low-opacity breathing crosses — z-0 behind hero content */
+const AMBIENT_BLUR_CROSSES = [
+  { color: "text-[#2bccc4]", position: "left-[2%] top-[8%] h-72 w-72", duration: "22s" },
+  { color: "text-[#f7ba24]", position: "right-[7%] top-[18%] h-64 w-64", duration: "26s" },
+  { color: "text-[#2bccc4]", position: "bottom-[5%] left-[32%] h-56 w-56", duration: "24s" },
+];
+
+const TRUST_SIGNALS = [
+  {
+    icon: MapPin,
+    title: "Across Mauritius",
+    detail: "Care designed to reach every doorstep",
+  },
+  {
+    icon: Lock,
+    title: "One secure record",
+    detail: "Your care journey stays connected",
+  },
+  {
+    icon: Stethoscope,
+    title: "Clinician-led care",
+    detail: "A care team around your needs",
+  },
+];
+
+const CARE_STEPS = [
+  {
+    number: "01",
+    icon: UserPlus,
+    title: "Tell us what you need",
+    detail: "Create your account and make a care request in a few simple steps.",
+  },
+  {
+    number: "02",
+    icon: Stethoscope,
+    title: "Connect with your care team",
+    detail: "OCS Médecins coordinates the right next step for your situation.",
+  },
+  {
+    number: "03",
+    icon: Check,
+    title: "Keep your care together",
+    detail: "Follow visits, appointments, records and billing from one secure portal.",
+  },
+];
+
 function AmbientBlurCrossBackground() {
   return (
-    <div
-      className="ambient-cross-layer bg-gradient-to-tr from-slate-50 to-white"
-      aria-hidden="true"
-    >
+    <div className="ambient-cross-layer" aria-hidden="true">
       {AMBIENT_BLUR_CROSSES.map((cross) => (
         <div
           key={cross.position}
           className={`ambient-blur-cross ${cross.color} ${cross.position}`}
-          style={{ animationDuration: cross.duration, animationDelay: cross.delay }}
+          style={{ animationDuration: cross.duration }}
         >
-          <svg viewBox="0 0 24 24" className="h-full w-full" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-full w-full">
             <path d={BRAND_CROSS_PATH} fill="currentColor" />
           </svg>
         </div>
@@ -70,7 +89,7 @@ function FadeInSection({ children, delay = 0, className = "" }) {
           observer.disconnect();
         }
       },
-      { threshold: 0.15 },
+      { threshold: 0.12 },
     );
 
     if (ref.current) observer.observe(ref.current);
@@ -81,7 +100,7 @@ function FadeInSection({ children, delay = 0, className = "" }) {
     <div
       ref={ref}
       className={`transition-all duration-700 ease-out ${
-        isVisible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
+        isVisible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"
       } ${className}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
@@ -90,129 +109,200 @@ function FadeInSection({ children, delay = 0, className = "" }) {
   );
 }
 
+function ProfessionalPortals({ staffUrl, insuranceUrl }) {
+  return (
+    <>
+      <nav className="landing-professional-links" aria-label="Professional portals">
+        <a href={staffUrl}>Staff login</a>
+        <span aria-hidden="true" />
+        <a href={insuranceUrl}>Insurance portal</a>
+      </nav>
+
+      <details className="landing-professional-menu">
+        <summary aria-label="Professional portals">
+          Portals
+          <ChevronDown size={14} strokeWidth={2.2} aria-hidden="true" />
+        </summary>
+        <div className="landing-professional-menu-panel">
+          <a href={staffUrl}>Staff login</a>
+          <a href={insuranceUrl}>Insurance portal</a>
+        </div>
+      </details>
+    </>
+  );
+}
+
+function CareNetworkVisual() {
+  return (
+    <div className="landing-network-card" aria-label="OCS Médecins care across Mauritius">
+      <div className="landing-network-copy">
+        <span className="landing-network-live">
+          <span aria-hidden="true" /> Care, connected
+        </span>
+        <strong>From your doorstep to your care team.</strong>
+      </div>
+
+      <div className="landing-island-wrap" aria-hidden="true">
+        <div className="landing-island-orbit landing-island-orbit--outer" />
+        <div className="landing-island-orbit landing-island-orbit--inner" />
+        <img src="/ocs-mauritius-cinematic-v1.webp" alt="" />
+        <span className="landing-care-node landing-care-node--one" />
+        <span className="landing-care-node landing-care-node--two" />
+        <span className="landing-care-node landing-care-node--three" />
+      </div>
+
+      <div className="landing-journey-card">
+        <div className="landing-journey-icon">
+          <Home size={19} strokeWidth={2.1} aria-hidden="true" />
+        </div>
+        <div>
+          <span>Your care journey</span>
+          <strong>Request · Consult · Follow up</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LandingPage() {
-  const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 100);
-    return () => clearTimeout(timer);
+    const timer = window.setTimeout(() => setMounted(true), 80);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const isProdHost =
     typeof window !== "undefined" && window.location.hostname !== "localhost";
-  const STAFF_PORTAL_URL = isProdHost
+  const staffPortalUrl = isProdHost
     ? "https://staff.ocsvp.com/login"
     : "http://localhost:5173/login";
-  const INSURANCE_PORTAL_URL = isProdHost
+  const insurancePortalUrl = isProdHost
     ? "https://ins.ocsvp.com/login"
     : "http://localhost:5175/login";
 
   return (
-    /* MOBILE: allow safe vertical scroll on short viewports | DESKTOP: lock single viewport */
-    <div className="landing-page relative flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col justify-between overflow-x-hidden overscroll-x-none md:min-h-screen md:overflow-hidden">
+    <div className="landing-page-v2">
       <AmbientBlurCrossBackground />
-      
+
       <header
-        className={`relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-5 transition-all duration-700 ${
-          mounted ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
+        className={`landing-header ${
+          mounted ? "translate-y-0 opacity-100" : "-translate-y-3 opacity-0"
         }`}
       >
-        <a
-          href="/"
-          className="flex items-center transition-opacity hover:opacity-90"
-        >
-          <img
-            src="/ocs-medecins-logo.png"
-            alt="OCS Médecins"
-            className="h-9 w-auto object-contain"
-          />
+        <a href="/" className="landing-logo-link" aria-label="OCS Médecins home">
+          <img src="/ocs-medecins-logo.png" alt="OCS Médecins" />
         </a>
-        <div className="flex items-center text-xs font-semibold tracking-wide text-[#3b595c]">
-          <a
-            href={STAFF_PORTAL_URL}
-            className="transition-colors hover:text-[#065a60]"
-          >
-            Staff Login
-          </a>
-          <span className="mx-1.5 text-[#f7ba24]" aria-hidden="true">
-            |
-          </span>
-          <a
-            href={INSURANCE_PORTAL_URL}
-            className="transition-colors hover:text-[#065a60]"
-          >
-            Insurance Portal
-          </a>
-        </div>
+        <ProfessionalPortals
+          staffUrl={staffPortalUrl}
+          insuranceUrl={insurancePortalUrl}
+        />
       </header>
 
-      <main className="relative z-10 my-auto flex flex-1 flex-col items-center justify-center px-4 text-center">
-        <div className="w-full">
-          <FadeInSection>
-            <span className="mb-3 block text-[10px] font-extrabold uppercase tracking-widest text-[#3e5c76] md:text-[11px]">
-              OCS Médecins — Virtual Practice
-            </span>
-          </FadeInSection>
+      <main className="landing-main">
+        <section className="landing-hero" aria-labelledby="landing-title">
+          <div className="landing-hero-copy">
+            <FadeInSection>
+              <span className="landing-eyebrow">
+                <span aria-hidden="true" /> OCS Médecins · Virtual Practice
+              </span>
+            </FadeInSection>
 
-          <FadeInSection delay={150}>
-            <h1 className="mx-auto max-w-2xl bg-gradient-to-r from-[#3b595c] via-[#2bccc4] to-[#065a60] bg-clip-text text-center text-4xl font-black leading-tight tracking-tight text-transparent sm:text-5xl md:text-6xl">
-              <span className="block sm:inline">Step into a</span>{" "}
-              <span className="block sm:inline">world of Care</span>
-            </h1>
-          </FadeInSection>
+            <FadeInSection delay={100}>
+              <h1 id="landing-title">
+                Care that reaches you,
+                <span>wherever you are.</span>
+              </h1>
+            </FadeInSection>
 
-          <FadeInSection delay={300}>
-            <div className="mx-auto mt-6 w-full max-w-2xl px-2">
-              <p className="text-[11px] font-bold uppercase leading-relaxed tracking-wide text-[#3b595c] sm:text-xs">
-                We are more than a healthcare service — We are a community of care.
+            <FadeInSection delay={180}>
+              <p className="landing-lead">
+                Doctor consultations and coordinated healthcare, delivered online
+                and across Mauritius—with one care team and one connected journey.
               </p>
+            </FadeInSection>
 
-              <p className="mx-auto mt-3 max-w-md text-xs font-black leading-normal tracking-tight text-[#14213d] sm:max-w-none sm:text-sm md:text-base">
-                <span className="block sm:inline">One Commitment</span>
-                <span
-                  className="mx-auto my-1.5 block h-px w-16 rounded-full bg-[#f7ba24] sm:hidden"
-                  aria-hidden="true"
-                />
-                <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
-                <span className="block sm:mt-0 sm:inline">One Promise</span>
-                <span
-                  className="mx-auto my-1.5 block h-px w-16 rounded-full bg-[#f7ba24] sm:hidden"
-                  aria-hidden="true"
-                />
-                <span className="mx-1.5 hidden text-[#f7ba24] sm:inline">|</span>
-                <span className="block text-[#065a60] sm:inline">
-                  Bringing healthcare to every Mauritian doorstep
-                </span>
+            <FadeInSection delay={260}>
+              <div className="landing-actions">
+                <Link to="/register" className="landing-primary-cta">
+                  Get care
+                  <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />
+                </Link>
+                <Link to="/login" className="landing-secondary-cta">
+                  Patient login
+                </Link>
+              </div>
+              <p className="landing-action-note">
+                New to OCS? <Link to="/register">Create your patient account</Link>
               </p>
-            </div>
+            </FadeInSection>
+          </div>
+
+          <FadeInSection delay={160} className="landing-visual-column">
+            <CareNetworkVisual />
+          </FadeInSection>
+        </section>
+
+        <FadeInSection delay={120}>
+          <section className="landing-trust-strip" aria-label="Why patients choose OCS Médecins">
+            {TRUST_SIGNALS.map(({ icon: Icon, title, detail }) => (
+              <div className="landing-trust-item" key={title}>
+                <div className="landing-trust-icon">
+                  <Icon size={20} strokeWidth={2} aria-hidden="true" />
+                </div>
+                <div>
+                  <strong>{title}</strong>
+                  <span>{detail}</span>
+                </div>
+              </div>
+            ))}
+          </section>
+        </FadeInSection>
+
+        <section className="landing-how" aria-labelledby="landing-how-title">
+          <FadeInSection className="landing-how-heading">
+            <span>Simple by design</span>
+            <h2 id="landing-how-title">Your care, in three clear steps.</h2>
+            <p>No complicated hand-offs. Just one place to begin and stay informed.</p>
           </FadeInSection>
 
-          <FadeInSection delay={450}>
-            {/*
-              MOBILE: full-width vertical stack for thumb reach
-              TABLET+ (md): side-by-side capsule row
-            */}
-            <div className="mx-auto mt-8 flex w-full max-w-sm flex-col items-center justify-center sm:mt-10">
-              <button
-                onClick={() => navigate("/login")}
-                className="glow-amber-capsule w-full touch-manipulation rounded-full bg-gradient-to-r from-[#f7ba24] to-[#e0a112] px-10 py-4 text-center text-sm font-black tracking-wide text-[#14213d] transition-all duration-300 active:scale-[0.98] md:w-auto"
-              >
-                Patient Portal →
-              </button>
-              <Link
-                to="/register"
-                className="mt-4 text-xs font-bold text-gray-400 transition-colors hover:text-[#065a60]"
-              >
-                New here? Create your patient account →
-              </Link>
+          <div className="landing-step-grid">
+            {CARE_STEPS.map(({ number, icon: Icon, title, detail }, index) => (
+              <FadeInSection key={number} delay={index * 90}>
+                <article className="landing-step-card">
+                  <div className="landing-step-card-top">
+                    <span>{number}</span>
+                    <Icon size={22} strokeWidth={2} aria-hidden="true" />
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{detail}</p>
+                </article>
+              </FadeInSection>
+            ))}
+          </div>
+
+          <FadeInSection className="landing-ready-card">
+            <div>
+              <span>One commitment. One promise.</span>
+              <h2>Bringing healthcare to every Mauritian doorstep.</h2>
             </div>
+            <Link to="/register">
+              Create my account
+              <ArrowRight size={18} strokeWidth={2.3} aria-hidden="true" />
+            </Link>
           </FadeInSection>
-        </div>
+        </section>
       </main>
 
-      <footer className="relative z-10 w-full max-w-7xl self-center px-5 py-4 text-center text-[10px] font-medium tracking-wide text-gray-400 sm:py-6">
-        © {new Date().getFullYear()} OCS Médecins. All rights reserved.
+      <footer className="landing-footer">
+        <div>
+          <img src="/ocs-medecins-logo.png" alt="OCS Médecins" />
+          <p>Care that feels closer.</p>
+        </div>
+        <p>© {new Date().getFullYear()} OCS Médecins. All rights reserved.</p>
+        <span>
+          <Clock size={14} strokeWidth={2} aria-hidden="true" /> Patient portal available online
+        </span>
       </footer>
     </div>
   );
