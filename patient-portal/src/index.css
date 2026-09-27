@@ -489,16 +489,14 @@ table {
 }
 
 .landing-hero {
-  display: grid;
-  min-height: 34rem;
-  grid-template-columns: minmax(0, 1.08fr) minmax(24rem, 0.92fr);
+  display: flex;
+  min-height: 28rem;
   align-items: center;
-  gap: clamp(3rem, 6vw, 5.75rem);
-  padding: 2.5rem 0 3.75rem;
+  padding: 3rem 0 3.25rem;
 }
 
 .landing-hero-copy {
-  max-width: 40rem;
+  max-width: 52rem;
 }
 
 .landing-eyebrow,
@@ -596,199 +594,6 @@ table {
   text-decoration: underline;
   text-decoration-color: rgba(var(--brand-teal-rgb), 0.5);
   text-underline-offset: 0.2rem;
-}
-
-.landing-visual-column {
-  min-width: 0;
-}
-
-.landing-network-card {
-  position: relative;
-  min-height: 29rem;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 2.5rem;
-  background:
-    radial-gradient(circle at 22% 20%, rgba(43, 204, 196, 0.22), transparent 18rem),
-    radial-gradient(circle at 76% 74%, rgba(247, 186, 36, 0.11), transparent 17rem),
-    linear-gradient(145deg, #163f40 0%, #0d3032 100%);
-  box-shadow:
-    0 28px 70px rgba(18, 65, 67, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
-}
-
-.landing-network-card::after {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 0.65px, transparent 0.65px);
-  background-size: 11px 11px;
-  content: "";
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 60%);
-  pointer-events: none;
-}
-
-.landing-island-wrap {
-  position: absolute;
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  left: 50%;
-  width: 86%;
-  aspect-ratio: 769 / 800;
-  transform: translate(-50%, -50%);
-}
-
-.landing-island-wrap img {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  opacity: 0;
-  transform: translateY(0.5rem) scale(0.98);
-  transform-origin: center;
-  filter: drop-shadow(0 20px 36px rgba(0, 0, 0, 0.3));
-  animation: landing-island-arrive 620ms cubic-bezier(0.22, 1, 0.36, 1) 80ms forwards;
-}
-
-.landing-network-mark {
-  position: absolute;
-  top: 51%;
-  left: 50.5%;
-  z-index: 4;
-  width: 44%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-}
-
-.landing-network-mark-texture {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  -webkit-mask-image: url("/ocs-medecins-mark.png");
-  mask-image: url("/ocs-medecins-mark.png");
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-.landing-network-mark-texture--c {
-  --mark-opacity: 0.18;
-  clip-path: polygon(0 0, 58% 0, 58% 47%, 100% 47%, 100% 100%, 0 100%);
-  background: var(--brand-teal);
-  filter: drop-shadow(0 0 4px rgba(var(--brand-teal-rgb), 0.62));
-  animation: landing-mark-reveal 720ms cubic-bezier(0.22, 1, 0.36, 1) 620ms forwards;
-}
-
-.landing-network-mark-texture--x {
-  --mark-opacity: 0.24;
-  clip-path: polygon(56% 0, 100% 0, 100% 48%, 56% 48%);
-  background: var(--brand-gold);
-  filter: drop-shadow(0 0 4px rgba(var(--brand-gold-rgb), 0.68));
-  animation: landing-mark-reveal 520ms cubic-bezier(0.16, 1, 0.3, 1) 1.42s forwards;
-}
-
-.landing-network-x {
-  position: absolute;
-  inset: 0;
-  transform: translate(-0.42rem, 0.48rem) scale(0.84);
-  transform-origin: 80% 20%;
-}
-
-.landing-network-routes {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.landing-network-route {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.landing-network-route--c {
-  stroke: rgba(173, 255, 250, 0.94);
-  stroke-width: 0.78;
-  stroke-dasharray: 280;
-  stroke-dashoffset: 280;
-  filter: drop-shadow(0 0 2.5px rgba(var(--brand-teal-rgb), 0.9));
-  animation: landing-route-draw 900ms cubic-bezier(0.45, 0, 0.2, 1) 560ms forwards;
-}
-
-.landing-network-route--x {
-  stroke: rgba(255, 226, 137, 0.96);
-  stroke-width: 0.82;
-  stroke-dasharray: 42;
-  stroke-dashoffset: 42;
-  filter: drop-shadow(0 0 2px rgba(var(--brand-gold-rgb), 0.9));
-  animation: landing-route-draw 420ms cubic-bezier(0.45, 0, 0.2, 1) 1.42s forwards;
-}
-
-.landing-network-node {
-  position: absolute;
-  z-index: 3;
-  width: clamp(0.34rem, 0.65vw, 0.46rem);
-  height: clamp(0.34rem, 0.65vw, 0.46rem);
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  border-radius: 50%;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(0.25);
-  animation: landing-node-awaken 360ms cubic-bezier(0.16, 1, 0.3, 1) var(--node-delay) forwards;
-}
-
-.landing-network-node--c {
-  background: #73f4ed;
-  box-shadow: 0 0 4px var(--brand-teal), 0 0 10px rgba(var(--brand-teal-rgb), 0.72);
-}
-
-.landing-network-node--x {
-  background: #ffd66b;
-  box-shadow: 0 0 4px var(--brand-gold), 0 0 9px rgba(var(--brand-gold-rgb), 0.76);
-}
-
-@keyframes landing-island-arrive {
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes landing-route-draw {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes landing-mark-reveal {
-  from {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-
-  to {
-    opacity: var(--mark-opacity, 0.2);
-    transform: scale(1);
-  }
-}
-
-@keyframes landing-node-awaken {
-  65% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.45);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
 }
 
 .landing-trust-strip {
@@ -1379,8 +1184,6 @@ table {
 
   .landing-hero {
     min-height: auto;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 3.25rem;
     padding: 4rem 0 3rem;
   }
 
@@ -1397,14 +1200,6 @@ table {
 
   .landing-action-note {
     margin-left: 0;
-  }
-
-  .landing-network-card {
-    min-height: 27rem;
-  }
-
-  .landing-island-wrap {
-    width: 62%;
   }
 
   .landing-trust-item {
@@ -1479,7 +1274,6 @@ table {
   }
 
   .landing-hero {
-    gap: 2.15rem;
     padding: 2.4rem 0 2.25rem;
   }
 
@@ -1517,15 +1311,6 @@ table {
   .landing-action-note {
     margin-top: 0.8rem;
     font-size: 0.69rem;
-  }
-
-  .landing-network-card {
-    min-height: 22rem;
-    border-radius: 1.85rem;
-  }
-
-  .landing-island-wrap {
-    width: 94%;
   }
 
   .landing-trust-strip {
@@ -1671,30 +1456,6 @@ table {
     transition-duration: 0.01ms !important;
   }
 
-  .landing-island-wrap img,
-  .landing-network-mark-texture,
-  .landing-network-route,
-  .landing-network-node {
-    animation: none !important;
-  }
-
-  .landing-island-wrap img {
-    opacity: 1;
-    transform: none;
-  }
-
-  .landing-network-mark-texture {
-    opacity: var(--mark-opacity, 0.2);
-  }
-
-  .landing-network-route {
-    stroke-dashoffset: 0;
-  }
-
-  .landing-network-node {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
 }
 
 .native-dashboard {
