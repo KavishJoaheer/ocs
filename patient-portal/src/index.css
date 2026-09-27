@@ -1254,13 +1254,7 @@ table {
   }
 
   .landing-network-copy {
-    max-width: 17rem;
-    padding: 1.6rem 1.5rem 0;
-  }
-
-  .landing-network-copy > strong {
-    font-size: 1.22rem;
-    line-height: 1.3;
+    display: none;
   }
 
   .landing-island-wrap {
