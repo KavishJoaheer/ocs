@@ -513,14 +513,6 @@ table {
   text-transform: uppercase;
 }
 
-.landing-eyebrow > span {
-  width: 0.5rem;
-  height: 0.5rem;
-  border: 2px solid rgba(var(--brand-gold-rgb), 0.95);
-  border-radius: 50%;
-  box-shadow: 0 0 0 4px rgba(var(--brand-gold-rgb), 0.12);
-}
-
 .landing-hero h1 {
   margin: 1.35rem 0 0;
   color: var(--brand-dark-grey);

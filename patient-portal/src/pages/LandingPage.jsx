@@ -205,9 +205,7 @@ function LandingPage() {
         <section className="landing-hero" aria-labelledby="landing-title">
           <div className="landing-hero-copy">
             <FadeInSection>
-              <span className="landing-eyebrow">
-                <span aria-hidden="true" /> OCS Médecins · Virtual Practice
-              </span>
+              <span className="landing-eyebrow">OCS Médecins · Virtual Practice</span>
             </FadeInSection>
 
             <FadeInSection delay={100}>
