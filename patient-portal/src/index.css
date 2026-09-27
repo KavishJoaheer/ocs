@@ -490,11 +490,11 @@ table {
 
 .landing-hero {
   display: grid;
-  min-height: 34rem;
+  min-height: 31.5rem;
   grid-template-columns: minmax(0, 1.08fr) minmax(19rem, 0.82fr);
   align-items: center;
-  gap: clamp(2.5rem, 5vw, 5rem);
-  padding: 2.5rem 0 3.25rem;
+  gap: clamp(2.5rem, 4.5vw, 4.5rem);
+  padding: 2rem 0 2.5rem;
 }
 
 .landing-hero-copy {
@@ -623,7 +623,7 @@ table {
 
 .landing-hero-care-photo {
   position: relative;
-  height: clamp(27rem, 38vw, 31rem);
+  height: clamp(25rem, 34vw, 28.5rem);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 2.5rem;
@@ -631,16 +631,6 @@ table {
   box-shadow:
     0 28px 70px rgba(18, 65, 67, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
-}
-
-.landing-hero-care-photo::after {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(to top, rgba(10, 48, 50, 0.48), transparent 38%),
-    linear-gradient(135deg, rgba(43, 204, 196, 0.08), transparent 48%);
-  content: "";
-  pointer-events: none;
 }
 
 .landing-hero-care-photo img {
@@ -654,40 +644,77 @@ table {
 .landing-hero-care-visual figcaption {
   position: absolute;
   z-index: 2;
-  right: 1.15rem;
+  isolation: isolate;
+  right: auto;
   bottom: 1.15rem;
   left: 1.15rem;
   display: flex;
+  width: max-content;
+  max-width: calc(100% - 2.3rem);
   align-items: center;
-  gap: 0.8rem;
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  border-radius: 1.2rem;
-  padding: 0.78rem 0.9rem;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 14px 34px rgba(13, 48, 50, 0.18);
-  backdrop-filter: blur(14px);
+  gap: 0.72rem;
+  padding: 0;
+}
+
+.landing-hero-care-visual figcaption::before {
+  position: absolute;
+  z-index: 0;
+  inset: -0.75rem -1.25rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at 34% 50%,
+    rgba(7, 39, 40, 0.72) 0%,
+    rgba(7, 39, 40, 0.46) 48%,
+    rgba(7, 39, 40, 0.12) 70%,
+    transparent 82%
+  );
+  content: "";
+  filter: blur(10px);
+  pointer-events: none;
 }
 
 .landing-hero-care-icon {
+  position: relative;
+  z-index: 1;
   display: grid;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2.45rem;
+  height: 2.45rem;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 0.9rem;
-  background: rgba(var(--brand-teal-rgb), 0.12);
-  color: #08747a;
+  border: 1px solid rgba(var(--brand-gold-rgb), 0.58);
+  border-radius: 0.82rem;
+  background: rgba(10, 48, 50, 0.72);
+  color: var(--brand-gold);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 8px 22px rgba(5, 32, 33, 0.22);
 }
 
 .landing-hero-care-visual figcaption > span:last-child {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 0.08rem;
 }
 
 .landing-hero-care-visual figcaption strong {
-  color: #263f42;
-  font-size: 0.8rem;
+  display: grid;
+  gap: 0.08rem;
+  color: #fff;
+  font-size: 0.92rem;
   font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  text-shadow:
+    0 2px 3px rgba(7, 36, 37, 0.82),
+    0 0 12px rgba(7, 36, 37, 0.7);
+}
+
+.landing-hero-care-visual figcaption strong span:last-child {
+  color: var(--brand-gold);
+  text-shadow:
+    0 2px 3px rgba(7, 36, 37, 0.78),
+    0 0 11px rgba(7, 36, 37, 0.62);
 }
 
 .landing-hero-care-visual figcaption small {
@@ -724,9 +751,11 @@ table {
   height: 2.75rem;
   flex: 0 0 auto;
   place-items: center;
+  border: 1px solid rgba(var(--brand-gold-rgb), 0.78);
   border-radius: 0.95rem;
-  background: rgba(var(--brand-teal-rgb), 0.1);
+  background: rgba(var(--brand-gold-rgb), 0.055);
   color: #08747a;
+  box-shadow: 0 0.45rem 1.2rem rgba(var(--brand-gold-rgb), 0.1);
 }
 
 .landing-trust-item > div:last-child {
@@ -750,14 +779,14 @@ table {
 .landing-difference {
   position: relative;
   display: grid;
-  min-height: 35rem;
+  min-height: 32rem;
   grid-template-columns: minmax(0, 0.95fr) minmax(22rem, 1.05fr);
   align-items: center;
-  gap: clamp(2.5rem, 6vw, 5rem);
+  gap: clamp(2.25rem, 5vw, 4.25rem);
   overflow: hidden;
-  margin: 4.5rem 0 4rem;
+  margin: 3rem 0 2.75rem;
   border-radius: 2.75rem;
-  padding: 3.25rem 3.5rem;
+  padding: 2.75rem 3rem;
   background:
     radial-gradient(circle at 88% 14%, rgba(var(--brand-teal-rgb), 0.24), transparent 21rem),
     radial-gradient(circle at 8% 86%, rgba(var(--brand-gold-rgb), 0.12), transparent 18rem),
@@ -850,13 +879,13 @@ table {
 
 .landing-phone-preview {
   position: absolute;
-  inset: -1.8rem 0 -3.25rem;
+  inset: -1.35rem 0 -2.75rem;
   display: grid;
   place-items: end center;
 }
 
 .landing-phone-frame {
-  width: min(100%, 19.25rem);
+  width: min(100%, 18.5rem);
   border: 0.65rem solid #07191a;
   border-bottom: 0;
   border-radius: 3rem 3rem 0 0;
@@ -867,7 +896,7 @@ table {
 
 .landing-phone-screen {
   position: relative;
-  min-height: 33rem;
+  min-height: 31.5rem;
   overflow: hidden;
   border-radius: 2.15rem 2.15rem 0 0;
   background: #f1f2f5;
@@ -1094,7 +1123,7 @@ table {
 }
 
 .landing-excellence {
-  padding: 0 0 4.5rem;
+  padding: 0 0 3rem;
 }
 
 .landing-excellence-heading {
@@ -1108,25 +1137,47 @@ table {
 }
 
 .landing-excellence-heading p {
-  margin: 1.25rem 0 0;
-  color: #6a8183;
-  font-size: 0.92rem;
-  font-weight: 600;
-  line-height: 1.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  margin: 1.1rem 0 0;
+  color: var(--brand-gold);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0.45rem 1.4rem rgba(var(--brand-gold-rgb), 0.2);
+}
+
+.landing-excellence-heading p::before,
+.landing-excellence-heading p::after {
+  width: 2.75rem;
+  height: 1px;
+  flex: 0 0 2.75rem;
+  content: "";
+}
+
+.landing-excellence-heading p::before {
+  background: linear-gradient(90deg, transparent, rgba(var(--brand-gold-rgb), 0.9));
+}
+
+.landing-excellence-heading p::after {
+  background: linear-gradient(90deg, rgba(var(--brand-gold-rgb), 0.9), transparent);
 }
 
 .landing-step-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.1rem;
-  margin-top: 2.5rem;
+  gap: 1rem;
+  margin-top: 2rem;
 }
 
 .landing-step-card {
-  min-height: 13.25rem;
+  min-height: 11.5rem;
   border: 1px solid rgba(var(--brand-teal-rgb), 0.16);
   border-radius: 1.65rem;
-  padding: 1.65rem;
+  padding: 1.4rem;
   background: rgba(255, 255, 255, 0.88);
   box-shadow: 0 18px 42px rgba(38, 63, 66, 0.065);
   transition: transform 0.25s ease, box-shadow 0.25s ease;
@@ -1151,11 +1202,17 @@ table {
 }
 
 .landing-step-card-top > svg {
+  box-sizing: content-box;
+  padding: 0.48rem;
+  border: 1px solid rgba(var(--brand-gold-rgb), 0.78);
+  border-radius: 0.8rem;
+  background: rgba(var(--brand-gold-rgb), 0.055);
   color: #08747a;
+  box-shadow: 0 0.45rem 1.2rem rgba(var(--brand-gold-rgb), 0.1);
 }
 
 .landing-step-card h3 {
-  margin: 2.25rem 0 0;
+  margin: 1.4rem 0 0;
   color: #263f42;
   font-family: var(--font-display);
   font-size: 1.25rem;
@@ -1164,7 +1221,7 @@ table {
 }
 
 .landing-step-card p {
-  margin: 0.8rem 0 0;
+  margin: 0.65rem 0 0;
   color: #6c8284;
   font-size: 0.78rem;
   font-weight: 500;
@@ -1173,13 +1230,13 @@ table {
 
 .landing-ready-card {
   display: flex;
-  margin-top: 3.25rem;
+  margin-top: 2.25rem;
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
   overflow: hidden;
   border-radius: 2rem;
-  padding: 2.25rem 2.5rem;
+  padding: 1.8rem 2.1rem;
   background:
     radial-gradient(circle at 84% 20%, rgba(43, 204, 196, 0.2), transparent 17rem),
     linear-gradient(125deg, #123b3d 0%, #0b2f31 100%);
@@ -1236,7 +1293,7 @@ table {
   gap: 2rem;
   margin: 0 auto;
   border-top: 1px solid rgba(var(--brand-teal-rgb), 0.14);
-  padding: 2rem 0 2.5rem;
+  padding: 1.5rem 0 2rem;
   color: #789092;
   font-size: 0.63rem;
   font-weight: 600;
@@ -1285,8 +1342,8 @@ table {
   .landing-hero {
     min-height: auto;
     grid-template-columns: minmax(0, 1fr);
-    gap: 2.5rem;
-    padding: 4rem 0 3rem;
+    gap: 2rem;
+    padding: 3rem 0 2.5rem;
   }
 
   .landing-hero-copy {
@@ -1310,7 +1367,7 @@ table {
   }
 
   .landing-hero-care-photo {
-    height: 28rem;
+    height: 25rem;
   }
 
   .landing-trust-item {
@@ -1320,9 +1377,9 @@ table {
   .landing-difference {
     min-height: 0;
     grid-template-columns: minmax(0, 1fr);
-    gap: 2.5rem;
-    margin: 3.75rem 0 3.5rem;
-    padding: 3rem 2.5rem 0;
+    gap: 2rem;
+    margin: 3rem 0 2.75rem;
+    padding: 2.5rem 2.25rem 0;
     text-align: center;
   }
 
@@ -1341,13 +1398,13 @@ table {
   }
 
   .landing-difference-preview {
-    min-height: 30rem;
+    min-height: 28rem;
   }
 
   .landing-phone-preview {
     position: relative;
     inset: auto;
-    height: 30rem;
+    height: 28rem;
     overflow: hidden;
   }
 
@@ -1385,8 +1442,8 @@ table {
   }
 
   .landing-hero {
-    gap: 1.75rem;
-    padding: 2.4rem 0 2.25rem;
+    gap: 1.5rem;
+    padding: 2rem 0 1.75rem;
   }
 
   .landing-hero-copy {
@@ -1426,21 +1483,25 @@ table {
   }
 
   .landing-hero-care-photo {
-    height: 22rem;
+    height: 20.5rem;
     border-radius: 1.85rem;
   }
 
   .landing-hero-care-visual figcaption {
-    right: 0.8rem;
+    right: auto;
     bottom: 0.8rem;
     left: 0.8rem;
-    border-radius: 1rem;
-    padding: 0.65rem 0.75rem;
+    max-width: calc(100% - 1.6rem);
+    padding: 0;
   }
 
   .landing-hero-care-icon {
     width: 2.35rem;
     height: 2.35rem;
+  }
+
+  .landing-hero-care-visual figcaption strong {
+    font-size: 0.86rem;
   }
 
   .landing-trust-strip {
@@ -1458,10 +1519,10 @@ table {
   }
 
   .landing-difference {
-    gap: 1.6rem;
-    margin: 2.5rem 0 2.25rem;
+    gap: 1.35rem;
+    margin: 2rem 0 1.85rem;
     border-radius: 2rem;
-    padding: 1.75rem 1.25rem 0;
+    padding: 1.5rem 1.2rem 0;
   }
 
   .landing-difference-copy h2,
@@ -1487,11 +1548,11 @@ table {
   }
 
   .landing-difference-preview {
-    min-height: 23rem;
+    min-height: 21.5rem;
   }
 
   .landing-phone-preview {
-    height: 23rem;
+    height: 21.5rem;
   }
 
   .landing-phone-frame {
@@ -1506,26 +1567,33 @@ table {
   }
 
   .landing-excellence {
-    padding: 0 0 3.25rem;
+    padding: 0 0 2.5rem;
   }
 
   .landing-excellence-heading p {
-    font-size: 0.83rem;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+  }
+
+  .landing-excellence-heading p::before,
+  .landing-excellence-heading p::after {
+    width: 1.25rem;
+    flex-basis: 1.25rem;
   }
 
   .landing-step-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.8rem;
-    margin-top: 2rem;
+    margin-top: 1.5rem;
   }
 
   .landing-step-card {
     min-height: 0;
-    padding: 1.1rem;
+    padding: 1rem;
   }
 
   .landing-step-card h3 {
-    margin-top: 1.15rem;
+    margin-top: 0.9rem;
   }
 
   .landing-step-card p {
@@ -1536,9 +1604,9 @@ table {
   .landing-ready-card {
     display: grid;
     gap: 1.15rem;
-    margin-top: 2rem;
+    margin-top: 1.5rem;
     border-radius: 1.55rem;
-    padding: 1.35rem;
+    padding: 1.2rem;
     text-align: center;
   }
 
