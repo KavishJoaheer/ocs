@@ -87,9 +87,9 @@ function PatientRegisterPage() {
   }
 
   return (
-    <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:flex-row">
+    <div className="flex min-h-svh w-full min-w-0 max-w-[100vw] flex-col overflow-hidden bg-white font-sans antialiased md:h-svh md:flex-row">
       {/* Left: brand canvas */}
-      <div className="relative flex w-full shrink-0 flex-col overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:sticky md:top-0 md:h-svh md:w-1/2 lg:p-16">
+      <div className="relative flex w-full shrink-0 flex-col overflow-hidden bg-gradient-to-br from-[#f4fbfb] via-[#ebf6f6] to-[#dceeee] p-12 md:h-svh md:w-1/2 lg:p-16">
         <div className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-[#2bccc4]/15 blur-[120px]" />
         <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f7ba24]/10 blur-[100px]" />
 
@@ -114,9 +114,9 @@ function PatientRegisterPage() {
             />
             <div className="min-w-0">
               <h1 className="text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl xl:text-[4.25rem]">
-                <span className="block text-[#3b595c]">Bringing Premium Care</span>
+                <span className="block text-[#3b595c]">Bringing Trusted Care</span>
                 <span className="block text-[#3b595c]">
-                  at Your <span className="text-[#f7ba24]">Doorstep.</span>
+                  to Your <span className="text-[#f7ba24]">Doorstep.</span>
                 </span>
               </h1>
               <p className="mt-6 max-w-lg text-base font-semibold leading-relaxed tracking-wide text-[#065a60] sm:text-lg lg:mt-8 lg:text-xl">
@@ -134,7 +134,7 @@ function PatientRegisterPage() {
       </div>
 
       {/* Right: registration form */}
-      <div className="flex w-full flex-col bg-white md:w-1/2 md:overflow-y-auto">
+      <div className="flex w-full flex-col bg-white md:h-svh md:w-1/2 md:overflow-y-auto">
         <div className="flex min-h-svh flex-col justify-between p-12 lg:p-16">
           <div className="h-8" />
 

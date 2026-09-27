@@ -102,9 +102,9 @@ function MobilePatientRegisterForm() {
             />
             <div className="min-w-0">
               <h1 className="text-3xl font-black leading-[1.08] tracking-tight">
-                <span className="block text-[#3b595c]">Bringing Premium Care</span>
+                <span className="block text-[#3b595c]">Bringing Trusted Care</span>
                 <span className="block text-[#3b595c]">
-                  at Your <span className="text-[#f7ba24]">Doorstep.</span>
+                  to Your <span className="text-[#f7ba24]">Doorstep.</span>
                 </span>
               </h1>
               <p className="mt-4 text-sm font-semibold leading-relaxed tracking-wide text-[#065a60]">

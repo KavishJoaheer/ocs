@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Clock,
   HeartPulse,
-  Home,
   Lock,
   MapPin,
   ShieldCheck,
@@ -138,10 +137,7 @@ function CareNetworkVisual() {
   return (
     <div className="landing-network-card" aria-label="OCS Médecins care across Mauritius">
       <div className="landing-network-copy">
-        <span className="landing-network-live">
-          <span aria-hidden="true" /> Care, connected
-        </span>
-        <strong>From your doorstep to your care team.</strong>
+        <strong>We are more than a healthcare service — we are a community of care.</strong>
       </div>
 
       <div className="landing-island-wrap" aria-hidden="true">
@@ -153,15 +149,6 @@ function CareNetworkVisual() {
         <span className="landing-care-node landing-care-node--three" />
       </div>
 
-      <div className="landing-journey-card">
-        <div className="landing-journey-icon">
-          <Home size={19} strokeWidth={2.1} aria-hidden="true" />
-        </div>
-        <div>
-          <span>Your care journey</span>
-          <strong>Request · Consult · Follow up</strong>
-        </div>
-      </div>
     </div>
   );
 }
@@ -216,17 +203,14 @@ function LandingPage() {
             </FadeInSection>
 
             <FadeInSection delay={180}>
-              <p className="landing-community-line">
-                We are more than a healthcare service — we are a community of care.
-              </p>
-            </FadeInSection>
-
-            <FadeInSection delay={260}>
               <div className="landing-actions">
-                <Link to="/register" className="landing-primary-cta">
+                <a
+                  href="https://ocsmedecin.mu/doctor-at-home-in-mauritius/"
+                  className="landing-primary-cta"
+                >
                   Get care
                   <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />
-                </Link>
+                </a>
                 <Link to="/login" className="landing-secondary-cta">
                   Patient login
                 </Link>
@@ -260,7 +244,7 @@ function LandingPage() {
 
         <section className="landing-difference" aria-labelledby="landing-difference-title">
           <FadeInSection className="landing-difference-heading">
-            <span className="landing-section-kicker">Care, thoughtfully connected</span>
+            <span className="landing-section-kicker">Your care journey</span>
             <h2 id="landing-difference-title">
               <span>Your Health.</span>
               <span>Experienced</span>
