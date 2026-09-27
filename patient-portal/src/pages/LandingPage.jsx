@@ -137,6 +137,29 @@ function ProfessionalPortals({ staffUrl, insuranceUrl }) {
   );
 }
 
+function HeroCareVisual() {
+  return (
+    <figure className="landing-hero-care-visual">
+      <div className="landing-hero-care-photo">
+        <img
+          src="/ocs-care-team-hero.jpg"
+          alt="Three OCS Médecins clinicians walking together with their medical equipment"
+          fetchPriority="high"
+        />
+      </div>
+      <figcaption>
+        <span className="landing-hero-care-icon" aria-hidden="true">
+          <HousePlus size={20} strokeWidth={2} />
+        </span>
+        <span>
+          <strong>Care that comes to you</strong>
+          <small>Across Mauritius</small>
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 function PortalPhonePreview() {
   return (
     <div
@@ -282,6 +305,9 @@ function LandingPage() {
             </FadeInSection>
           </div>
 
+          <FadeInSection delay={160} className="landing-hero-visual-wrap">
+            <HeroCareVisual />
+          </FadeInSection>
         </section>
 
         <FadeInSection delay={120}>
