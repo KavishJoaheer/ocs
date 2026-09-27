@@ -1189,11 +1189,18 @@ table {
 
 @media (max-width: 639px) {
   .landing-header {
+    width: calc(100% - 1.5rem);
     min-height: 4.5rem;
+    padding-top: max(0.35rem, env(safe-area-inset-top, 0px));
   }
 
   .landing-logo-link img {
-    height: 2.15rem;
+    height: 2.1rem;
+  }
+
+  .landing-professional-menu summary {
+    min-height: 2.75rem;
+    padding: 0.65rem 0.8rem;
   }
 
   .landing-main {
@@ -1201,8 +1208,12 @@ table {
   }
 
   .landing-hero {
-    gap: 2.5rem;
-    padding: 3.35rem 0 2.5rem;
+    gap: 2.15rem;
+    padding: 2.4rem 0 2.25rem;
+  }
+
+  .landing-hero-copy {
+    width: 100%;
   }
 
   .landing-eyebrow,
@@ -1213,8 +1224,9 @@ table {
 
   .landing-hero h1 {
     margin-top: 1.1rem;
-    font-size: clamp(2.7rem, 12.7vw, 3.55rem);
+    font-size: clamp(2.65rem, 12.4vw, 3.35rem);
     line-height: 1.01;
+    text-wrap: balance;
   }
 
   .landing-actions {
@@ -1227,7 +1239,8 @@ table {
   .landing-primary-cta,
   .landing-secondary-cta {
     width: 100%;
-    min-height: 3.4rem;
+    min-height: 3.65rem;
+    font-size: 0.9rem;
   }
 
   .landing-action-note {
@@ -1236,22 +1249,24 @@ table {
   }
 
   .landing-network-card {
-    min-height: 25.5rem;
-    border-radius: 2rem;
+    min-height: 26.5rem;
+    border-radius: 1.85rem;
   }
 
   .landing-network-copy {
-    max-width: 15.5rem;
-    padding: 1.75rem 1.75rem 0;
+    max-width: 17rem;
+    padding: 1.6rem 1.5rem 0;
   }
 
   .landing-network-copy > strong {
-    font-size: 1.28rem;
+    font-size: 1.22rem;
+    line-height: 1.3;
   }
 
   .landing-island-wrap {
-    right: -3.5rem;
-    width: 94%;
+    right: -1.25rem;
+    bottom: -1.45rem;
+    width: 100%;
   }
 
   .landing-trust-strip {
@@ -1270,7 +1285,7 @@ table {
 
   .landing-difference {
     gap: 2.35rem;
-    padding: 5.75rem 0 5rem;
+    padding: 4.75rem 0 4.35rem;
   }
 
   .landing-difference-heading h2,
@@ -1295,7 +1310,7 @@ table {
   }
 
   .landing-excellence {
-    padding: 0 0 5rem;
+    padding: 0 0 4.5rem;
   }
 
   .landing-excellence-heading p {
@@ -1320,8 +1335,8 @@ table {
   .landing-ready-card {
     display: grid;
     gap: 1.5rem;
-    margin-top: 3.5rem;
-    border-radius: 1.65rem;
+    margin-top: 3rem;
+    border-radius: 1.55rem;
     padding: 1.65rem;
     text-align: center;
   }
