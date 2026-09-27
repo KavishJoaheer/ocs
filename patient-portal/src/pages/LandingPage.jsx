@@ -21,6 +21,23 @@ const AMBIENT_BLUR_CROSSES = [
   { color: "text-[#2bccc4]", position: "bottom-[5%] left-[32%] h-56 w-56", duration: "24s" },
 ];
 
+const CARE_NETWORK_C_NODES = [
+  [51, 8],
+  [22, 17],
+  [6, 45],
+  [12, 76],
+  [39, 93],
+  [68, 84],
+  [83, 60],
+];
+
+const CARE_NETWORK_X_NODES = [
+  [66.5, 7.5],
+  [90.5, 7.5],
+  [67.5, 31.5],
+  [91.5, 31.5],
+];
+
 const TRUST_SIGNALS = [
   {
     icon: MapPin,
@@ -141,12 +158,37 @@ function CareNetworkVisual() {
       </div>
 
       <div className="landing-island-wrap" aria-hidden="true">
-        <div className="landing-island-orbit landing-island-orbit--outer" />
-        <div className="landing-island-orbit landing-island-orbit--inner" />
         <img src="/ocs-mauritius-cinematic-v1.webp" alt="" />
-        <span className="landing-care-node landing-care-node--one" />
-        <span className="landing-care-node landing-care-node--two" />
-        <span className="landing-care-node landing-care-node--three" />
+        <div className="landing-network-mark">
+          <span className="landing-network-mark-texture landing-network-mark-texture--c" />
+          <svg className="landing-network-routes" viewBox="0 0 100 100">
+            <path
+              className="landing-network-route landing-network-route--c"
+              d="M 51 8 C 24 8, 6 25, 6 51 C 6 78, 25 94, 48 93 C 68 92, 80 79, 83 60"
+            />
+          </svg>
+          {CARE_NETWORK_C_NODES.map(([left, top], index) => (
+            <span
+              className="landing-network-node landing-network-node--c"
+              key={`c-node-${left}-${top}`}
+              style={{ "--node-delay": `${0.64 + index * 0.08}s`, left: `${left}%`, top: `${top}%` }}
+            />
+          ))}
+          <div className="landing-network-x">
+            <span className="landing-network-mark-texture landing-network-mark-texture--x" />
+            <svg className="landing-network-routes" viewBox="0 0 100 100">
+              <path className="landing-network-route landing-network-route--x" d="M 66.5 7.5 L 91.5 31.5" />
+              <path className="landing-network-route landing-network-route--x" d="M 90.5 7.5 L 67.5 31.5" />
+            </svg>
+            {CARE_NETWORK_X_NODES.map(([left, top], index) => (
+              <span
+                className="landing-network-node landing-network-node--x"
+                key={`x-node-${left}-${top}`}
+                style={{ "--node-delay": `${1.48 + index * 0.07}s`, left: `${left}%`, top: `${top}%` }}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
     </div>
