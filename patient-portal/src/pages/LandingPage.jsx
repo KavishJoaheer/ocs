@@ -152,8 +152,7 @@ function HeroCareVisual() {
           <HousePlus size={20} strokeWidth={2} />
         </span>
         <span>
-          <strong>Care that comes to you</strong>
-          <small>Across Mauritius</small>
+          <strong>Bringing care closer to homes</strong>
         </span>
       </figcaption>
     </figure>
