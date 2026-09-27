@@ -153,10 +153,6 @@ function ProfessionalPortals({ staffUrl, insuranceUrl }) {
 function CareNetworkVisual() {
   return (
     <div className="landing-network-card" aria-label="OCS Médecins care across Mauritius">
-      <div className="landing-network-copy">
-        <strong>We are more than a healthcare service — we are a community of care.</strong>
-      </div>
-
       <div className="landing-island-wrap" aria-hidden="true">
         <img src="/ocs-mauritius-cinematic-v1.webp" alt="" />
         <div className="landing-network-mark">
