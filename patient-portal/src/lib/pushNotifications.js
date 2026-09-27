@@ -1,6 +1,9 @@
 import { api } from "./api.js";
+import { CLIENT_BUILD_SHA } from "./clientBuildSha.js";
 
-const SW_PATH = "/sw.js";
+const SW_VERSION = encodeURIComponent(CLIENT_BUILD_SHA || "dev");
+const SW_PATH = `/sw.js?v=${SW_VERSION}`;
+const SW_REGISTER_OPTIONS = { updateViaCache: "none" };
 const PUSH_DISMISS_KEY = "ocs_patient_push_banner_dismissed";
 
 export class PushPermissionDeniedError extends Error {
@@ -79,7 +82,7 @@ export async function getPushServiceWorkerRegistration() {
     return null;
   }
 
-  const registration = await navigator.serviceWorker.register(SW_PATH);
+  const registration = await navigator.serviceWorker.register(SW_PATH, SW_REGISTER_OPTIONS);
   try {
     await registration.update();
   } catch {
@@ -93,7 +96,7 @@ export async function registerServiceWorker() {
     return null;
   }
 
-  const registration = await navigator.serviceWorker.register(SW_PATH);
+  const registration = await navigator.serviceWorker.register(SW_PATH, SW_REGISTER_OPTIONS);
   try {
     await registration.update();
   } catch {
@@ -108,6 +111,20 @@ export async function registerServiceWorker() {
       if (reloaded) return;
       reloaded = true;
       window.location.reload();
+    });
+  }
+
+  // iOS can keep an installed PWA suspended with its previous app shell for a
+  // long time. Revalidate whenever that session returns to the foreground so
+  // a newly deployed worker takes control without asking patients to clear data.
+  if (!window.__ocsSwRevalidationListener) {
+    window.__ocsSwRevalidationListener = true;
+    const revalidate = () => {
+      registration.update().catch(() => {});
+    };
+    window.addEventListener("pageshow", revalidate);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") revalidate();
     });
   }
 
