@@ -39,7 +39,7 @@ function PatientAuthShell({
                 </h1>
               </div>
               <p className="auth-tagline">
-                Every visit, every record, every moment of care — safely organised with the same heart we bring to your door.
+                Every visit, every record and every moment of care is safely organised with the same heart we bring to your door.
               </p>
             </div>
           </div>
