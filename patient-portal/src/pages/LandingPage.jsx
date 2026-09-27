@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
-  Check,
   ChevronDown,
   Clock,
+  FolderHeart,
+  HeartHandshake,
   HeartPulse,
-  Lock,
+  Link2,
   MapPin,
+  Route,
   ShieldCheck,
   Stethoscope,
   UserPlus,
@@ -45,12 +47,12 @@ const TRUST_SIGNALS = [
     detail: "Care designed to reach every doorstep",
   },
   {
-    icon: Lock,
+    icon: FolderHeart,
     title: "Your health, all in one place",
     detail: "Every visit, record and follow-up stays connected",
   },
   {
-    icon: Stethoscope,
+    icon: HeartHandshake,
     title: "With you at every step",
     detail: "A dedicated care team supporting your journey",
   },
@@ -71,7 +73,7 @@ const CARE_STEPS = [
   },
   {
     number: "03",
-    icon: Check,
+    icon: Link2,
     title: "Your care stays connected",
     detail: "Appointments, records and billing remain together in one secure place.",
   },
@@ -300,7 +302,7 @@ function LandingPage() {
             </p>
             <div className="landing-difference-points">
               <span><ShieldCheck size={17} aria-hidden="true" /> Private &amp; Confidential</span>
-              <span><Check size={17} aria-hidden="true" /> One continuous journey</span>
+              <span><Route size={17} aria-hidden="true" /> One continuous journey</span>
             </div>
           </FadeInSection>
         </section>
