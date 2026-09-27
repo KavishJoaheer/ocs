@@ -46,13 +46,13 @@ const TRUST_SIGNALS = [
   },
   {
     icon: Lock,
-    title: "One secure record",
-    detail: "Your care journey stays connected",
+    title: "Your health, all in one place",
+    detail: "Every visit, record and follow-up stays connected",
   },
   {
     icon: Stethoscope,
-    title: "Clinician-led care",
-    detail: "A care team around your needs",
+    title: "With you at every step",
+    detail: "A dedicated care team supporting your journey",
   },
 ];
 
@@ -60,20 +60,20 @@ const CARE_STEPS = [
   {
     number: "01",
     icon: UserPlus,
-    title: "Tell us what you need",
-    detail: "Create your account and make a care request in a few simple steps.",
+    title: "Let’s begin your care journey",
+    detail: "Create your account and tell us how we can support your health.",
   },
   {
     number: "02",
     icon: Stethoscope,
     title: "Connect with your care team",
-    detail: "OCS Médecins coordinates the right next step for your situation.",
+    detail: "OCS Médecins coordinates the right next step in your care, based on your needs.",
   },
   {
     number: "03",
     icon: Check,
-    title: "Keep your care together",
-    detail: "Follow visits, appointments, records and billing from one secure portal.",
+    title: "Your care stays connected",
+    detail: "Appointments, records and billing remain together in one secure place.",
   },
 ];
 
@@ -295,11 +295,11 @@ function LandingPage() {
               <HeartPulse size={25} strokeWidth={1.9} />
             </div>
             <p>
-              Every visit, every record, every moment of care — safely organised with
-              the same heart we bring to your door.
+              Every visit, every record and every moment of care is safely organised
+              with the same heart we bring to your door.
             </p>
             <div className="landing-difference-points">
-              <span><ShieldCheck size={17} aria-hidden="true" /> Private by design</span>
+              <span><ShieldCheck size={17} aria-hidden="true" /> Private &amp; Confidential</span>
               <span><Check size={17} aria-hidden="true" /> One continuous journey</span>
             </div>
           </FadeInSection>
