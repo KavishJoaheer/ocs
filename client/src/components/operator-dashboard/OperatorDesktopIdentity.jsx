@@ -41,8 +41,8 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
   }, [open]);
 
   return (
-    <div className="ocs-cc-identity relative mt-5 px-3 py-3" ref={rootRef}>
-      <div className="flex items-center gap-3">
+    <div className="ocs-cc-identity relative mt-5 p-3" ref={rootRef}>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
         <span
           aria-hidden="true"
           className="grid size-10 shrink-0 place-items-center rounded-full bg-[#203f42] font-display text-sm font-semibold text-white"
@@ -53,17 +53,18 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
           <p className="truncate font-display text-sm font-semibold text-[#203f42]" title={user?.full_name || displayName}>
             {displayName}
           </p>
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-[#5f7476]">
-            <span>Operator</span>
-            <span aria-hidden="true">·</span>
-            <span
-              className={cx(
-                "inline-block size-1.5 rounded-full",
-                live ? "bg-[#2bccc4]" : "bg-[#ff5f4a]",
-              )}
-              aria-hidden="true"
-            />
-            <span>{statusLabel}</span>
+          <p className="mt-0.5 flex min-w-0 items-center gap-2 whitespace-nowrap text-xs font-medium text-[#5f7476]">
+            <span className="truncate">Operator</span>
+            <span className="inline-flex shrink-0 items-center gap-1.5">
+              <span
+                className={cx(
+                  "inline-block size-1.5 rounded-full",
+                  live ? "bg-[#2bccc4]" : "bg-[#ff5f4a]",
+                )}
+                aria-hidden="true"
+              />
+              <span>{statusLabel}</span>
+            </span>
           </p>
         </div>
         <button
@@ -72,10 +73,10 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
           aria-haspopup="menu"
           aria-controls={menuId}
           onClick={() => setOpen((current) => !current)}
-          className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-[#203f42] transition hover:bg-[rgba(32,63,66,0.08)]"
+          className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-[rgba(32,63,66,0.1)] bg-white/70 text-[#203f42] transition hover:border-[rgba(32,63,66,0.18)] hover:bg-white"
           aria-label={`Open account menu for ${displayName}`}
+          title="Account menu"
         >
-          Account
           <ChevronDown className={cx("size-4 transition-transform duration-200", open && "rotate-180")} />
         </button>
       </div>
