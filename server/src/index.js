@@ -8,6 +8,7 @@ const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs
 const { isEnvTrue } = require("./lib/envFlags");
 const { alignInventoryCategories } = require("./lib/inventoryCategoryAlignment");
 const { ensureTreatmentCatalogue } = require("./lib/treatmentSupplies");
+const { applyTrialAkshayBagFill } = require("./lib/trialAkshayBagFill");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -93,6 +94,17 @@ try {
   }
 } catch (error) {
   console.warn("[inventory] Doctor bag catalogue sync failed:", error.message);
+}
+
+try {
+  const trialFill = applyTrialAkshayBagFill(db);
+  if (trialFill.applied) {
+    console.log(
+      `[inventory] Trial fill added 20 to ${trialFill.items} stock item(s) in ${trialFill.doctor_name}'s bag.`,
+    );
+  }
+} catch (error) {
+  console.warn("[inventory] Trial bag fill failed:", error.message);
 }
 
 if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {
