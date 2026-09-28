@@ -38,6 +38,7 @@ const CATEGORY_RULES = [
     aliases: ["Atomic enema 10ml box of 2", "Atomic Enema 10ml box of 2"],
     folderName: "Consumable",
   },
+  { itemName: "Sachet Monuril", folderName: "Oral Drugs", keepItemKind: true },
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [
@@ -252,6 +253,13 @@ function alignInventoryCategories() {
     WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
       AND folder_id != ?
   `);
+  const updateFolderOnly = db.prepare(`
+    UPDATE inventory
+    SET folder_id = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
+    WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+      AND archived_at IS NULL
+      AND folder_id != ?
+  `);
   const renameRow = db.prepare(`
     UPDATE inventory
     SET item_name = ?, folder_id = ?, item_kind = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
@@ -318,6 +326,10 @@ function alignInventoryCategories() {
             inserted += 1;
           }
         }
+      }
+      if (rule.keepItemKind) {
+        updated += Number(updateFolderOnly.run(folderId, rule.itemName, folderId).changes || 0);
+        continue;
       }
       updated += Number(updateRows.run(folderId, itemKind, rule.itemName, folderId).changes || 0);
       for (const alias of aliases) {

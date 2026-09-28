@@ -29,6 +29,7 @@ const ocsOralDrugsPdfCatalog = [
   oralDrug("Pulmicort 0.5mg (pack of 5)"),
   oralDrug("Azithromycin 500mg x3"),
   oralDrug("Monuril 3g"),
+  oralDrug("Sachet Monuril"),
   oralDrug("Nifedipine"),
   oralDrug("Norflex tab"),
   oralDrug("Nugene -O"),

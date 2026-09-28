@@ -13,6 +13,7 @@ const { ocsConsumablesExtension } = require("../src/config/ocsConsumablesExtensi
 const { ocsConsumablesPdfCatalog } = require("../src/config/ocsConsumablesPdfCatalog");
 const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
 const { ocsPediatricDrugsPdfCatalog } = require("../src/config/ocsPediatricDrugsPdfCatalog");
+const { ocsOralDrugsPdfCatalog } = require("../src/config/ocsOralDrugsPdfCatalog");
 const {
   alignInventoryCategories,
   RETIRED_OCS_CONSUMABLE_SKUS,
@@ -436,4 +437,32 @@ test("named syrups and IV lasilix leave the warehouse and stay in doctor bags", 
   const bag = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(bagId);
   assert.equal(bag.archived_at, null);
   assert.equal(Number(bag.quantity), 2);
+});
+
+test("Sachet Monuril moves from pediatric drugs to oral drugs in the warehouse and doctor bags", () => {
+  assert.equal(ocsOralDrugsPdfCatalog.some((item) => item.name === "Sachet Monuril" && item.category === "Oral Drugs"), true);
+  assert.equal(ocsPediatricDrugsPdfCatalog.some((item) => item.name === "Sachet Monuril"), false);
+  function folderId(name) {
+    return db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(name)?.id
+      || Number(db.prepare("INSERT INTO inventory_folders (name) VALUES (?)").run(name).lastInsertRowid);
+  }
+  const pediatricId = folderId("Pediatric Drugs");
+  const doctorId = Number(db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 1").get().id);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES ('Sachet Monuril', 'service', ?, ?, ?, ?, 0, 'sachet', 0, 0)
+  `);
+  const warehouseRow = Number(insert.run(pediatricId, "ocs", null, 0).lastInsertRowid);
+  const bagRow = Number(insert.run(pediatricId, "doctor", doctorId, 0).lastInsertRowid);
+
+  alignInventoryCategories();
+  const oralId = folderId("Oral Drugs");
+  for (const id of [warehouseRow, bagRow]) {
+    const row = db.prepare("SELECT folder_id, item_kind, quantity FROM inventory WHERE id = ?").get(id);
+    assert.equal(Number(row.folder_id), Number(oralId));
+    assert.equal(row.item_kind, "service");
+    assert.equal(Number(row.quantity), 0);
+  }
 });
