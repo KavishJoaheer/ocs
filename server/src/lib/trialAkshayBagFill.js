@@ -92,7 +92,87 @@ function applyTrialAkshayBagFill(db) {
   return { applied: true, doctor_id: doctor.id, doctor_name: doctor.full_name, items: items.length };
 }
 
+function correctTrialBagPlaceholders(database) {
+  const cleared = database.prepare(`
+    UPDATE inventory_batches
+    SET expiry_date = NULL,
+        row_version = COALESCE(row_version, 1) + 1
+    WHERE supplier_name = 'Trial fill'
+      AND expiry_date = '2032-12-31'
+      AND COALESCE(is_non_expiring, 0) = 0
+  `).run();
+
+  const costed = database.prepare(`
+    UPDATE inventory_batches
+    SET unit_cost = (
+          SELECT ocs.cost_price
+          FROM inventory bag
+          JOIN inventory ocs
+            ON ocs.stock_scope = 'ocs'
+           AND ocs.owner_doctor_id IS NULL
+           AND ocs.archived_at IS NULL
+           AND LOWER(TRIM(ocs.item_name)) = LOWER(TRIM(bag.item_name))
+           AND COALESCE(ocs.cost_price, 0) > 0
+          WHERE bag.id = inventory_batches.item_id
+          LIMIT 1
+        ),
+        row_version = COALESCE(row_version, 1) + 1
+    WHERE supplier_name = 'Trial fill'
+      AND COALESCE(unit_cost, 0) <= 0
+      AND quantity_remaining > 0
+      AND EXISTS (
+        SELECT 1
+        FROM inventory bag
+        JOIN inventory ocs
+          ON ocs.stock_scope = 'ocs'
+         AND ocs.owner_doctor_id IS NULL
+         AND ocs.archived_at IS NULL
+         AND LOWER(TRIM(ocs.item_name)) = LOWER(TRIM(bag.item_name))
+         AND COALESCE(ocs.cost_price, 0) > 0
+        WHERE bag.id = inventory_batches.item_id
+      )
+  `).run();
+
+  database.prepare(`
+    UPDATE inventory
+    SET cost_price = (
+          SELECT ocs.cost_price
+          FROM inventory ocs
+          WHERE ocs.stock_scope = 'ocs'
+            AND ocs.owner_doctor_id IS NULL
+            AND ocs.archived_at IS NULL
+            AND LOWER(TRIM(ocs.item_name)) = LOWER(TRIM(inventory.item_name))
+            AND COALESCE(ocs.cost_price, 0) > 0
+          LIMIT 1
+        ),
+        row_version = COALESCE(row_version, 1) + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE stock_scope = 'doctor'
+      AND owner_doctor_id IS NOT NULL
+      AND COALESCE(cost_price, 0) <= 0
+      AND id IN (
+        SELECT item_id FROM inventory_batches
+        WHERE supplier_name = 'Trial fill' AND quantity_remaining > 0
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM inventory ocs
+        WHERE ocs.stock_scope = 'ocs'
+          AND ocs.owner_doctor_id IS NULL
+          AND ocs.archived_at IS NULL
+          AND LOWER(TRIM(ocs.item_name)) = LOWER(TRIM(inventory.item_name))
+          AND COALESCE(ocs.cost_price, 0) > 0
+      )
+  `).run();
+
+  return {
+    expiry_cleared: Number(cleared.changes || 0),
+    lots_costed: Number(costed.changes || 0),
+  };
+}
+
 module.exports = {
   TRIAL_REASON,
   applyTrialAkshayBagFill,
+  correctTrialBagPlaceholders,
 };

@@ -20,6 +20,7 @@ const { db, ensureInventoryOperationsSchema } = require("../src/db");
 const { isValidCollectionDate } = require("../src/lib/collectionDays");
 const { availableToPromise } = require("../src/lib/restockFulfilment");
 const { shipmentQueueStats, stocktakeQueueStats } = require("../src/lib/inventoryOperations");
+const { correctTrialBagPlaceholders } = require("../src/lib/trialAkshayBagFill");
 const { decorateInventoryItems, summarizeLocationValuation, isAtOrBelowPar, isOutOfStock } = require("../src/lib/inventoryStockState");
 const { getTodayLocal, offsetLocalDate } = require("../src/lib/utils");
 const { upsertOcsMasterStockDataset } = require("../src/lib/ocsMasterStockUpsert");
@@ -772,6 +773,143 @@ test("warehouse cost and selling price changes copy onto every doctor bag for th
   assert.equal(Number(warehouse.quantity), 4);
   assert.equal(Number(warehouse.cost_price), 15);
   assert.equal(Number(warehouse.selling_price), 22);
+});
+
+test("renaming a warehouse item renames each doctor bag and keeps counted stock on one row", async () => {
+  const stamp = Date.now();
+  const oldName = `Rename Source ${stamp}`;
+  const newName = `Rename Target ${stamp}`;
+  const itemId = insertOcsItem({ name: oldName, qty: 4 });
+  const doctorTwoId = db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id;
+  const insertBag = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'stock', ?, ?, 0, 'unit', ?, ?, 'doctor', ?)
+  `);
+  const countedId = Number(insertBag.run(oldName, folderId, 8, 2, 9, doctorId).lastInsertRowid);
+  const emptyNewId = Number(insertBag.run(newName, folderId, 0, 0, 0, doctorId).lastInsertRowid);
+  const otherBagId = Number(insertBag.run(oldName, folderId, 4, 2, 9, doctorTwoId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 8, '2030-06-01', 2, 0)
+  `).run(countedId);
+
+  const updated = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: { item_name: newName },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+
+  const survivor = db.prepare("SELECT item_name, quantity, archived_at FROM inventory WHERE id = ?").get(emptyNewId);
+  assert.equal(survivor.item_name, newName);
+  assert.equal(Number(survivor.quantity), 8);
+  assert.equal(survivor.archived_at, null);
+  const archived = db.prepare("SELECT item_name, quantity, archived_at FROM inventory WHERE id = ?").get(countedId);
+  assert.ok(archived.archived_at);
+  assert.equal(Number(archived.quantity), 0);
+  const moved = db.prepare("SELECT item_id, quantity_remaining, unit_cost FROM inventory_batches WHERE item_id = ?").get(emptyNewId);
+  assert.equal(Number(moved.quantity_remaining), 8);
+  assert.equal(Number(moved.unit_cost), 2);
+  const other = db.prepare("SELECT item_name, quantity, archived_at FROM inventory WHERE id = ?").get(otherBagId);
+  assert.equal(other.item_name, newName);
+  assert.equal(Number(other.quantity), 4);
+  assert.equal(other.archived_at, null);
+  const leftovers = db.prepare(`
+    SELECT COUNT(*) AS count FROM inventory
+    WHERE stock_scope = 'doctor' AND archived_at IS NULL AND item_name = ?
+  `).get(oldName);
+  assert.equal(Number(leftovers.count), 0);
+  assert.equal(db.prepare("SELECT item_name, quantity FROM inventory WHERE id = ?").get(itemId).item_name, newName);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity), 4);
+});
+
+test("a warehouse delivery cost fills unpriced doctor-bag costs and leaves known lot costs", async () => {
+  const name = `Delivery Cost ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 2 });
+  db.prepare("UPDATE inventory SET cost_price = 0 WHERE id = ?").run(itemId);
+  const bagId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'stock', ?, 20, 0, 'unit', 0, 10, 'doctor', ?)
+  `).run(name, folderId, doctorId).lastInsertRowid);
+  const pricedBagId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'stock', ?, 3, 0, 'unit', 9, 10, 'doctor', ?)
+  `).run(name, folderId, db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name)
+    VALUES (?, 20, '2031-01-01', 0, 0, 'Trial fill')
+  `).run(bagId);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 3, '2030-01-01', 4, 0)
+  `).run(pricedBagId);
+
+  const received = await api("POST", `/api/inventory/items/${itemId}/ocs-actions`, {
+    token: operatorToken,
+    body: {
+      action_type: "stock_in",
+      quantity: 2,
+      expiry_date: offsetLocalDate(30),
+      cost_price: 12,
+      cost_variance_reason: "First real supplier cost for this item",
+    },
+  });
+  assert.equal(received.status, 201, JSON.stringify(received.data));
+
+  const warehouse = db.prepare("SELECT quantity, cost_price FROM inventory WHERE id = ?").get(itemId);
+  assert.equal(Number(warehouse.quantity), 4);
+  assert.equal(Number(warehouse.cost_price), 12);
+  const bag = db.prepare("SELECT quantity, cost_price, selling_price FROM inventory WHERE id = ?").get(bagId);
+  assert.equal(Number(bag.quantity), 20);
+  assert.equal(Number(bag.cost_price), 12);
+  assert.equal(Number(bag.selling_price), 10);
+  assert.equal(Number(db.prepare("SELECT unit_cost FROM inventory_batches WHERE item_id = ?").get(bagId).unit_cost), 12);
+  const priced = db.prepare("SELECT quantity, cost_price FROM inventory WHERE id = ?").get(pricedBagId);
+  assert.equal(Number(priced.quantity), 3);
+  assert.equal(Number(priced.cost_price), 9);
+  assert.equal(Number(db.prepare("SELECT unit_cost FROM inventory_batches WHERE item_id = ?").get(pricedBagId).unit_cost), 4);
+});
+
+test("trial bag lots drop the placeholder expiry and take a known warehouse cost", () => {
+  const name = `Trial Placeholder ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 1 });
+  db.prepare("UPDATE inventory SET cost_price = 6 WHERE id = ?").run(itemId);
+  const bagId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'stock', ?, 20, 0, 'unit', 0, 0, 'doctor', ?)
+  `).run(name, folderId, doctorId).lastInsertRowid);
+  const batchId = Number(db.prepare(`
+    INSERT INTO inventory_batches (
+      item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name
+    ) VALUES (?, 20, '2032-12-31', 0, 0, 'Trial fill')
+  `).run(bagId).lastInsertRowid);
+  const keptId = Number(db.prepare(`
+    INSERT INTO inventory_batches (
+      item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, supplier_name
+    ) VALUES (?, 2, '2032-12-31', 3, 0, 'Trial fill')
+  `).run(bagId).lastInsertRowid);
+
+  const result = correctTrialBagPlaceholders(db);
+  assert.ok(result.expiry_cleared >= 2);
+  assert.ok(result.lots_costed >= 1);
+
+  const opened = db.prepare("SELECT expiry_date, unit_cost, quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId);
+  assert.equal(opened.expiry_date, null);
+  assert.equal(Number(opened.unit_cost), 6);
+  assert.equal(Number(opened.quantity_remaining), 20);
+  const kept = db.prepare("SELECT expiry_date, unit_cost FROM inventory_batches WHERE id = ?").get(keptId);
+  assert.equal(kept.expiry_date, null);
+  assert.equal(Number(kept.unit_cost), 3);
+  const bag = db.prepare("SELECT quantity, cost_price FROM inventory WHERE id = ?").get(bagId);
+  assert.equal(Number(bag.quantity), 20);
+  assert.equal(Number(bag.cost_price), 6);
 });
 
 test("doctor history and receipts are scoped to their own bag", async () => {

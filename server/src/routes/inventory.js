@@ -2,6 +2,10 @@ const { financialAction, stockFinancials, movementBusinessDateSql, movementRows 
 const { operationFor } = require("../lib/operationReceipts");
 const { randomUUID } = require("node:crypto");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
+const {
+  applyKnownCostToUnpricedDoctorBags,
+  renameDoctorBagCatalogue,
+} = require("../lib/doctorBagCatalogueSync");
 const express = require("express");
 const { ensureOcsCatalogSync } = require("../lib/ensureOcsCatalog");
 const { alignInventoryCategories } = require("../lib/inventoryCategoryAlignment");
@@ -2599,6 +2603,10 @@ router.put("/items/:id", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
+      if (isOcsMasterRow) {
+        const renamedBagIds = renameDoctorBagCatalogue(existing.item_name, itemName);
+        updatedBagItemIds.push(...renamedBagIds);
+      }
       if (isOcsMasterRow && priceChanged) {
         const bagRows = db.prepare(`
           UPDATE inventory
@@ -2611,7 +2619,7 @@ router.put("/items/:id", (req, res) => {
             AND owner_doctor_id IS NOT NULL
             AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
           RETURNING id
-        `).all(costPrice, sellingPrice, existing.item_name);
+        `).all(costPrice, sellingPrice, itemName);
         updatedBagItemIds.push(...bagRows.map((row) => Number(row.id)));
       }
       if (priceChanged) {
@@ -3057,6 +3065,9 @@ router.patch("/batches/:id/opening-data", (req, res) => {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(unitCost, batch.item_id);
+      if (String(batch.stock_scope || "") === "ocs") {
+        applyKnownCostToUnpricedDoctorBags(batch.item_name, unitCost);
+      }
       recordAudit({
         actionType: "verify_opening_batch_data",
         itemId: batch.item_id,
@@ -3153,6 +3164,9 @@ router.post("/items/:id/opening-batch-data", (req, res) => {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND COALESCE(row_version, 1) = ?
       `).run(unitCost, itemId, Number(item.row_version || 1));
+      if (String(item.stock_scope || "") === "ocs") {
+        applyKnownCostToUnpricedDoctorBags(item.item_name, unitCost);
+      }
       if (!updated.changes) {
         const error = new Error("This item changed while you were reviewing it. Reload and retry.");
         error.status = 409;

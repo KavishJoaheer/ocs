@@ -11,6 +11,7 @@ const { decorateInventoryItems } = require("./inventoryStockState");
 const { resolveAuditActor, isAutomatedMovementMeta } = require("./auditActor");
 const { isValidIsoCalendarDate } = require("./calendarDate");
 const { recordMovementAllocations } = require("./inventoryMovementAllocations");
+const { applyKnownCostToUnpricedDoctorBags } = require("./doctorBagCatalogueSync");
 
 const CSV_REQUIRED_HEADERS = [
   "folder",
@@ -862,6 +863,16 @@ function releaseStagingRows({ rows, userId, shipmentId = null, actor = {} }) {
         WHERE id = ?
       `).run(result.id, batchId, row.id);
       const receivedCost = roundCurrency(row.cost_price || 0);
+      if (receivedCost > 0) {
+        db.prepare(`
+          UPDATE inventory
+          SET cost_price = ?,
+              row_version = COALESCE(row_version, 1) + 1,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND COALESCE(cost_price, 0) <= 0
+        `).run(receivedCost, result.id);
+        applyKnownCostToUnpricedDoctorBags(result.item?.item_name || row.item_name, receivedCost);
+      }
       const movementId = recordOpsMovement({
         itemId: result.id,
         movementType: "in",

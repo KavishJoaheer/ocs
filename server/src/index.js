@@ -8,7 +8,7 @@ const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs
 const { isEnvTrue } = require("./lib/envFlags");
 const { alignInventoryCategories } = require("./lib/inventoryCategoryAlignment");
 const { ensureTreatmentCatalogue } = require("./lib/treatmentSupplies");
-const { applyTrialAkshayBagFill } = require("./lib/trialAkshayBagFill");
+const { applyTrialAkshayBagFill, correctTrialBagPlaceholders } = require("./lib/trialAkshayBagFill");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -105,6 +105,17 @@ try {
   }
 } catch (error) {
   console.warn("[inventory] Trial bag fill failed:", error.message);
+}
+
+try {
+  const trialCorrection = correctTrialBagPlaceholders(db);
+  if (trialCorrection.expiry_cleared > 0 || trialCorrection.lots_costed > 0) {
+    console.log(
+      `[inventory] Trial bag lots: cleared ${trialCorrection.expiry_cleared} placeholder expiry date(s), priced ${trialCorrection.lots_costed} unpriced lot(s) from the warehouse cost.`,
+    );
+  }
+} catch (error) {
+  console.warn("[inventory] Trial bag placeholder correction failed:", error.message);
 }
 
 if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {
