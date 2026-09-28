@@ -1653,9 +1653,10 @@ function BillingLitePage() {
                   return (
                     <article
                       key={item.id}
-                      className={`relative flex min-h-44 flex-col rounded-2xl border p-4 transition ${
+                      className={`relative flex min-h-44 flex-col rounded-2xl border border-l-4 p-4 transition ${
                         quantity > 0 ? "border-[#2aa7a0] ring-2 ring-[#2aa7a0]/20" : "border-slate-200/80"
-                      } ${isUnavailable ? "bg-slate-50" : `${tone.wash} shadow-[0_8px_24px_rgba(23,77,80,0.07)]`}`}
+                      } ${isUnavailable ? "border-l-slate-300 bg-slate-50" : "shadow-[0_8px_24px_rgba(23,77,80,0.07)]"}`}
+                      style={isUnavailable ? undefined : { backgroundColor: tone.washHex, borderLeftColor: tone.hex }}
                     >
                       <button
                         type="button"
