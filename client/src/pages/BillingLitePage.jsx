@@ -747,9 +747,6 @@ function BillingLitePage() {
 
   function supplyChoiceFields(item) {
     const selectClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]";
-    const selectedQuantity = Number(item.quantity ?? cart[item.id] ?? 0);
-    const hasUncoveredAdministration = item.is_service_charge
-      || selectedQuantity > Number(templateCoveredQuantities.get(Number(item.id)) || 0);
     return (
       <>
         {item.requires_mask ? (
@@ -786,7 +783,7 @@ function BillingLitePage() {
             </select>
           </label>
         ) : null}
-        {item.requires_cannula && hasUncoveredAdministration ? (
+        {item.requires_cannula ? (
           <label className="mt-3 block">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
             <select
@@ -805,7 +802,7 @@ function BillingLitePage() {
             </select>
           </label>
         ) : null}
-        {item.requires_syringe && hasUncoveredAdministration ? (
+        {item.requires_syringe ? (
           <label className="mt-3 block">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Syringe</span>
             <select
