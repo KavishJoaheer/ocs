@@ -97,6 +97,15 @@ function formatSubmittedAt(value) {
   return parsed.isValid() ? parsed.format("D MMM, HH:mm") : value;
 }
 
+function itemSelectionMap(items, field) {
+  return Object.fromEntries((items || [])
+    .filter((item) => Number(item?.inventory_item_id || item?.service_catalog_item_id || 0) > 0 && String(item?.[field] || "").trim())
+    .map((item) => [
+      Number(item.inventory_item_id || item.service_catalog_item_id),
+      String(item[field]).trim(),
+    ]));
+}
+
 function StatusBadge({ status, compact = false }) {
   const meta = STATUS_META[status] || STATUS_META.ready;
   return (
@@ -171,6 +180,8 @@ function BillingLitePage() {
   const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [enemaSizeByItem, setEnemaSizeByItem] = useState({});
   const [cannulaSizeByItem, setCannulaSizeByItem] = useState({});
+  const [syringeSizeByItem, setSyringeSizeByItem] = useState({});
+  const [salineSizeByItem, setSalineSizeByItem] = useState({});
   const [catheterSizeByItem, setCatheterSizeByItem] = useState({});
   const [ngtSizeByItem, setNgtSizeByItem] = useState({});
   const [category, setCategory] = useState("All supplies");
@@ -306,6 +317,13 @@ function BillingLitePage() {
     setSelectedPatientId("");
     setSelectedPickerVisitId("");
     setSelectedVisit(null);
+    setMaskSizeByItem({});
+    setEnemaSizeByItem({});
+    setCannulaSizeByItem({});
+    setSyringeSizeByItem({});
+    setSalineSizeByItem({});
+    setCatheterSizeByItem({});
+    setNgtSizeByItem({});
     setSourceReference("");
     setPaymentMethod("");
     setPaymentReference("");
@@ -481,6 +499,17 @@ function BillingLitePage() {
     () => treatmentTemplates.filter((template) => selectedTreatmentTemplates[template.id]),
     [selectedTreatmentTemplates, treatmentTemplates],
   );
+  const templateCoveredQuantities = useMemo(() => {
+    const covered = new Map();
+    for (const template of selectedTemplates) {
+      for (const component of template.components || []) {
+        if (component.component_type !== "billable") continue;
+        const itemId = Number(component.inventory_item_id || 0);
+        covered.set(itemId, (covered.get(itemId) || 0) + Number(component.quantity || 0));
+      }
+    }
+    return covered;
+  }, [selectedTemplates]);
 
   function reviewedSupplyPrice(item) {
     const edited = supplyPriceEdits[item.id]?.price;
@@ -500,6 +529,15 @@ function BillingLitePage() {
     if (Math.abs(consultationAmount - configuredAmount) >= 0.005 && consultationAdjustmentReason.trim().length < 8) {
       return "Explain the consultation price adjustment in at least 8 characters.";
     }
+    const requiredBillable = templateCoveredQuantities;
+    for (const template of selectedTemplates) {
+      for (const component of template.components || []) {
+        if (component.component_type === "included" && component.selection_role) {
+          const selectedValue = treatmentSelections[template.id]?.[component.selection_role];
+          if (!selectedValue) return `Choose a ${component.role_label || component.selection_role} for ${template.name}.`;
+        }
+      }
+    }
     for (const item of selectedItems) {
       const price = reviewedSupplyPrice(item);
       if (!Number.isFinite(price) || price <= 0) {
@@ -514,27 +552,22 @@ function BillingLitePage() {
       if (item.requires_enema && !["adult", "paediatric"].includes(enemaSizeByItem[item.id])) {
         return `Choose Atomic enema (Adult) or Atomic enema (Paediatric) for ${item.item_name}.`;
       }
-      if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
+      const hasUncoveredAdministration = item.is_service_charge
+        || Number(item.quantity || 0) > Number(requiredBillable.get(Number(item.id)) || 0);
+      if (item.requires_cannula && hasUncoveredAdministration && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
         return `Choose a cannula for ${item.item_name}.`;
+      }
+      if (item.requires_syringe && hasUncoveredAdministration && !["3", "5", "10", "20", "50"].includes(syringeSizeByItem[item.id])) {
+        return `Choose a syringe for ${item.item_name}.`;
+      }
+      if (item.requires_saline && !["100", "500"].includes(salineSizeByItem[item.id])) {
+        return `Choose N/S 100ml or N/S 500ml for ${item.item_name}.`;
       }
       if (item.requires_catheter && !["14", "16", "18", "20", "22"].includes(catheterSizeByItem[item.id])) {
         return `Choose a Foley catheter for ${item.item_name}.`;
       }
       if (item.requires_ngt && !["14", "16", "18"].includes(ngtSizeByItem[item.id])) {
         return `Choose an NGT for ${item.item_name}.`;
-      }
-    }
-    const requiredBillable = new Map();
-    for (const template of selectedTemplates) {
-      for (const component of template.components || []) {
-        if (component.component_type === "billable") {
-          const itemId = Number(component.inventory_item_id || 0);
-          requiredBillable.set(itemId, (requiredBillable.get(itemId) || 0) + Number(component.quantity || 0));
-        }
-        if (component.component_type === "included" && component.selection_role) {
-          const selectedValue = treatmentSelections[template.id]?.[component.selection_role];
-          if (!selectedValue) return `Choose a ${component.role_label || component.selection_role} for ${template.name}.`;
-        }
       }
     }
     for (const [itemId, required] of requiredBillable) {
@@ -637,6 +670,13 @@ function BillingLitePage() {
     setTreatmentTemplates([]);
     setSelectedTreatmentTemplates({});
     setTreatmentSelections({});
+    setMaskSizeByItem({});
+    setEnemaSizeByItem({});
+    setCannulaSizeByItem({});
+    setSyringeSizeByItem({});
+    setSalineSizeByItem({});
+    setCatheterSizeByItem({});
+    setNgtSizeByItem({});
     setCatalogSearch("");
     setShowUnavailable(false);
     await openCatalog(visit);
@@ -695,8 +735,9 @@ function BillingLitePage() {
       const clarificationCart = {};
       if (resolvedVisit.submission_status === "needs_doctor") {
         for (const previousItem of resolvedVisit.clarification_items || []) {
-          if (items.some((item) => Number(item.id) === Number(previousItem.inventory_item_id))) {
-            clarificationCart[Number(previousItem.inventory_item_id)] = Number(previousItem.quantity || 0);
+          const catalogItemId = Number(previousItem.inventory_item_id || previousItem.service_catalog_item_id || 0);
+          if (items.some((item) => Number(item.id) === catalogItemId)) {
+            clarificationCart[catalogItemId] = Number(previousItem.quantity || 0);
           }
         }
       }
@@ -714,6 +755,14 @@ function BillingLitePage() {
       setTreatmentSelections(Object.fromEntries(
         previousTemplateSnapshots.map((snapshot) => [Number(snapshot.template_id), snapshot.selections || {}]),
       ));
+      const clarificationItems = resolvedVisit.clarification_items || [];
+      setMaskSizeByItem(itemSelectionMap(clarificationItems, "mask_size"));
+      setEnemaSizeByItem(itemSelectionMap(clarificationItems, "enema_size"));
+      setCannulaSizeByItem(itemSelectionMap(clarificationItems, "cannula_size"));
+      setSyringeSizeByItem(itemSelectionMap(clarificationItems, "syringe_size"));
+      setSalineSizeByItem(itemSelectionMap(clarificationItems, "saline_size"));
+      setCatheterSizeByItem(itemSelectionMap(clarificationItems, "catheter_size"));
+      setNgtSizeByItem(itemSelectionMap(clarificationItems, "ngt_size"));
       setSelectedVisit(resolvedVisit);
       const hasSavedFavourite = items.some((item) => favorites.has(item.id));
       setCategory(hasSavedFavourite ? "Favourites" : "All supplies");
@@ -749,6 +798,9 @@ function BillingLitePage() {
 
   function supplyChoiceFields(item) {
     const selectClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]";
+    const selectedQuantity = Number(item.quantity ?? cart[item.id] ?? 0);
+    const hasUncoveredAdministration = item.is_service_charge
+      || selectedQuantity > Number(templateCoveredQuantities.get(Number(item.id)) || 0);
     return (
       <>
         {item.requires_mask ? (
@@ -785,7 +837,7 @@ function BillingLitePage() {
             </select>
           </label>
         ) : null}
-        {item.requires_cannula ? (
+        {item.requires_cannula && hasUncoveredAdministration ? (
           <label className="mt-3 block">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
             <select
@@ -801,6 +853,43 @@ function BillingLitePage() {
               <option value="pink">Cannula (Pink)</option>
               <option value="green">Cannula (Green)</option>
               <option value="yellow">Cannula (Yellow)</option>
+            </select>
+          </label>
+        ) : null}
+        {item.requires_syringe && hasUncoveredAdministration ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Syringe</span>
+            <select
+              value={syringeSizeByItem[item.id] || ""}
+              onChange={(event) => setSyringeSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose syringe</option>
+              <option value="3">Syringe (3ml)</option>
+              <option value="5">Syringe (5ml)</option>
+              <option value="10">Syringe (10ml)</option>
+              <option value="20">Syringe (20ml)</option>
+              <option value="50">Irrigation Syringe (50ml)</option>
+            </select>
+          </label>
+        ) : null}
+        {item.requires_saline ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Normal saline</span>
+            <select
+              value={salineSizeByItem[item.id] || ""}
+              onChange={(event) => setSalineSizeByItem((current) => ({
+                ...current,
+                [item.id]: event.target.value,
+              }))}
+              className={selectClass}
+            >
+              <option value="">Choose N/S</option>
+              <option value="100">N/S 100ml</option>
+              <option value="500">N/S 500ml</option>
             </select>
           </label>
         ) : null}
@@ -980,6 +1069,8 @@ function BillingLitePage() {
         mask_size: item.requires_mask ? maskSizeByItem[item.id] : undefined,
         enema_size: item.requires_enema ? enemaSizeByItem[item.id] : undefined,
         cannula_size: item.requires_cannula ? cannulaSizeByItem[item.id] : undefined,
+        syringe_size: item.requires_syringe ? syringeSizeByItem[item.id] : undefined,
+        saline_size: item.requires_saline ? salineSizeByItem[item.id] : undefined,
         catheter_size: item.requires_catheter ? catheterSizeByItem[item.id] : undefined,
         ngt_size: item.requires_ngt ? ngtSizeByItem[item.id] : undefined,
       })),
@@ -1100,6 +1191,14 @@ function BillingLitePage() {
       setTreatmentSelections(Object.fromEntries(
         (queueEntry.payload?.treatment_templates || []).map((template) => [Number(template.template_id), template.selections || {}]),
       ));
+      const queuedItems = queueEntry.payload?.items || [];
+      setMaskSizeByItem(itemSelectionMap(queuedItems, "mask_size"));
+      setEnemaSizeByItem(itemSelectionMap(queuedItems, "enema_size"));
+      setCannulaSizeByItem(itemSelectionMap(queuedItems, "cannula_size"));
+      setSyringeSizeByItem(itemSelectionMap(queuedItems, "syringe_size"));
+      setSalineSizeByItem(itemSelectionMap(queuedItems, "saline_size"));
+      setCatheterSizeByItem(itemSelectionMap(queuedItems, "catheter_size"));
+      setNgtSizeByItem(itemSelectionMap(queuedItems, "ngt_size"));
       setSupplyPriceEdits(nextSupplyPriceEdits);
       setSelectedVisit(visit);
       setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
@@ -1143,6 +1242,13 @@ function BillingLitePage() {
     setTreatmentTemplates([]);
     setSelectedTreatmentTemplates({});
     setTreatmentSelections({});
+    setMaskSizeByItem({});
+    setEnemaSizeByItem({});
+    setCannulaSizeByItem({});
+    setSyringeSizeByItem({});
+    setSalineSizeByItem({});
+    setCatheterSizeByItem({});
+    setNgtSizeByItem({});
     setSupplyPriceEdits({});
     setLookupResults([]);
     setCatalogSearch("");

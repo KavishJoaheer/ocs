@@ -118,6 +118,12 @@ function normalizeBillingItems(items) {
         ...(String(item?.cannula_size || "").trim()
           ? { cannula_size: String(item.cannula_size).trim().toLowerCase() }
           : {}),
+        ...(String(item?.syringe_size || "").trim()
+          ? { syringe_size: String(item.syringe_size).trim() }
+          : {}),
+        ...(String(item?.saline_size || "").trim()
+          ? { saline_size: String(item.saline_size).trim() }
+          : {}),
         ...(String(item?.catheter_size || "").trim()
           ? { catheter_size: String(item.catheter_size).trim() }
           : {}),

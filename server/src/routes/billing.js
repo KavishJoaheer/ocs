@@ -38,15 +38,19 @@ const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 const { financialAction, stockFinancials } = require("../lib/inventoryFinancials");
 const { getBillingCutoverDate } = require("../lib/billingCutover");
 const {
+  drugAdministrationByCategory,
   ensureTreatmentCatalogue,
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  resolveRecipeComponents,
   serviceRequiresCannula,
   serviceRequiresCatheter,
   serviceRequiresEnema,
   serviceRequiresMask,
   serviceRequiresNgt,
+  serviceRequiresSaline,
+  serviceRequiresSyringe,
   treatmentServiceByName,
 } = require("../lib/treatmentSupplies");
 const {
@@ -996,6 +1000,8 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
     line.cannula_size,
     line.catheter_size,
     line.ngt_size,
+    line.syringe_size,
+    line.saline_size,
   );
   return deductIncludedTreatmentComponents({
     consultation,
@@ -1010,6 +1016,39 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
       cannula_size: line.cannula_size || null,
       catheter_size: line.catheter_size || null,
       ngt_size: line.ngt_size || null,
+      syringe_size: line.syringe_size || null,
+      saline_size: line.saline_size || null,
+    },
+  });
+}
+
+function deductDrugAdministrationSupplies({
+  consultation,
+  line,
+  stockItem,
+  quantity,
+  userId,
+  actor,
+  billingId,
+}) {
+  const recipe = drugAdministrationByCategory(stockItem?.folder_name, stockItem?.parent_folder_name);
+  if (!recipe || !(Number(quantity) > 0)) return { movementIds: [], touchedItemIds: [] };
+  const components = resolveRecipeComponents(recipe, {
+    quantity,
+    cannulaSize: line.cannula_size,
+    syringeSize: line.syringe_size,
+  });
+  return deductIncludedTreatmentComponents({
+    consultation,
+    components,
+    treatmentName: line.description,
+    userId,
+    actor,
+    billingId,
+    selectionMeta: {
+      administration_route: recipe.route,
+      syringe_size: line.syringe_size || null,
+      cannula_size: line.cannula_size || null,
     },
   });
 }
@@ -2297,7 +2336,8 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
   const decorated = decorateInventoryItems(rows);
   const items = decorated.flatMap((item) => {
     if (isTreatmentSupplyName(item.item_name)) return [];
-    const recipe = treatmentServiceByName(item.item_name);
+    const recipe = treatmentServiceByName(item.item_name)
+      || drugAdministrationByCategory(item.folder_name, item.parent_folder_name);
     const isService = String(item.item_kind || "stock") === "service";
     return [{
       id: Number(item.id),
@@ -2311,6 +2351,8 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       requires_mask: serviceRequiresMask(recipe),
       requires_enema: serviceRequiresEnema(recipe),
       requires_cannula: serviceRequiresCannula(recipe),
+      requires_syringe: serviceRequiresSyringe(recipe),
+      requires_saline: serviceRequiresSaline(recipe),
       requires_catheter: serviceRequiresCatheter(recipe),
       requires_ngt: serviceRequiresNgt(recipe),
       included_label: includedLabel(recipe),
@@ -2838,6 +2880,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const maskSizes = new Map();
   const enemaSizes = new Map();
   const cannulaSizes = new Map();
+  const syringeSizes = new Map();
+  const salineSizes = new Map();
   const catheterSizes = new Map();
   const ngtSizes = new Map();
   for (const item of rawItems) {
@@ -2881,6 +2925,20 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         return res.status(400).json({ error: "A treatment cannot use two different cannulas." });
       }
       cannulaSizes.set(itemId, cannulaSize);
+    }
+    const syringeSize = String(item?.syringe_size || "").trim();
+    if (syringeSize) {
+      if (syringeSizes.has(itemId) && syringeSizes.get(itemId) !== syringeSize) {
+        return res.status(400).json({ error: "A treatment cannot use two different syringes." });
+      }
+      syringeSizes.set(itemId, syringeSize);
+    }
+    const salineSize = String(item?.saline_size || "").trim();
+    if (salineSize) {
+      if (salineSizes.has(itemId) && salineSizes.get(itemId) !== salineSize) {
+        return res.status(400).json({ error: "A treatment cannot use two different N/S sizes." });
+      }
+      salineSizes.set(itemId, salineSize);
     }
     const catheterSize = String(item?.catheter_size || "").trim();
     if (catheterSize) {
@@ -3074,22 +3132,27 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
 
       const requestedIds = [...mergedQuantities.keys()];
       let chargeLines = [];
+      let stockById = new Map();
       if (requestedIds.length) {
         const placeholders = requestedIds.map(() => "?").join(",");
         const stockRows = db
           .prepare(`
-            SELECT id, item_name, selling_price, COALESCE(item_kind, 'stock') AS item_kind
-            FROM inventory
-            WHERE id IN (${placeholders})
-              AND stock_scope = 'doctor'
-              AND owner_doctor_id = ?
-              AND archived_at IS NULL
+            SELECT i.id, i.item_name, i.selling_price, COALESCE(i.item_kind, 'stock') AS item_kind,
+              COALESCE(f.name, '') AS folder_name,
+              COALESCE(parent.name, '') AS parent_folder_name
+            FROM inventory i
+            LEFT JOIN inventory_folders f ON f.id = i.folder_id
+            LEFT JOIN inventory_folders parent ON parent.id = f.parent_id
+            WHERE i.id IN (${placeholders})
+              AND i.stock_scope = 'doctor'
+              AND i.owner_doctor_id = ?
+              AND i.archived_at IS NULL
           `)
           .all(...requestedIds, doctorId);
         if (stockRows.length !== requestedIds.length) {
           throw Object.assign(new Error("One or more selected supplies are no longer available in your bag."), { status: 409 });
         }
-        const stockById = new Map(stockRows.map((item) => [Number(item.id), item]));
+        stockById = new Map(stockRows.map((item) => [Number(item.id), item]));
         const changedPrices = requestedIds.flatMap((itemId) => {
           const reviewedPrice = reviewedUnitPrices.get(itemId);
           const currentPrice = roundCurrency(stockById.get(itemId)?.selling_price);
@@ -3133,13 +3196,15 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             type: "Sale",
             quantity,
             inventory_item_id: item.item_kind === "service" ? null : itemId,
+            syringe_size: syringeSizes.get(itemId) || "",
+            saline_size: salineSizes.get(itemId) || "",
+            cannula_size: cannulaSizes.get(itemId) || "",
             ...(item.item_kind === "service"
               ? {
                   is_service_charge: true,
                   service_catalog_item_id: itemId,
                   mask_size: maskSizes.get(itemId) || "",
                   enema_size: enemaSizes.get(itemId) || "",
-                  cannula_size: cannulaSizes.get(itemId) || "",
                   catheter_size: catheterSizes.get(itemId) || "",
                   ngt_size: ngtSizes.get(itemId) || "",
                 }
@@ -3249,6 +3314,48 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
               })),
             },
           ],
+        };
+      }
+      const templateCoveredQuantities = new Map();
+      for (const template of treatmentTemplateInstances) {
+        for (const component of template.billableComponents) {
+          const itemId = Number(component.itemId);
+          templateCoveredQuantities.set(
+            itemId,
+            (templateCoveredQuantities.get(itemId) || 0) + Number(component.quantity || 0),
+          );
+        }
+      }
+      for (let index = 0; index < appliedItems.length; index += 1) {
+        const line = appliedItems[index];
+        const itemId = Number(line.inventory_item_id || 0);
+        const stockItem = stockById.get(itemId);
+        const administrationRecipe = drugAdministrationByCategory(
+          stockItem?.folder_name,
+          stockItem?.parent_folder_name,
+        );
+        if (!administrationRecipe) continue;
+        const uncoveredQuantity = Math.max(
+          0,
+          Number(line.quantity || 0) - Number(templateCoveredQuantities.get(itemId) || 0),
+        );
+        if (!uncoveredQuantity) continue;
+        const consumed = deductDrugAdministrationSupplies({
+          consultation,
+          line,
+          stockItem,
+          quantity: uncoveredQuantity,
+          userId: req.auth.id,
+          actor: req.auth,
+          billingId: bill.id,
+        });
+        componentItemIds.push(...consumed.touchedItemIds);
+        appliedItems[index] = {
+          ...line,
+          inventory_movement_ids: [...new Set([
+            ...(line.inventory_movement_ids || []),
+            ...consumed.movementIds,
+          ])],
         };
       }
       const servicesWithStock = serviceChargeLines.map((serviceLine) => {

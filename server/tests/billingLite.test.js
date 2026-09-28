@@ -103,7 +103,7 @@ before(async () => {
   );
   ensureBillingForConsultation(consultationId, patientId, null, "Night Consultation");
 
-  const folderId = Number(db.prepare("SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1").get().id);
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
   itemId = Number(
     db.prepare(`
       INSERT INTO inventory (
@@ -256,7 +256,7 @@ test("operator quick billing requires the matching consultation doctor and paper
       .run(appointmentId, patient.id, doctorId, today).lastInsertRowid,
   );
   ensureBillingForConsultation(operatorConsultationId, patient.id, null, "Day Consultation");
-  const folderId = Number(db.prepare("SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1").get().id);
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
   const operatorItemId = Number(db.prepare(`
     INSERT INTO inventory (
       item_name, folder_id, owner_doctor_id, stock_scope, quantity,
@@ -1310,7 +1310,8 @@ test("treatment templates charge medicines, silently consume configured supplies
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
   const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
-  function stock(name, quantity, sellingPrice, unitCost) {
+  const ivFolderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'IV Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+  function stock(name, quantity, sellingPrice, unitCost, stockFolderId = folderId) {
     let row = db.prepare(`
       SELECT id FROM inventory
       WHERE stock_scope = 'doctor' AND owner_doctor_id = ?
@@ -1323,13 +1324,13 @@ test("treatment templates charge medicines, silently consume configured supplies
           item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity,
           minimum_quantity, unit, cost_price, selling_price, updated_at
         ) VALUES (?, 'stock', ?, 'doctor', ?, 0, 0, 'unit', ?, ?, CURRENT_TIMESTAMP)
-      `).run(name, folderId, doctorId, unitCost, sellingPrice).lastInsertRowid) };
+      `).run(name, stockFolderId, doctorId, unitCost, sellingPrice).lastInsertRowid) };
     }
     db.prepare(`
       UPDATE inventory
-      SET item_kind = 'stock', quantity = ?, cost_price = ?, selling_price = ?, archived_at = NULL
+      SET item_kind = 'stock', folder_id = ?, quantity = ?, cost_price = ?, selling_price = ?, archived_at = NULL
       WHERE id = ?
-    `).run(quantity, unitCost, sellingPrice, row.id);
+    `).run(stockFolderId, quantity, unitCost, sellingPrice, row.id);
     db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
     db.prepare(`
       INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
@@ -1348,7 +1349,7 @@ test("treatment templates charge medicines, silently consume configured supplies
     name,
     quantity,
     sellingPrice,
-    id: stock(name, 10, sellingPrice, unitCost),
+    id: stock(name, 10, sellingPrice, unitCost, ivFolderId),
   }));
   const syringeId = stock("Syringe (10ml)", 8, 0, 5);
   const cannulaId = stock("Cannula (Green)", 7, 0, 9);
@@ -1494,6 +1495,142 @@ test("treatment templates charge medicines, silently consume configured supplies
   assert.equal(afterReversalReported.metrics.total_stock_cost_amount, 0);
 });
 
+test("services and standalone IM or IV drugs consume their uncharged administration supplies", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  const consumableId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+  const imFolderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'IM Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+  const ivFolderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'IV Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+
+  function stock(name, folderId, quantity, sellingPrice, unitCost) {
+    let row = db.prepare(`
+      SELECT id FROM inventory
+      WHERE stock_scope = 'doctor' AND owner_doctor_id = ?
+        AND lower(trim(item_name)) = lower(trim(?)) AND archived_at IS NULL
+      LIMIT 1
+    `).get(doctorId, name);
+    if (!row) {
+      row = { id: Number(db.prepare(`
+        INSERT INTO inventory (
+          item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity,
+          minimum_quantity, unit, cost_price, selling_price, updated_at
+        ) VALUES (?, 'stock', ?, 'doctor', ?, 0, 0, 'unit', ?, ?, CURRENT_TIMESTAMP)
+      `).run(name, folderId, doctorId, unitCost, sellingPrice).lastInsertRowid) };
+    }
+    db.prepare(`
+      UPDATE inventory
+      SET item_kind = 'stock', folder_id = ?, quantity = ?, cost_price = ?, selling_price = ?, archived_at = NULL
+      WHERE id = ?
+    `).run(folderId, quantity, unitCost, sellingPrice, row.id);
+    db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', ?, 0, 'usable')
+    `).run(row.id, quantity, unitCost);
+    return Number(row.id);
+  }
+
+  const componentIds = {
+    syringe3: stock("Syringe (3ml)", consumableId, 5, 0, 3),
+    syringe5: stock("Syringe (5ml)", consumableId, 5, 0, 4),
+    syringe10: stock("Syringe (10ml)", consumableId, 5, 0, 5),
+    syringe50: stock("Irrigation Syringe (50ml)", consumableId, 5, 0, 8),
+    cannulaBlue: stock("Cannula (Blue)", consumableId, 5, 0, 7),
+    cannulaPink: stock("Cannula (Pink)", consumableId, 5, 0, 9),
+    intrafix: stock("Intrafix (Drip Set / Infusion set)", consumableId, 5, 0, 11),
+    saline500: stock("N/S 500ml", ivFolderId, 5, 0, 30),
+  };
+  const imDrugId = stock("IM administration test drug", imFolderId, 5, 100, 20);
+  const ivDrugId = stock("IV administration test drug", ivFolderId, 5, 200, 40);
+
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '17:05', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const nextConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Service and drug administration supplies test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  const abdominal = catalog.data.items.find((item) => item.item_name === "Abdominal tapping");
+  const washout = catalog.data.items.find((item) => item.item_name === "Bladder wash out + N/S");
+  const imDrug = catalog.data.items.find((item) => item.id === imDrugId);
+  const ivDrug = catalog.data.items.find((item) => item.id === ivDrugId);
+  assert.ok(abdominal && washout && imDrug && ivDrug);
+  assert.deepEqual(
+    [abdominal.requires_syringe, abdominal.requires_cannula, washout.requires_syringe, washout.requires_saline],
+    [true, true, true, true],
+  );
+  assert.deepEqual(
+    [imDrug.requires_syringe, imDrug.requires_cannula, ivDrug.requires_syringe, ivDrug.requires_cannula],
+    [true, false, true, true],
+  );
+  assert.equal(abdominal.included_label, "1 syringe, 1 cannula, and 1 Intrafix (Drip Set / Infusion set)");
+  assert.equal(imDrug.included_label, "1 syringe");
+  assert.equal(ivDrug.included_label, "1 syringe, 1 cannula, and 1 Intrafix (Drip Set / Infusion set)");
+  const missing = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("ADMIN-SUPPLIES-MISSING"),
+    items: [{ inventory_item_id: imDrugId, quantity: 1, unit_price: 100 }],
+  });
+  assert.equal(missing.status, 400, JSON.stringify(missing.data));
+  assert.equal(missing.data.code, "TREATMENT_SYRINGE_REQUIRED");
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(imDrugId).quantity), 5);
+
+  const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("ADMIN-SUPPLIES-OK"),
+    items: [
+      { inventory_item_id: abdominal.id, quantity: 1, unit_price: 2500, syringe_size: "5", cannula_size: "blue" },
+      {
+        inventory_item_id: washout.id,
+        quantity: 1,
+        unit_price: 800,
+        price_adjustment_reason: "Configured washout service charge",
+        syringe_size: "50",
+        saline_size: "500",
+      },
+      { inventory_item_id: imDrugId, quantity: 1, unit_price: 100, syringe_size: "3" },
+      { inventory_item_id: ivDrugId, quantity: 1, unit_price: 200, syringe_size: "10", cannula_size: "pink" },
+    ],
+  });
+  assert.equal(billed.status, 201, JSON.stringify(billed.data));
+  const lines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(billed.data.submission.bill_id).items);
+  assert.equal(lines.some((line) => line.description === "Abdominal tapping"), true);
+  assert.equal(lines.some((line) => line.description === "Bladder wash out + N/S"), true);
+  assert.equal(lines.some((line) => line.description === "IM administration test drug"), true);
+  assert.equal(lines.some((line) => line.description === "IV administration test drug"), true);
+  const componentNames = [
+    "Syringe (3ml)", "Syringe (5ml)", "Syringe (10ml)", "Irrigation Syringe (50ml)",
+    "Cannula (Blue)", "Cannula (Pink)", "Intrafix (Drip Set / Infusion set)", "N/S 500ml",
+  ];
+  assert.equal(lines.some((line) => componentNames.includes(line.description)), false);
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(componentIds).map(([key, id]) => [key, Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(id).quantity)])),
+    {
+      syringe3: 4,
+      syringe5: 4,
+      syringe10: 4,
+      syringe50: 4,
+      cannulaBlue: 4,
+      cannulaPink: 4,
+      intrafix: 3,
+      saline500: 4,
+    },
+  );
+  const includedMovements = db.prepare(`
+    SELECT id, meta_json
+    FROM inventory_movements
+    WHERE CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
+      AND CAST(json_extract(meta_json, '$.billed_quantity') AS INTEGER) = 0
+  `).all(billed.data.submission.bill_id);
+  assert.equal(includedMovements.length, 9);
+  assert.equal(includedMovements.every((movement) => JSON.parse(movement.meta_json).treatment_component === true), true);
+});
+
 test("bladder procedures move to services and catheterisation or NGT takes the chosen tube", async () => {
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
@@ -1537,7 +1674,12 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
     assert.equal(service.selling_price, 0);
   }
   assert.equal(catheterisation.requires_catheter, true);
-  assert.equal(catheterisation.included_label, "1 Foley catheter");
+  assert.equal(catheterisation.requires_syringe, true);
+  assert.equal(catheterisation.requires_saline, true);
+  assert.equal(catheterisation.included_label, "1 Foley catheter, 1 syringe, and 1 N/S");
+  assert.equal(washout.requires_syringe, true);
+  assert.equal(washout.requires_saline, true);
+  assert.equal(washout.included_label, "1 syringe and 1 N/S");
   assert.equal(ngt.requires_ngt, true);
   assert.equal(ngt.included_label, "1 NGT");
   const moved = db.prepare("SELECT item_kind, quantity FROM inventory WHERE id = ?").get(stockId);
@@ -1560,6 +1702,8 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   addBagItem("2 Way Foley Catheter (Ch/Fr 16)", 4);
   addBagItem("2 Way Foley Catheter (Ch/Fr 18)", 2);
   addBagItem("NGT (14fg x105cm)", 3);
+  addBagItem("Syringe (20ml)", 4);
+  addBagItem("N/S 100ml", 4);
   db.prepare("UPDATE inventory SET selling_price = 1200 WHERE id = ?").run(catheterisation.id);
   db.prepare("UPDATE inventory SET selling_price = 900 WHERE id = ?").run(ngt.id);
 
@@ -1569,13 +1713,20 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
     items: [{ inventory_item_id: catheterisation.id, quantity: 1, unit_price: 1200 }],
   });
   assert.equal(missing.status, 400, JSON.stringify(missing.data));
-  assert.equal(missing.data.code, "TREATMENT_CATHETER_REQUIRED");
+  assert.equal(missing.data.code, "TREATMENT_SYRINGE_REQUIRED");
 
   const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
     ...quickIssueFields("CATH-OK"),
     items: [
-      { inventory_item_id: catheterisation.id, quantity: 1, unit_price: 1200, catheter_size: "16" },
+      {
+        inventory_item_id: catheterisation.id,
+        quantity: 1,
+        unit_price: 1200,
+        catheter_size: "16",
+        syringe_size: "20",
+        saline_size: "100",
+      },
       { inventory_item_id: ngt.id, quantity: 1, unit_price: 900, ngt_size: "14" },
     ],
   });
@@ -1592,4 +1743,6 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   assert.equal(bagQuantity("2 Way Foley Catheter (Ch/Fr 16)"), 3);
   assert.equal(bagQuantity("2 Way Foley Catheter (Ch/Fr 18)"), 2);
   assert.equal(bagQuantity("NGT (14fg x105cm)"), 2);
+  assert.equal(bagQuantity("Syringe (20ml)"), 3);
+  assert.equal(bagQuantity("N/S 100ml"), 3);
 });

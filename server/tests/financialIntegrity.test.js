@@ -23,7 +23,7 @@ const { stockFinancials } = require('../src/lib/inventoryFinancials');
 const today = getTodayLocal();
 const tokens = {};
 const doctorId = db.prepare('SELECT id FROM doctors ORDER BY id LIMIT 1').get().id;
-const folderId = db.prepare('SELECT id FROM inventory_folders ORDER BY id DESC LIMIT 1').get().id;
+const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
 let base, server, fixtureIndex = 0;
 let quickIssueIndex = 0;
 

@@ -25,6 +25,12 @@ const SYRINGES = Object.freeze({
   "5": "Syringe (5ml)",
   "10": "Syringe (10ml)",
   "20": "Syringe (20ml)",
+  "50": "Irrigation Syringe (50ml)",
+});
+
+const SALINES = Object.freeze({
+  "100": "N/S 100ml",
+  "500": "N/S 500ml",
 });
 
 const CATHETERS = Object.freeze({
@@ -122,7 +128,11 @@ const SERVICES = Object.freeze([
   {
     itemName: "Abdominal tapping",
     sellingPrice: 2500,
-    components: [],
+    components: [
+      { role: "syringe", quantity: 1 },
+      { role: "cannula", quantity: 1 },
+      { itemName: "Intrafix (Drip Set / Infusion set)", quantity: 1 },
+    ],
   },
   {
     itemName: "PR (including sterile gloves and gel)",
@@ -151,7 +161,10 @@ const SERVICES = Object.freeze([
   },
   {
     itemName: "Bladder wash out + N/S",
-    components: [],
+    components: [
+      { role: "syringe", quantity: 1 },
+      { role: "saline", quantity: 1 },
+    ],
   },
   {
     itemName: "Removal of catheter",
@@ -163,13 +176,34 @@ const SERVICES = Object.freeze([
   },
   {
     itemName: "Catherisation",
-    components: [{ role: "catheter", quantity: 1 }],
+    components: [
+      { role: "catheter", quantity: 1 },
+      { role: "syringe", quantity: 1 },
+      { role: "saline", quantity: 1 },
+    ],
   },
   {
     itemName: "NGT insertion",
     components: [{ role: "ngt", quantity: 1 }],
   },
 ]);
+
+const DRUG_ADMINISTRATION = Object.freeze({
+  im: Object.freeze({
+    itemName: "IM drug administration",
+    route: "im",
+    components: Object.freeze([{ role: "syringe", quantity: 1 }]),
+  }),
+  iv: Object.freeze({
+    itemName: "IV drug administration",
+    route: "iv",
+    components: Object.freeze([
+      { role: "syringe", quantity: 1 },
+      { role: "cannula", quantity: 1 },
+      { itemName: "Intrafix (Drip Set / Infusion set)", quantity: 1 },
+    ]),
+  }),
+});
 
 const supplyNames = new Set(SUPPLIES.map((item) => item.itemName.toLowerCase()));
 
@@ -194,6 +228,14 @@ function serviceRequiresCannula(service) {
   return Boolean(service?.components?.some((component) => component.role === "cannula"));
 }
 
+function serviceRequiresSyringe(service) {
+  return Boolean(service?.components?.some((component) => component.role === "syringe"));
+}
+
+function serviceRequiresSaline(service) {
+  return Boolean(service?.components?.some((component) => component.role === "saline"));
+}
+
 function serviceRequiresCatheter(service) {
   return Boolean(service?.components?.some((component) => component.role === "catheter"));
 }
@@ -211,6 +253,10 @@ function includedLabel(service) {
         ? "atomic enema"
         : component.role === "cannula"
           ? "cannula"
+          : component.role === "syringe"
+            ? "syringe"
+            : component.role === "saline"
+              ? "N/S"
           : component.role === "catheter"
             ? "Foley catheter"
             : component.role === "ngt"
@@ -223,8 +269,23 @@ function includedLabel(service) {
   return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
-function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, cannulaSize, catheterSize, ngtSize) {
-  const service = treatmentServiceByName(serviceName);
+function drugAdministrationByCategory(...categoryNames) {
+  const names = categoryNames.map((name) => String(name || "").trim().toLowerCase());
+  if (names.includes("im drugs")) return DRUG_ADMINISTRATION.im;
+  if (names.includes("iv drugs")) return DRUG_ADMINISTRATION.iv;
+  return null;
+}
+
+function resolveRecipeComponents(service, {
+  maskSize,
+  quantity,
+  enemaSize,
+  cannulaSize,
+  catheterSize,
+  ngtSize,
+  syringeSize,
+  salineSize,
+} = {}) {
   if (!service) return null;
   const copies = Number(quantity || 0);
   if (!Number.isInteger(copies) || copies <= 0) {
@@ -253,6 +314,20 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
     error.extra = { code: "TREATMENT_CANNULA_REQUIRED", service_name: service.itemName };
     throw error;
   }
+  const syringe = String(syringeSize || "").trim();
+  if (serviceRequiresSyringe(service) && !SYRINGES[syringe]) {
+    const error = new Error(`Choose a syringe for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_SYRINGE_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
+  const saline = String(salineSize || "").trim();
+  if (serviceRequiresSaline(service) && !SALINES[saline]) {
+    const error = new Error(`Choose N/S 100ml or N/S 500ml for ${service.itemName}.`);
+    error.status = 400;
+    error.extra = { code: "TREATMENT_SALINE_REQUIRED", service_name: service.itemName };
+    throw error;
+  }
   const catheter = String(catheterSize || "").trim();
   if (serviceRequiresCatheter(service) && !CATHETERS[catheter]) {
     const error = new Error(`Choose a Foley catheter for ${service.itemName}.`);
@@ -274,6 +349,10 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
         ? ENEMAS[enema]
         : component.role === "cannula"
           ? CANNULAS[cannula]
+          : component.role === "syringe"
+            ? SYRINGES[syringe]
+            : component.role === "saline"
+              ? SALINES[saline]
           : component.role === "catheter"
             ? CATHETERS[catheter]
             : component.role === "ngt"
@@ -281,6 +360,29 @@ function resolveTreatmentComponents(serviceName, maskSize, quantity, enemaSize, 
               : component.itemName,
     quantity: component.quantity * copies,
   }));
+}
+
+function resolveTreatmentComponents(
+  serviceName,
+  maskSize,
+  quantity,
+  enemaSize,
+  cannulaSize,
+  catheterSize,
+  ngtSize,
+  syringeSize,
+  salineSize,
+) {
+  return resolveRecipeComponents(treatmentServiceByName(serviceName), {
+    maskSize,
+    quantity,
+    enemaSize,
+    cannulaSize,
+    catheterSize,
+    ngtSize,
+    syringeSize,
+    salineSize,
+  });
 }
 
 function folderId(db, name) {
@@ -429,19 +531,25 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
 
 module.exports = {
   CANNULAS,
+  DRUG_ADMINISTRATION,
   ENEMAS,
   MASKS,
+  SALINES,
   SERVICES,
   SUPPLIES,
   SYRINGES,
   ensureTreatmentCatalogue,
+  drugAdministrationByCategory,
   includedLabel,
   isTreatmentSupplyName,
   resolveTreatmentComponents,
+  resolveRecipeComponents,
   serviceRequiresCannula,
   serviceRequiresCatheter,
   serviceRequiresEnema,
   serviceRequiresNgt,
   serviceRequiresMask,
+  serviceRequiresSaline,
+  serviceRequiresSyringe,
   treatmentServiceByName,
 };
