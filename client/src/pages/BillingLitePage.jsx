@@ -174,9 +174,6 @@ function BillingLitePage() {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [cart, setCart] = useState({});
-  const [treatmentTemplates, setTreatmentTemplates] = useState([]);
-  const [selectedTreatmentTemplates, setSelectedTreatmentTemplates] = useState({});
-  const [treatmentSelections, setTreatmentSelections] = useState({});
   const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [enemaSizeByItem, setEnemaSizeByItem] = useState({});
   const [cannulaSizeByItem, setCannulaSizeByItem] = useState({});
@@ -495,22 +492,6 @@ function BillingLitePage() {
         .map((item) => ({ ...item, quantity: Number(cart[item.id]) })),
     [catalog, cart],
   );
-  const selectedTemplates = useMemo(
-    () => treatmentTemplates.filter((template) => selectedTreatmentTemplates[template.id]),
-    [selectedTreatmentTemplates, treatmentTemplates],
-  );
-  const templateCoveredQuantities = useMemo(() => {
-    const covered = new Map();
-    for (const template of selectedTemplates) {
-      for (const component of template.components || []) {
-        if (component.component_type !== "billable") continue;
-        const itemId = Number(component.inventory_item_id || 0);
-        covered.set(itemId, (covered.get(itemId) || 0) + Number(component.quantity || 0));
-      }
-    }
-    return covered;
-  }, [selectedTemplates]);
-
   function reviewedSupplyPrice(item) {
     const edited = supplyPriceEdits[item.id]?.price;
     return Number(edited === undefined ? item.selling_price || 0 : edited);
@@ -529,15 +510,6 @@ function BillingLitePage() {
     if (Math.abs(consultationAmount - configuredAmount) >= 0.005 && consultationAdjustmentReason.trim().length < 8) {
       return "Explain the consultation price adjustment in at least 8 characters.";
     }
-    const requiredBillable = templateCoveredQuantities;
-    for (const template of selectedTemplates) {
-      for (const component of template.components || []) {
-        if (component.component_type === "included" && component.selection_role) {
-          const selectedValue = treatmentSelections[template.id]?.[component.selection_role];
-          if (!selectedValue) return `Choose a ${component.role_label || component.selection_role} for ${template.name}.`;
-        }
-      }
-    }
     for (const item of selectedItems) {
       const price = reviewedSupplyPrice(item);
       if (!Number.isFinite(price) || price <= 0) {
@@ -552,12 +524,10 @@ function BillingLitePage() {
       if (item.requires_enema && !["adult", "paediatric"].includes(enemaSizeByItem[item.id])) {
         return `Choose Atomic enema (Adult) or Atomic enema (Paediatric) for ${item.item_name}.`;
       }
-      const hasUncoveredAdministration = item.is_service_charge
-        || Number(item.quantity || 0) > Number(requiredBillable.get(Number(item.id)) || 0);
-      if (item.requires_cannula && hasUncoveredAdministration && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
+      if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
         return `Choose a cannula for ${item.item_name}.`;
       }
-      if (item.requires_syringe && hasUncoveredAdministration && !["3", "5", "10", "20", "50"].includes(syringeSizeByItem[item.id])) {
+      if (item.requires_syringe && !["3", "5", "10", "20", "50"].includes(syringeSizeByItem[item.id])) {
         return `Choose a syringe for ${item.item_name}.`;
       }
       if (item.requires_saline && !["100", "500"].includes(salineSizeByItem[item.id])) {
@@ -568,12 +538,6 @@ function BillingLitePage() {
       }
       if (item.requires_ngt && !["14", "16", "18"].includes(ngtSizeByItem[item.id])) {
         return `Choose an NGT for ${item.item_name}.`;
-      }
-    }
-    for (const [itemId, required] of requiredBillable) {
-      if (Number(cart[itemId] || 0) < required) {
-        const item = catalog.find((entry) => Number(entry.id) === itemId);
-        return `${item?.item_name || "A charged medicine"} needs quantity ${required} for the selected treatment.`;
       }
     }
     return "";
@@ -667,9 +631,6 @@ function BillingLitePage() {
     setOperatorDoctorConfirmation(false);
     setCart({});
     setCatalog([]);
-    setTreatmentTemplates([]);
-    setSelectedTreatmentTemplates({});
-    setTreatmentSelections({});
     setMaskSizeByItem({});
     setEnemaSizeByItem({});
     setCannulaSizeByItem({});
@@ -743,18 +704,6 @@ function BillingLitePage() {
       }
       setCatalog(items);
       setCart(clarificationCart);
-      const nextTemplates = Array.isArray(payload?.treatment_templates) ? payload.treatment_templates : [];
-      const previousTemplateSnapshots = (resolvedVisit.clarification_items || [])
-        .flatMap((item) => Array.isArray(item.treatment_templates) ? item.treatment_templates : []);
-      setTreatmentTemplates(nextTemplates);
-      setSelectedTreatmentTemplates(Object.fromEntries(
-        previousTemplateSnapshots
-          .filter((snapshot) => nextTemplates.some((template) => Number(template.id) === Number(snapshot.template_id)))
-          .map((snapshot) => [Number(snapshot.template_id), true]),
-      ));
-      setTreatmentSelections(Object.fromEntries(
-        previousTemplateSnapshots.map((snapshot) => [Number(snapshot.template_id), snapshot.selections || {}]),
-      ));
       const clarificationItems = resolvedVisit.clarification_items || [];
       setMaskSizeByItem(itemSelectionMap(clarificationItems, "mask_size"));
       setEnemaSizeByItem(itemSelectionMap(clarificationItems, "enema_size"));
@@ -953,35 +902,6 @@ function BillingLitePage() {
     });
   }
 
-  function toggleTreatmentTemplate(template) {
-    const currentlySelected = Boolean(selectedTreatmentTemplates[template.id]);
-    if (!currentlySelected && !template.ready) {
-      toast.error("This treatment is missing priced or usable stock in the doctor’s bag.");
-      return;
-    }
-    const billableComponents = (template.components || []).filter((component) => component.component_type === "billable");
-    const direction = currentlySelected ? -1 : 1;
-    const nextCart = { ...cart };
-    for (const component of billableComponents) {
-      const itemId = Number(component.inventory_item_id || 0);
-      const nextQuantity = Math.max(0, Number(nextCart[itemId] || 0) + direction * Number(component.quantity || 0));
-      if (!currentlySelected && nextQuantity > Number(component.available_to_use || 0)) {
-        toast.error(`Not enough ${component.item_name} is available for this treatment.`);
-        return;
-      }
-      nextCart[itemId] = nextQuantity;
-    }
-    setCart(nextCart);
-    setSelectedTreatmentTemplates((current) => ({ ...current, [template.id]: !currentlySelected }));
-    if (currentlySelected) {
-      setTreatmentSelections((current) => {
-        const next = { ...current };
-        delete next[template.id];
-        return next;
-      });
-    }
-  }
-
   function toggleFavorite(itemId) {
     setFavorites((current) => {
       const next = new Set(current);
@@ -1073,11 +993,6 @@ function BillingLitePage() {
         saline_size: item.requires_saline ? salineSizeByItem[item.id] : undefined,
         catheter_size: item.requires_catheter ? catheterSizeByItem[item.id] : undefined,
         ngt_size: item.requires_ngt ? ngtSizeByItem[item.id] : undefined,
-      })),
-      treatment_templates: selectedTemplates.map((template) => ({
-        template_id: template.id,
-        quantity: 1,
-        selections: treatmentSelections[template.id] || {},
       })),
     };
     try {
@@ -1184,13 +1099,6 @@ function BillingLitePage() {
       }
       setCatalog(items);
       setCart(nextCart);
-      setTreatmentTemplates(Array.isArray(payload?.treatment_templates) ? payload.treatment_templates : []);
-      setSelectedTreatmentTemplates(Object.fromEntries(
-        (queueEntry.payload?.treatment_templates || []).map((template) => [Number(template.template_id), true]),
-      ));
-      setTreatmentSelections(Object.fromEntries(
-        (queueEntry.payload?.treatment_templates || []).map((template) => [Number(template.template_id), template.selections || {}]),
-      ));
       const queuedItems = queueEntry.payload?.items || [];
       setMaskSizeByItem(itemSelectionMap(queuedItems, "mask_size"));
       setEnemaSizeByItem(itemSelectionMap(queuedItems, "enema_size"));
@@ -1239,9 +1147,6 @@ function BillingLitePage() {
     setSelectedVisit(null);
     setCatalog([]);
     setCart({});
-    setTreatmentTemplates([]);
-    setSelectedTreatmentTemplates({});
-    setTreatmentSelections({});
     setMaskSizeByItem({});
     setEnemaSizeByItem({});
     setCannulaSizeByItem({});
@@ -1716,82 +1621,6 @@ function BillingLitePage() {
               <p className="mt-2 text-xs font-semibold text-slate-500">Confirm or adjust prices once on the final review screen. Maximum consultation price: Rs 4,500.</p>
             </div>
 
-            {treatmentTemplates.length ? (
-              <div className="mb-4 rounded-[1.5rem] border border-[#a8dcd7] bg-[#effaf8] p-4 shadow-[0_12px_35px_rgba(23,77,80,0.08)]">
-                <div className="flex items-start gap-3">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#17666a] text-white">
-                    <ReceiptText className="size-5" aria-hidden="true" />
-                  </span>
-                  <div>
-                    <h2 className="font-black text-[#173f47]">Treatment templates</h2>
-                    <p className="mt-1 text-sm font-semibold text-slate-600">Adds the charged medicines and records included consumables from the bag without adding them to the patient’s bill.</p>
-                  </div>
-                </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                  {treatmentTemplates.map((template) => {
-                    const selected = Boolean(selectedTreatmentTemplates[template.id]);
-                    const billable = (template.components || []).filter((component) => component.component_type === "billable");
-                    const included = (template.components || []).filter((component) => component.component_type === "included");
-                    return (
-                      <article key={template.id} className={`rounded-2xl border bg-white p-4 ${selected ? "border-[#2aa7a0] ring-2 ring-[#2aa7a0]/20" : "border-slate-200"}`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <h3 className="font-black leading-6 text-[#173f47]">{template.name}</h3>
-                            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Charged</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-600">
-                              {billable.map((component) => `${component.quantity} × ${component.item_name}`).join(" · ")}
-                            </p>
-                            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Included from bag</p>
-                            <p className="mt-1 text-sm font-semibold text-[#17666a]">
-                              {included.map((component) => `${component.quantity} × ${component.role_label || component.item_name}`).join(" · ")}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!template.ready && !selected}
-                            onClick={() => toggleTreatmentTemplate(template)}
-                            className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 ${selected ? "bg-rose-50 text-rose-700" : "bg-[#17666a] text-white"}`}
-                          >
-                            {selected ? "Remove" : "Use"}
-                          </button>
-                        </div>
-                        {!template.ready ? (
-                          <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">Unavailable until every charged and included item has enough usable, costed stock.</p>
-                        ) : null}
-                        {selected ? included.filter((component) => component.selection_role).map((component) => (
-                          <label key={`${template.id}-${component.selection_role}`} className="mt-3 block">
-                            <span className="text-xs font-black uppercase tracking-wide text-slate-500">{component.role_label}</span>
-                            <select
-                              value={treatmentSelections[template.id]?.[component.selection_role] || ""}
-                              onChange={(event) => setTreatmentSelections((current) => ({
-                                ...current,
-                                [template.id]: {
-                                  ...(current[template.id] || {}),
-                                  [component.selection_role]: event.target.value,
-                                },
-                              }))}
-                              className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                            >
-                              <option value="">Choose {String(component.role_label || component.selection_role).toLowerCase()}</option>
-                              {(component.choices || []).map((choice) => (
-                                <option
-                                  key={choice.value}
-                                  value={choice.value}
-                                  disabled={!choice.inventory_item_id || !choice.cost_price_ready || Number(choice.available_to_use || 0) < Number(component.quantity || 0)}
-                                >
-                                  {choice.item_name}{choice.inventory_item_id ? ` · ${choice.available_to_use} available` : " · not in bag"}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )) : null}
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
             <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="relative min-w-0 flex-1">
@@ -2094,25 +1923,6 @@ function BillingLitePage() {
                     <p className="mt-1 text-sm font-semibold text-slate-600">No treatment supplies will be taken from the bag.</p>
                   </div>
                 )}
-
-                {selectedTemplates.length ? (
-                  <div className="mt-4 rounded-2xl border border-[#a8dcd7] bg-[#effaf8] p-4">
-                    <p className="text-xs font-black uppercase tracking-wide text-[#17666a]">Included consumables — not charged</p>
-                    {selectedTemplates.map((template) => (
-                      <div key={template.id} className="mt-3">
-                        <p className="font-black text-[#173f47]">{template.name}</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-600">
-                          {(template.components || []).filter((component) => component.component_type === "included").map((component) => {
-                            const selectedValue = treatmentSelections[template.id]?.[component.selection_role];
-                            const selectedChoice = (component.choices || []).find((choice) => choice.value === selectedValue);
-                            return `${component.quantity} × ${selectedChoice?.item_name || component.item_name || component.role_label}`;
-                          }).join(" · ")}
-                        </p>
-                      </div>
-                    ))}
-                    <p className="mt-3 text-xs font-bold text-[#17666a]">These items will be deducted from the doctor’s bag and included in treatment cost, but omitted from the patient invoice.</p>
-                  </div>
-                ) : null}
 
                 <div className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <label className="block">

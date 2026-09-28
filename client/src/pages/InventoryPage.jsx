@@ -100,7 +100,6 @@ const InventoryCsvImport = lazy(() => import("../components/InventoryCsvImport.j
 const InventoryStocktakePanel = lazy(() => import("../components/InventoryStocktakePanel.jsx"));
 const OperatorSupplyRequestsPanel = lazy(() => import("../components/OperatorSupplyRequestsPanel.jsx"));
 const OperatorWorkQueuesPanel = lazy(() => import("../components/OperatorWorkQueuesPanel.jsx"));
-const TreatmentTemplatesPanel = lazy(() => import("../components/inventory/TreatmentTemplatesPanel.jsx"));
 
 async function loadSpreadsheetTools() {
   return import("xlsx");
@@ -3122,7 +3121,7 @@ export default function InventoryPage() {
   const [logisticsTab, setLogisticsTab] = useState(user.role === "operator" ? "queues" : "stock");
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "shipments" || tab === "count" || tab === "stock" || tab === "queues" || tab === "bags" || tab === "treatments") {
+    if (tab === "shipments" || tab === "count" || tab === "stock" || tab === "queues" || tab === "bags") {
       setLogisticsTab(tab);
     }
   }, [searchParams]);
@@ -3155,7 +3154,7 @@ export default function InventoryPage() {
     { id: "stock", label: "Stock" },
     { id: "shipments", label: "Receive Delivery", badge: pendingStagingCount },
     { id: "count", label: "Stock Count" },
-    ...(isAdmin ? [{ id: "bags", label: "Bags" }, { id: "treatments", label: "Treatments" }] : []),
+    ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
   ];
   const openItemEditor = useCallback(
     (nextItem) => {
@@ -4711,10 +4710,8 @@ export default function InventoryPage() {
               ? "Receive a delivery"
               : logisticsTab === "count"
                 ? "Stock count"
-                : logisticsTab === "bags"
+                  : logisticsTab === "bags"
                   ? "Doctor bags"
-                  : logisticsTab === "treatments"
-                    ? "Treatment templates"
                   : logisticsTab === "queues"
                     ? "Tasks"
                     : staffLocationHeading
@@ -4993,12 +4990,6 @@ export default function InventoryPage() {
             afterStart={renderMenuSummaries("lg:hidden")}
             onApplied={() => load(undefined, undefined, { silent: true })}
           />
-        </Suspense>
-      ) : null}
-
-      {isAdmin && logisticsTab === "treatments" ? (
-        <Suspense fallback={<LoadingState label="Loading treatment templates" />}>
-          <TreatmentTemplatesPanel />
         </Suspense>
       ) : null}
 

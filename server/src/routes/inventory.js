@@ -93,10 +93,6 @@ const {
 const { quarantineBatch, releaseBatchQuarantine } = require("../lib/inventoryQuarantine");
 const { signedMovementQuantity } = require("../lib/inventoryMovementAllocations");
 const { reverseWriteOffMovement } = require("../lib/inventoryReversal");
-const {
-  adminTreatmentTemplatePayload,
-  saveTreatmentTemplate,
-} = require("../lib/treatmentTemplates");
 const { REQUIRED_INVENTORY_FOLDERS, inventoryFolderOrderSql } = require("../config/inventoryFolders");
 
 const router = express.Router();
@@ -2400,41 +2396,6 @@ router.get("/activity-history/export.csv", (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   res.setHeader("x-file-name", fileName);
   return res.status(200).send(csvLines.join("\n"));
-});
-
-router.get("/treatment-templates", (req, res) => {
-  if (req.auth?.role !== "admin") {
-    return res.status(403).json({ error: "Only administrators can configure treatment templates." });
-  }
-  return res.json(adminTreatmentTemplatePayload(db));
-});
-
-router.post("/treatment-templates", (req, res) => {
-  if (req.auth?.role !== "admin") {
-    return res.status(403).json({ error: "Only administrators can configure treatment templates." });
-  }
-  try {
-    const template = saveTreatmentTemplate(db, { body: req.body, actor: req.auth });
-    return res.status(201).json({ template, ...adminTreatmentTemplatePayload(db) });
-  } catch (error) {
-    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
-  }
-});
-
-router.put("/treatment-templates/:id", (req, res) => {
-  if (req.auth?.role !== "admin") {
-    return res.status(403).json({ error: "Only administrators can configure treatment templates." });
-  }
-  const templateId = Number(req.params.id || 0);
-  if (!Number.isInteger(templateId) || templateId <= 0) {
-    return res.status(400).json({ error: "Select a valid treatment template." });
-  }
-  try {
-    const template = saveTreatmentTemplate(db, { templateId, body: req.body, actor: req.auth });
-    return res.json({ template, ...adminTreatmentTemplatePayload(db) });
-  } catch (error) {
-    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
-  }
 });
 
 router.post("/items", (req, res) => {

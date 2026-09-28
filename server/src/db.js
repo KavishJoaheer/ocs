@@ -1720,7 +1720,6 @@ function initializeDatabase() {
   seedDatabase();
   ensureUniqueActiveDoctorInventoryItems();
   require("./lib/financialIntegritySchema").ensureFinancialIntegritySchema(db);
-  require("./lib/treatmentTemplates").ensureTreatmentTemplateSchema(db);
   require("./lib/accountingSchema").ensureAccountingSchema(db);
 }
 
