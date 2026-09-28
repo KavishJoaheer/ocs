@@ -461,8 +461,8 @@ function BillingLitePage() {
   const visibleCatalog = useMemo(() => {
     return [...matchingCatalog].sort((a, b) => {
       const ready = (item) => item.is_service_charge
-        || (item.cost_only && Number(item.available_to_use || 0) > 0)
-        || (Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0);
+        || (item.cost_price_ready && item.cost_only && Number(item.available_to_use || 0) > 0)
+        || (item.cost_price_ready && Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0);
       return Number(ready(b)) - Number(ready(a)) || a.item_name.localeCompare(b.item_name);
     });
   }, [matchingCatalog]);
@@ -1641,7 +1641,8 @@ function BillingLitePage() {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
                   const priceMissing = !item.cost_only && !item.is_service_charge && Number(item.selling_price || 0) <= 0;
-                  const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing;
+                  const costMissing = !item.is_service_charge && !item.cost_price_ready;
+                  const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing || costMissing;
                   const isFavorite = favorites.has(item.id);
                   return (
                     <article
@@ -1669,7 +1670,9 @@ function BillingLitePage() {
                         <div className="min-w-0">
                           <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {item.cost_only
+                            {costMissing
+                              ? "Cost price required"
+                              : item.cost_only
                               ? (available < 1 ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`)
                               : item.included_label
                               ? `From the bag: ${item.included_label}`

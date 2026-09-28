@@ -671,6 +671,7 @@ test("doctors cannot change quantity through item editing and operators can edit
   const unauditedPricePut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
     body: {
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version),
       cost_price: 6,
       selling_price: 12,
     },
@@ -688,6 +689,7 @@ test("doctors cannot change quantity through item editing and operators can edit
   const operatorPut = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: operatorToken,
     body: {
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version),
       cost_price: 6,
       selling_price: 12,
       minimum_quantity: 3,
@@ -747,6 +749,7 @@ test("warehouse cost and selling price changes copy onto every doctor bag for th
   const updated = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: adminToken,
     body: {
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version),
       cost_price: 15,
       selling_price: 22,
       adjustment_note: "Warehouse price list applied to every bag",
@@ -775,6 +778,23 @@ test("warehouse cost and selling price changes copy onto every doctor bag for th
   assert.equal(Number(warehouse.selling_price), 22);
 });
 
+test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {
+  const itemId = insertOcsItem({ name: `Versioned catalogue ${Date.now()}`, qty: 0 });
+  const original = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId);
+  const first = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: { expected_version: Number(original.row_version), minimum_quantity: 2 },
+  });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const stale = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: { expected_version: Number(original.row_version), minimum_quantity: 9 },
+  });
+  assert.equal(stale.status, 409, JSON.stringify(stale.data));
+  assert.equal(stale.data.code, "INVENTORY_VERSION_CONFLICT");
+  assert.equal(db.prepare("SELECT minimum_quantity FROM inventory WHERE id = ?").get(itemId).minimum_quantity, 2);
+});
+
 test("renaming a warehouse item renames each doctor bag and keeps counted stock on one row", async () => {
   const stamp = Date.now();
   const oldName = `Rename Source ${stamp}`;
@@ -797,7 +817,10 @@ test("renaming a warehouse item renames each doctor bag and keeps counted stock 
 
   const updated = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: adminToken,
-    body: { item_name: newName },
+    body: {
+      item_name: newName,
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version),
+    },
   });
   assert.equal(updated.status, 200, JSON.stringify(updated.data));
 
@@ -2459,6 +2482,7 @@ test("catalogue metadata edits cannot change batch expiry or nearest expiry", as
   const edited = await api("PUT", `/api/inventory/items/${itemId}`, {
     token: adminToken,
     body: {
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId).row_version),
       item_name: db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(itemId).item_name,
       folder_id: folderId,
       minimum_quantity: 0,

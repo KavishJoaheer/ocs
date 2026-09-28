@@ -2,6 +2,15 @@
 
 const SUPPLY_FOLDER = "O2 & Nebuliser";
 const SERVICE_FOLDER = "Services";
+const INTRAFIX_NAME = "Intrafix (Drip Set / Infusion set)";
+
+function stableKey(prefix, value) {
+  return `${prefix}:${String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+}
 
 const MASKS = Object.freeze({
   adult: "Adult Face Mask",
@@ -202,21 +211,79 @@ const DRUG_ADMINISTRATION = Object.freeze({
 });
 
 const supplyNames = new Set(SUPPLIES.map((item) => item.itemName.toLowerCase()));
+const serviceByCatalogueKey = new Map(
+  SERVICES.map((service) => [stableKey("service", service.itemName), service]),
+);
+
+const catalogueMetadata = [
+  ...SUPPLIES.map((item) => ({
+    itemName: item.itemName,
+    catalogueKey: stableKey("supply", item.itemName),
+    isCostOnly: false,
+  })),
+  ...SERVICES.map((service) => ({
+    itemName: service.itemName,
+    catalogueKey: stableKey("service", service.itemName),
+    isCostOnly: false,
+  })),
+  ...Object.entries(MASKS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:mask:${size}`, isCostOnly: false })),
+  ...Object.entries(ENEMAS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:enema:${size}`, isCostOnly: false })),
+  ...Object.entries(CANNULAS).map(([size, itemName]) => ({ itemName, catalogueKey: `consumable:cannula:${size}`, isCostOnly: true })),
+  ...Object.entries(SYRINGES).map(([size, itemName]) => ({ itemName, catalogueKey: `consumable:syringe:${size}`, isCostOnly: true })),
+  ...Object.entries(SALINES).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:saline:${size}`, isCostOnly: false })),
+  ...Object.entries(CATHETERS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:catheter:${size}`, isCostOnly: false })),
+  ...Object.entries(NG_TUBES).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:ngt:${size}`, isCostOnly: false })),
+  { itemName: INTRAFIX_NAME, catalogueKey: "consumable:intrafix", isCostOnly: true },
+];
+const metadataByName = new Map(
+  catalogueMetadata.map((entry) => [entry.itemName.trim().toLowerCase(), entry]),
+);
 
 function treatmentServiceByName(name) {
   const key = String(name || "").trim().toLowerCase();
   return SERVICES.find((service) => service.itemName.toLowerCase() === key) || null;
 }
 
+function treatmentServiceByItem(item) {
+  const key = String(item?.catalogue_key || item?.catalogueKey || "").trim().toLowerCase();
+  return serviceByCatalogueKey.get(key) || treatmentServiceByName(item?.item_name || item?.itemName);
+}
+
 function isTreatmentSupplyName(name) {
   return supplyNames.has(String(name || "").trim().toLowerCase());
 }
 
-function isUnchargedConsumable(name) {
+function isUnchargedConsumable(nameOrItem) {
+  if (nameOrItem && typeof nameOrItem === "object") {
+    if (Number(nameOrItem.is_cost_only || 0) === 1) return true;
+    const catalogueKey = String(nameOrItem.catalogue_key || nameOrItem.catalogueKey || "").trim().toLowerCase();
+    if (catalogueKey.startsWith("consumable:")) return true;
+  }
+  const name = nameOrItem && typeof nameOrItem === "object"
+    ? nameOrItem.item_name || nameOrItem.itemName
+    : nameOrItem;
   const key = String(name || "").trim().toLowerCase();
-  if (key === "intrafix (drip set / infusion set)") return true;
+  if (key === INTRAFIX_NAME.toLowerCase()) return true;
   if (Object.values(CANNULAS).some((itemName) => itemName.toLowerCase() === key)) return true;
   return Object.values(SYRINGES).some((itemName) => itemName.toLowerCase() === key);
+}
+
+function catalogueKeyForName(name) {
+  return metadataByName.get(String(name || "").trim().toLowerCase())?.catalogueKey || "";
+}
+
+function ensureTreatmentCatalogueMetadata(db) {
+  const update = db.prepare(`
+    UPDATE inventory
+    SET catalogue_key = CASE WHEN trim(COALESCE(catalogue_key, '')) = '' THEN ? ELSE catalogue_key END,
+        is_cost_only = CASE WHEN ? = 1 THEN 1 ELSE COALESCE(is_cost_only, 0) END
+    WHERE lower(trim(item_name)) = lower(trim(?))
+  `);
+  let updated = 0;
+  for (const entry of catalogueMetadata) {
+    updated += Number(update.run(entry.catalogueKey, entry.isCostOnly ? 1 : 0, entry.itemName).changes || 0);
+  }
+  return updated;
 }
 
 function serviceRequiresMask(service) {
@@ -345,8 +412,8 @@ function resolveRecipeComponents(service, {
     error.extra = { code: "TREATMENT_NGT_REQUIRED", service_name: service.itemName };
     throw error;
   }
-  return service.components.map((component) => ({
-    itemName: component.role === "mask"
+  return service.components.map((component) => {
+    const itemName = component.role === "mask"
       ? MASKS[mask]
       : component.role === "enema"
         ? ENEMAS[enema]
@@ -360,13 +427,17 @@ function resolveRecipeComponents(service, {
             ? CATHETERS[catheter]
             : component.role === "ngt"
               ? NG_TUBES[ngt]
-              : component.itemName,
-    quantity: component.quantity * copies,
-  }));
+              : component.itemName;
+    return {
+      itemName,
+      catalogueKey: catalogueKeyForName(itemName),
+      quantity: component.quantity * copies,
+    };
+  });
 }
 
 function resolveTreatmentComponents(
-  serviceName,
+  serviceItem,
   maskSize,
   quantity,
   enemaSize,
@@ -376,7 +447,10 @@ function resolveTreatmentComponents(
   syringeSize,
   salineSize,
 ) {
-  return resolveRecipeComponents(treatmentServiceByName(serviceName), {
+  return resolveRecipeComponents(
+    serviceItem && typeof serviceItem === "object"
+      ? treatmentServiceByItem(serviceItem)
+      : treatmentServiceByName(serviceItem), {
     maskSize,
     quantity,
     enemaSize,
@@ -385,7 +459,8 @@ function resolveTreatmentComponents(
     ngtSize,
     syringeSize,
     salineSize,
-  });
+    },
+  );
 }
 
 function folderId(db, name) {
@@ -404,27 +479,33 @@ function folderId(db, name) {
   `).run(name).lastInsertRowid);
 }
 
-function findCatalogueRow(db, scope, ownerDoctorId, itemName) {
+function findCatalogueRow(db, scope, ownerDoctorId, itemName, catalogueKey = "") {
   if (scope === "doctor") {
     return db.prepare(`
       SELECT id, item_kind
       FROM inventory
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
-        AND lower(trim(item_name)) = lower(trim(?))
-      ORDER BY id ASC
+        AND (
+          (? != '' AND catalogue_key = ?)
+          OR lower(trim(item_name)) = lower(trim(?))
+        )
+      ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
       LIMIT 1
-    `).get(ownerDoctorId, itemName);
+    `).get(ownerDoctorId, catalogueKey, catalogueKey, itemName, catalogueKey, catalogueKey);
   }
   return db.prepare(`
     SELECT id, item_kind
     FROM inventory
     WHERE stock_scope = 'ocs'
       AND owner_doctor_id IS NULL
-      AND lower(trim(item_name)) = lower(trim(?))
-    ORDER BY id ASC
+      AND (
+        (? != '' AND catalogue_key = ?)
+        OR lower(trim(item_name)) = lower(trim(?))
+      )
+    ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
     LIMIT 1
-  `).get(itemName);
+  `).get(catalogueKey, catalogueKey, itemName, catalogueKey, catalogueKey);
 }
 
 function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
@@ -440,15 +521,16 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
   const insert = db.prepare(`
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
-      unit, cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, ?, '', '', '', NULL, CURRENT_TIMESTAMP)
+      unit, cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+      catalogue_key, is_cost_only, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, ?, '', '', '', NULL, ?, ?, CURRENT_TIMESTAMP)
   `);
-  const keepSupplyUnpriced = db.prepare(`
+  const placeSupply = db.prepare(`
     UPDATE inventory
     SET item_kind = 'stock',
         folder_id = ?,
-        selling_price = 0,
-        updated_at = CURRENT_TIMESTAMP
+        catalogue_key = CASE WHEN trim(COALESCE(catalogue_key, '')) = '' THEN ? ELSE catalogue_key END,
+        is_cost_only = CASE WHEN ? = 1 THEN 1 ELSE COALESCE(is_cost_only, 0) END
     WHERE id = ?
   `);
   const placeService = db.prepare(`
@@ -461,18 +543,17 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
           WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
           ELSE selling_price
         END,
+        catalogue_key = CASE WHEN trim(COALESCE(catalogue_key, '')) = '' THEN ? ELSE catalogue_key END,
         updated_at = CURRENT_TIMESTAMP
-    WHERE archived_at IS NULL
-      AND stock_scope = ?
-      AND COALESCE(owner_doctor_id, 0) = ?
-      AND lower(trim(item_name)) = lower(trim(?))
+    WHERE id = ? AND archived_at IS NULL
   `);
 
   const ensured = db.transaction(() => {
     let inserted = 0;
     for (const location of locations) {
       for (const supply of SUPPLIES) {
-        const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, supply.itemName);
+        const supplyKey = catalogueKeyForName(supply.itemName);
+        const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, supply.itemName, supplyKey);
         const supplyFolderId = folderId(db, supply.folderName || SUPPLY_FOLDER);
         if (!existing) {
           insert.run(
@@ -483,15 +564,23 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
             location.ownerDoctorId,
             supply.unit,
             0,
+            supplyKey,
+            isUnchargedConsumable(supply.itemName) ? 1 : 0,
           );
           inserted += 1;
         } else {
-          keepSupplyUnpriced.run(supplyFolderId, existing.id);
+          placeSupply.run(
+            supplyFolderId,
+            supplyKey,
+            isUnchargedConsumable(supply.itemName) ? 1 : 0,
+            existing.id,
+          );
         }
       }
       for (const service of SERVICES) {
         const price = Number(service.sellingPrice || 0);
-        const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, service.itemName);
+        const serviceKey = stableKey("service", service.itemName);
+        const existing = findCatalogueRow(db, location.scope, location.ownerDoctorId, service.itemName, serviceKey);
         if (!existing) {
           insert.run(
             service.itemName,
@@ -501,6 +590,8 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
             location.ownerDoctorId,
             "service",
             price,
+            serviceKey,
+            0,
           );
           inserted += 1;
         } else {
@@ -508,28 +599,23 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
             serviceFolder,
             price,
             price,
-            location.scope,
-            location.ownerDoctorId || 0,
-            service.itemName,
+            serviceKey,
+            existing.id,
           );
           db.prepare(`
             UPDATE inventory_batches
             SET quantity_remaining = 0
             WHERE quantity_remaining != 0
-              AND item_id IN (
-                SELECT id FROM inventory
-                WHERE archived_at IS NULL
-                  AND stock_scope = ?
-                  AND COALESCE(owner_doctor_id, 0) = ?
-                  AND lower(trim(item_name)) = lower(trim(?))
-              )
-          `).run(location.scope, location.ownerDoctorId || 0, service.itemName);
+              AND item_id = ?
+          `).run(existing.id);
         }
       }
     }
     return inserted;
   });
-  return { inserted: ensured() };
+  const inserted = ensured();
+  const metadataUpdated = ensureTreatmentCatalogueMetadata(db);
+  return { inserted, metadataUpdated };
 }
 
 module.exports = {
@@ -541,7 +627,9 @@ module.exports = {
   SERVICES,
   SUPPLIES,
   SYRINGES,
+  catalogueKeyForName,
   ensureTreatmentCatalogue,
+  ensureTreatmentCatalogueMetadata,
   drugAdministrationByCategory,
   includedLabel,
   isTreatmentSupplyName,
@@ -556,4 +644,5 @@ module.exports = {
   serviceRequiresSaline,
   serviceRequiresSyringe,
   treatmentServiceByName,
+  treatmentServiceByItem,
 };

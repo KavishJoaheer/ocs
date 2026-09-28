@@ -1718,6 +1718,7 @@ function initializeDatabase() {
 
   migrateLegacySeedDataIfNeeded();
   seedDatabase();
+  require("./lib/treatmentSupplies").ensureTreatmentCatalogueMetadata(db);
   ensureUniqueActiveDoctorInventoryItems();
   require("./lib/financialIntegritySchema").ensureFinancialIntegritySchema(db);
   require("./lib/accountingSchema").ensureAccountingSchema(db);
@@ -2325,6 +2326,14 @@ function ensureInventoryColumns() {
       sql: "ALTER TABLE inventory ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
     },
     {
+      name: "catalogue_key",
+      sql: "ALTER TABLE inventory ADD COLUMN catalogue_key TEXT NOT NULL DEFAULT ''",
+    },
+    {
+      name: "is_cost_only",
+      sql: "ALTER TABLE inventory ADD COLUMN is_cost_only INTEGER NOT NULL DEFAULT 0",
+    },
+    {
       name: "created_at",
       sql: "ALTER TABLE inventory ADD COLUMN created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
     },
@@ -2335,6 +2344,8 @@ function ensureInventoryColumns() {
       db.exec(column.sql);
     }
   });
+
+  db.exec("CREATE INDEX IF NOT EXISTS idx_inventory_catalogue_key ON inventory(catalogue_key)");
 
   const movementColumns = db
     .prepare("PRAGMA table_info(inventory_movements)")

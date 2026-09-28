@@ -48,7 +48,8 @@ function renameDoctorBagCatalogue(oldName, newName) {
   if (!from || !to || from.toLowerCase() === to.toLowerCase()) return [];
 
   const rows = db.prepare(`
-    SELECT id, owner_doctor_id, quantity, cost_price, selling_price, archived_at
+    SELECT id, owner_doctor_id, quantity, cost_price, selling_price,
+      catalogue_key, is_cost_only, archived_at
     FROM inventory
     WHERE stock_scope = 'doctor'
       AND owner_doctor_id IS NOT NULL
@@ -99,6 +100,8 @@ function renameDoctorBagCatalogue(oldName, newName) {
       SET quantity = COALESCE(quantity, 0) + ?,
           cost_price = CASE WHEN COALESCE(cost_price, 0) > 0 THEN cost_price ELSE ? END,
           selling_price = CASE WHEN COALESCE(selling_price, 0) > 0 THEN selling_price ELSE ? END,
+          catalogue_key = CASE WHEN trim(COALESCE(catalogue_key, '')) != '' THEN catalogue_key ELSE ? END,
+          is_cost_only = CASE WHEN ? = 1 THEN 1 ELSE COALESCE(is_cost_only, 0) END,
           row_version = COALESCE(row_version, 1) + 1,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -106,6 +109,8 @@ function renameDoctorBagCatalogue(oldName, newName) {
       Number(row.quantity || 0),
       Number(row.cost_price || 0),
       Number(row.selling_price || 0),
+      String(row.catalogue_key || "").trim(),
+      Number(row.is_cost_only || 0) === 1 ? 1 : 0,
       collision.id,
     );
     db.prepare(`

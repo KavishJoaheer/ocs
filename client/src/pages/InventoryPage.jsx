@@ -738,7 +738,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
     setSyncedDeps({ open, item });
     if (open) {
       setQuantity("1");
-      setReason("Sale");
+      setReason(Number(item?.is_cost_only || 0) === 1 ? "Wasted" : "Sale");
       setNote("");
       setSelectedPatientId("");
       setSelectedConsultationId("");
@@ -749,6 +749,8 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
   }
 
   const lots = useLiveItemLots(open, item);
+  const costOnly = Number(item?.is_cost_only || 0) === 1;
+  const stockOutReasons = costOnly ? STOCK_OUT_REASONS.filter((entry) => entry !== "Sale") : STOCK_OUT_REASONS;
   const unbatched = Number(item?.unbatched_quantity || 0);
   const isSale = reason === "Sale";
   const isLoss = reason === "Wasted" || reason === "Expired";
@@ -861,7 +863,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               onChange={(event) => setReason(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
             >
-              {STOCK_OUT_REASONS.map((r) => (
+              {stockOutReasons.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
@@ -2498,7 +2500,7 @@ function MobileDoctorDeductSheet({
     setSyncedDeps({ open, itemId: item?.id });
     if (open) {
       setQuantity("1");
-      setReason("Sale");
+      setReason(Number(item?.is_cost_only || 0) === 1 ? "Damage" : "Sale");
       setSelectedPatientId("");
       setSelectedConsultationId("");
       setNote("");
@@ -2512,6 +2514,10 @@ function MobileDoctorDeductSheet({
 
   if (!open || !item) return null;
 
+  const costOnly = Number(item.is_cost_only || 0) === 1;
+  const deductReasons = costOnly
+    ? MOBILE_DEDUCT_REASONS.filter((option) => option.id !== "Sale")
+    : MOBILE_DEDUCT_REASONS;
   const isSale = reason === "Sale";
   const isLoss = reason === "Expired" || reason === "Damage";
   const selectedLot = lots.find((lot) => String(lot.id) === String(selectedLotId)) || null;
@@ -2573,7 +2579,7 @@ function MobileDoctorDeductSheet({
         <div className="space-y-2">
           <span className="text-sm font-semibold text-slate-700">What happened</span>
           <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-            {MOBILE_DEDUCT_REASONS.map((option) => (
+            {deductReasons.map((option) => (
               <button
                 key={option.id}
                 type="button"
@@ -3963,7 +3969,10 @@ export default function InventoryPage() {
     setIsSaving(true);
     try {
       const next = editor?.item
-        ? await api.put(`/inventory/items/${editor.item.id}${inventoryListQuery}`, payload)
+        ? await api.put(`/inventory/items/${editor.item.id}${inventoryListQuery}`, {
+            ...payload,
+            expected_version: Number(editor.item.row_version || 0),
+          })
         : await api.post(`/inventory/items${inventoryListQuery}`, { ...payload, quantity: 0 });
       commitInventoryData(next);
       setEditor(null);

@@ -16,6 +16,10 @@ const { createApp } = require("../src/app");
 const { db, ensureBillingForConsultation } = require("../src/db");
 const { hashPassword } = require("../src/lib/security");
 const { getTodayLocal } = require("../src/lib/utils");
+const {
+  ensureTreatmentCatalogue,
+  ensureTreatmentCatalogueMetadata,
+} = require("../src/lib/treatmentSupplies");
 
 let server;
 let baseUrl;
@@ -63,6 +67,20 @@ function createDoctor(username, fullName) {
   return nextDoctorId;
 }
 
+function createBillableVisit(patientId, label, appointmentTime = "19:10") {
+  const today = getTodayLocal();
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, ?, 'completed')
+  `).run(patientId, doctorId, today, appointmentTime).lastInsertRowid);
+  const nextConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(appointmentId, patientId, doctorId, today, label).lastInsertRowid);
+  ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+  return nextConsultationId;
+}
+
 async function login(username) {
   const result = await api("POST", "/auth/login", null, {
     username,
@@ -76,6 +94,7 @@ before(async () => {
   const app = createApp();
   doctorId = createDoctor("billing.lite.doctor", "Priya Xavier");
   otherDoctorId = createDoctor("billing.lite.other", "Other Clinician");
+  ensureTreatmentCatalogue(db);
   db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'operator')")
     .run("billing.lite.operator", "Billing Operator", hashPassword("BillingLite!2026"));
   db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'accountant')")
@@ -1435,6 +1454,7 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
     INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
     VALUES (?, 3, '2032-12-31', 10, 0, 'usable')
   `).run(stockId);
+  ensureTreatmentCatalogue(db, { doctorId });
 
   const appointmentId = Number(db.prepare(`
     INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
@@ -1533,7 +1553,7 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   assert.equal(bagQuantity("N/S 100ml"), 3);
 });
 
-test("a zero-cost medicine is charged at its selling price and syringes, cannulas, and intrafix are cost only", async () => {
+test("billing requires medicine cost and keeps syringes, cannulas, and intrafix cost only", async () => {
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
   const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE owner_doctor_id IS NULL ORDER BY id LIMIT 1").get().id);
@@ -1582,7 +1602,7 @@ test("a zero-cost medicine is charged at its selling price and syringes, cannula
   assert.equal(catalog.data.items.find((item) => item.id === syringeId).cost_only, true);
   assert.equal(catalog.data.items.find((item) => item.id === medicineId).cost_only, false);
 
-  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+  const captureBody = {
     operation_id: randomUUID(),
     ...quickIssueFields("COST-ONLY"),
     items: [
@@ -1591,6 +1611,16 @@ test("a zero-cost medicine is charged at its selling price and syringes, cannula
       { inventory_item_id: cannulaId, quantity: 1, unit_price: 40 },
       { inventory_item_id: intrafixId, quantity: 2, unit_price: 80 },
     ],
+  };
+  const missingCost = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, captureBody);
+  assert.equal(missingCost.status, 409, JSON.stringify(missingCost.data));
+  assert.equal(missingCost.data.code, "SUPPLY_COST_REQUIRED");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(medicineId).quantity, 4);
+  db.prepare("UPDATE inventory SET cost_price = 20 WHERE id = ?").run(medicineId);
+  db.prepare("UPDATE inventory_batches SET unit_cost = 20 WHERE item_id = ?").run(medicineId);
+  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    ...captureBody,
+    operation_id: randomUUID(),
   });
   assert.equal(captured.status, 201, JSON.stringify(captured.data));
   const bill = db.prepare("SELECT items, total_amount FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
@@ -1615,4 +1645,135 @@ test("a zero-cost medicine is charged at its selling price and syringes, cannula
   assert.equal(Number(movement.unit_price_snapshot), 0);
   assert.equal(Number(movement.unit_cost_snapshot), 5);
   assert.equal(JSON.parse(movement.meta_json).billed_quantity, 0);
+});
+
+test("opening quick catalogue is read-only and preserves a configured supply price", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const nextConsultationId = createBillableVisit(patientId, "Read-only catalogue test", "18:20");
+  const supply = db.prepare(`
+    SELECT id FROM inventory
+    WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = 'Dulopro nebule'
+  `).get(doctorId);
+  assert.ok(supply);
+  db.prepare("UPDATE inventory SET selling_price = 321 WHERE id = ?").run(supply.id);
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  assert.equal(Number(db.prepare("SELECT selling_price FROM inventory WHERE id = ?").get(supply.id).selling_price), 321);
+  assert.equal(Number(catalog.data.items.find((item) => item.id === Number(supply.id)).selling_price), 321);
+});
+
+test("a direct field sale joins the paid supply correction lifecycle", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const nextConsultationId = createBillableVisit(patientId, "Direct sale correction test", "18:30");
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE owner_doctor_id IS NULL ORDER BY id LIMIT 1").get().id);
+  const directItemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity,
+      minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, 'doctor', ?, 2, 0, 'unit', 20, 60)
+  `).run(`Direct correction medicine ${Date.now()}`, folderId, doctorId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+    VALUES (?, 2, '2032-12-31', 20, 0, 'usable')
+  `).run(directItemId);
+  const version = Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(directItemId).row_version);
+  const sold = await api("POST", `/inventory/items/${directItemId}/actions`, doctorToken, {
+    operation_id: randomUUID(),
+    action_type: "stock_out",
+    quantity: 1,
+    reason: "Sale",
+    patient_id: patientId,
+    consultation_id: nextConsultationId,
+    expected_version: version,
+  });
+  assert.equal(sold.status, 201, JSON.stringify(sold.data));
+  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("DIRECT-CORRECTION"),
+    items: [],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+  const submissionId = Number(captured.data.submission.submission_id);
+  const submission = db.prepare("SELECT amount_added, items_json FROM billing_lite_submissions WHERE id = ?").get(submissionId);
+  const submittedItems = JSON.parse(submission.items_json);
+  assert.equal(Number(submission.amount_added), 60);
+  assert.equal(submittedItems.length, 1);
+  assert.equal(submittedItems[0].inventory_item_id, directItemId);
+  assert.equal(submittedItems[0].dispensing_movement_ids.length, 1);
+  const corrected = await api(
+    "POST",
+    `/billing/quick/submissions/${submissionId}/paid-correction`,
+    accountantToken,
+    {
+      operation_id: randomUUID(),
+      reason: "Patient returned unopened medicine after billing",
+      disposition: "returned_to_stock",
+      refund_method: "cash",
+      refund_date: getTodayLocal(),
+    },
+  );
+  assert.equal(corrected.status, 201, JSON.stringify(corrected.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(directItemId).quantity, 2);
+});
+
+test("cost-only consumables cannot be charged through a direct sale", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const nextConsultationId = createBillableVisit(patientId, "Cost-only direct-sale guard", "18:40");
+  ensureTreatmentCatalogueMetadata(db);
+  const syringe = db.prepare(`
+    SELECT id, quantity, row_version FROM inventory
+    WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND catalogue_key = 'consumable:syringe:10'
+  `).get(doctorId);
+  assert.ok(syringe);
+  const blocked = await api("POST", `/inventory/items/${syringe.id}/actions`, doctorToken, {
+    operation_id: randomUUID(),
+    action_type: "stock_out",
+    quantity: 1,
+    reason: "Sale",
+    patient_id: patientId,
+    consultation_id: nextConsultationId,
+    expected_version: Number(syringe.row_version),
+  });
+  assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
+  assert.equal(blocked.data.code, "UNCHARGED_CONSUMABLE_NOT_SALEABLE");
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(syringe.id).quantity, syringe.quantity);
+});
+
+test("renamed services and consumables keep their recipe through stable catalogue keys", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  ensureTreatmentCatalogueMetadata(db);
+  const service = db.prepare(`
+    SELECT id, selling_price FROM inventory
+    WHERE stock_scope = 'doctor' AND owner_doctor_id = ?
+      AND catalogue_key = 'service:abdominal-tapping'
+  `).get(doctorId);
+  const syringe = db.prepare("SELECT id, quantity FROM inventory WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND catalogue_key = 'consumable:syringe:10'").get(doctorId);
+  const cannula = db.prepare("SELECT id, quantity FROM inventory WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND catalogue_key = 'consumable:cannula:green'").get(doctorId);
+  const intrafix = db.prepare("SELECT id, quantity FROM inventory WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND catalogue_key = 'consumable:intrafix'").get(doctorId);
+  assert.ok(service && syringe && cannula && intrafix);
+  db.prepare("UPDATE inventory SET item_name = 'Abdominal drainage procedure' WHERE id = ?").run(service.id);
+  db.prepare("UPDATE inventory SET item_name = 'Ten millilitre syringe' WHERE id = ?").run(syringe.id);
+  db.prepare("UPDATE inventory SET item_name = 'Green IV access cannula' WHERE id = ?").run(cannula.id);
+  db.prepare("UPDATE inventory SET item_name = 'Infusion giving set' WHERE id = ?").run(intrafix.id);
+  const nextConsultationId = createBillableVisit(patientId, "Stable recipe keys", "18:50");
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  const renamedService = catalog.data.items.find((item) => item.id === Number(service.id));
+  assert.ok(renamedService);
+  assert.equal(renamedService.requires_syringe, true);
+  assert.equal(renamedService.requires_cannula, true);
+  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("STABLE-RECIPE"),
+    items: [{
+      inventory_item_id: service.id,
+      quantity: 1,
+      unit_price: Number(service.selling_price),
+      syringe_size: "10",
+      cannula_size: "green",
+    }],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(syringe.id).quantity, Number(syringe.quantity) - 1);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(cannula.id).quantity, Number(cannula.quantity) - 1);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(intrafix.id).quantity, Number(intrafix.quantity) - 1);
 });

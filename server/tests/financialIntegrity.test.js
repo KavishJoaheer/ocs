@@ -1072,7 +1072,7 @@ test('historical movement prices and allocation costs remain stable after catalo
   const history=async()=>(await api('GET','/inventory/activity-history?search=Snapshot%20price%20medicine')).data;
   const before=await history(); assert.equal(before.rows[0].value_rs,50); assert.equal(before.analytics.total_value_cost_rs,14);
   assert.equal((await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{
-    cost_price:40,selling_price:100,adjustment_note:'Supplier price list updated for this catalogue item',
+    expected_version:row(it.id).row_version,cost_price:40,selling_price:100,adjustment_note:'Supplier price list updated for this catalogue item',
   })).status,200);
   const after=await history(); assert.equal(after.rows[0].value_rs,50); assert.equal(after.analytics.total_value_cost_rs,14);
   require('../src/lib/financialIntegritySchema').ensureFinancialIntegritySchema(db);
@@ -1253,7 +1253,9 @@ test('eight-day-old dispensing links by its visit and keeps its original price w
   const datedHistory=await api('GET',`/inventory/activity-history?dateFrom=${date}&dateTo=${date}&search=Delayed%20linked%20medicine`);
   assert.equal(datedHistory.status,200,JSON.stringify(datedHistory.data));assert.equal(datedHistory.data.total,1);
   assert.equal(db.prepare("SELECT date(created_at,'+4 hours') AS day FROM inventory_movements WHERE item_id=?").get(it.id).day,today);
-  await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
+  await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{
+    expected_version:row(it.id).row_version,selling_price:100,adjustment_note:'Supplier price list updated after field dispensing',
+  });
   const first=await bill(ctx,[stockLine(it)],{operation_id:randomUUID()});assert.equal(first.status,201,JSON.stringify(first.data));
   assert.equal(first.data.total_amount,50);assert.equal(row(it.id).quantity,18);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM inventory_movements WHERE item_id=?').get(it.id).n,1);
@@ -1282,7 +1284,9 @@ test('consultation-linked dispensing removes visit ambiguity while partial and c
 
 test('consultation-linked pending attachment uses frozen sale price and invoice void requires a physical disposition', async () => {
   const ctx=context('Pending automatic');const it=item('Frozen pending medicine');
-  await fieldSale(ctx,it,{dispensed_on:today});await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});
+  await fieldSale(ctx,it,{dispensed_on:today});await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{
+    expected_version:row(it.id).row_version,selling_price:100,adjustment_note:'Supplier price list updated after field dispensing',
+  });
   const created=await bill(ctx,[standardFee(),stockLine(it)],{operation_id:randomUUID()});assert.equal(created.status,201,JSON.stringify(created.data));
   const b=(await api('GET',`/billing/visit/${ctx.consultationId}`,'doctor')).data.bills[0];
   assert.equal(b.total_amount,2050);assert.equal(row(it.id).quantity,18);
@@ -1300,7 +1304,9 @@ test('sale, price changes and reversal reconcile financial aggregates and sale-f
   const ctx=context('Net reversal');const it=item('Net reversal medicine');
   const b=await bill(ctx,[stockLine(it)]);assert.equal(b.status,201);
   const summary=async()=> (await api('GET',`/inventory?doctorId=${doctorId}`)).data.summary.total_monthly_sales_rs;
-  const before=await summary();await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{selling_price:100});assert.equal(await summary(),before);
+  const before=await summary();await api('PUT',`/inventory/items/${it.id}?doctorId=${doctorId}`,'admin',{
+    expected_version:row(it.id).row_version,selling_price:100,adjustment_note:'Supplier price list updated for aggregate check',
+  });assert.equal(await summary(),before);
   assert.equal((await api('DELETE',`/consultations/${ctx.consultationId}`,'admin',{reason:'Synthetic net reversal test'})).status,204);
   assert.equal(await summary(),before-50);
   const h=(await api('GET','/inventory/activity-history?search=Net%20reversal%20medicine&actions=sell')).data;
@@ -1984,7 +1990,7 @@ test('accounting invariant matrix stays balanced through billing, payment, refun
   assert.deepEqual(lifecycleExceptions,[]);
 });
 
-test('future financial dates and zero-priced supply sales are blocked without side effects', async () => {
+test('future financial dates and supplies missing price or cost are blocked without side effects', async () => {
   const future=offsetLocalDate(1);
   const ctx=context('Future date block');
   const invoice=await bill(ctx,[standardFee()],{operation_id:randomUUID()});
@@ -2016,8 +2022,9 @@ test('future financial dates and zero-priced supply sales are blocked without si
   db.prepare('UPDATE inventory SET cost_price=0 WHERE id=?').run(noCost.id);
   const noCostCtx=context('Missing cost block');
   const noCostBill=await bill(noCostCtx,[stockLine(noCost,1)],{operation_id:randomUUID()});
-  assert.equal(noCostBill.status,201,JSON.stringify(noCostBill.data));
-  assert.equal(row(noCost.id).quantity,19);
+  assert.equal(noCostBill.status,409,JSON.stringify(noCostBill.data));
+  assert.equal(noCostBill.data.code,'SUPPLY_COST_REQUIRED');
+  assert.equal(row(noCost.id).quantity,20);
 });
 
 test('legacy credit notes must be classified and finance lists remain searchable and paginated', async () => {

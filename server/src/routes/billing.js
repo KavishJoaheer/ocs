@@ -39,7 +39,6 @@ const { financialAction, stockFinancials } = require("../lib/inventoryFinancials
 const { getBillingCutoverDate } = require("../lib/billingCutover");
 const {
   drugAdministrationByCategory,
-  ensureTreatmentCatalogue,
   includedLabel,
   isUnchargedConsumable,
   resolveTreatmentComponents,
@@ -51,7 +50,7 @@ const {
   serviceRequiresNgt,
   serviceRequiresSaline,
   serviceRequiresSyringe,
-  treatmentServiceByName,
+  treatmentServiceByItem,
 } = require("../lib/treatmentSupplies");
 
 const { operationFor } = require("../lib/operationReceipts");
@@ -893,6 +892,7 @@ function deductIncludedTreatmentComponents({
   const movementIds = [];
   const touchedItemIds = [];
   for (const component of components) {
+    const componentKey = String(component.catalogueKey || "").trim();
     const stockItem = db.prepare(`
       SELECT *
       FROM inventory
@@ -900,10 +900,20 @@ function deductIncludedTreatmentComponents({
         AND owner_doctor_id = ?
         AND archived_at IS NULL
         AND COALESCE(item_kind, 'stock') = 'stock'
-        AND lower(trim(item_name)) = lower(trim(?))
-      ORDER BY id ASC
+        AND (
+          (? != '' AND catalogue_key = ?)
+          OR lower(trim(item_name)) = lower(trim(?))
+        )
+      ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
       LIMIT 1
-    `).get(Number(consultation.doctor_id), component.itemName);
+    `).get(
+      Number(consultation.doctor_id),
+      componentKey,
+      componentKey,
+      component.itemName,
+      componentKey,
+      componentKey,
+    );
     if (!stockItem) {
       throw Object.assign(
         new Error(`${component.itemName} is not in this doctor's bag, so ${treatmentName} cannot be billed.`),
@@ -911,6 +921,12 @@ function deductIncludedTreatmentComponents({
       );
     }
     const qty = Number(component.quantity || 0);
+    if (Number(stockItem.cost_price || 0) <= 0) {
+      throw Object.assign(
+        new Error(`${stockItem.item_name} has no cost price. Inventory must record its cost before ${treatmentName} can be billed.`),
+        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
+      );
+    }
     const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
     const atp = Number(decorated.available_to_promise ?? decorated.available_to_use ?? 0);
     if (qty > atp) {
@@ -982,8 +998,11 @@ function deductIncludedTreatmentComponents({
 }
 
 function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
+  const serviceItem = Number(line.service_catalog_item_id || 0) > 0
+    ? db.prepare("SELECT item_name, catalogue_key FROM inventory WHERE id = ?").get(Number(line.service_catalog_item_id))
+    : null;
   const components = resolveTreatmentComponents(
-    line.description,
+    serviceItem || line.description,
     line.mask_size,
     line.quantity,
     line.enema_size,
@@ -1117,6 +1136,50 @@ function insertInventoryMovement({
   return movementId;
 }
 
+function unsubmittedDispensingItemsForBill(billingId, billItems) {
+  const claimedMovementIds = new Set();
+  const submissions = db.prepare(`
+    SELECT items_json
+    FROM billing_lite_submissions
+    WHERE billing_id = ?
+      AND reversed_at IS NULL
+  `).all(Number(billingId));
+  for (const submission of submissions) {
+    for (const item of normalizeBillingItems(submission.items_json)) {
+      for (const movementId of item.dispensing_movement_ids || []) {
+        claimedMovementIds.add(Number(movementId));
+      }
+    }
+  }
+
+  return normalizeBillingItems(billItems).flatMap((item) => {
+    const movementIds = (item.dispensing_movement_ids || [])
+      .map(Number)
+      .filter((id) => id > 0 && !claimedMovementIds.has(id));
+    if (!movementIds.length) return [];
+    const placeholders = movementIds.map(() => "?").join(",");
+    const movements = db.prepare(`
+      SELECT id, quantity, unit_price_snapshot
+      FROM inventory_movements
+      WHERE id IN (${placeholders})
+      ORDER BY id ASC
+    `).all(...movementIds);
+    const quantity = movements.reduce((sum, movement) => sum + Number(movement.quantity || 0), 0);
+    const amount = roundCurrency(movements.reduce(
+      (sum, movement) => sum + Number(movement.quantity || 0) * Number(movement.unit_price_snapshot || 0),
+      0,
+    ));
+    if (!(quantity > 0)) return [];
+    return [{
+      ...item,
+      quantity,
+      amount,
+      unit_price: roundCurrency(amount / quantity),
+      dispensing_movement_ids: movements.map((movement) => Number(movement.id)),
+    }];
+  });
+}
+
 function applyInventoryTransactions({
   consultation,
   items,
@@ -1154,8 +1217,14 @@ function applyInventoryTransactions({
     }
 
     const isSellLine = line.type !== "Wastage" && line.type !== "Adjustment";
-    const costOnly = isSellLine && isUnchargedConsumable(stockItem.item_name);
+    const costOnly = isSellLine && isUnchargedConsumable(stockItem);
     if (!isSellLine && line.dispensing_movement_ids?.length) throw Object.assign(new Error("A recorded sale must be reconciled as a sale, not a new wastage or adjustment."),{status:409});
+    if (Number(stockItem.cost_price || 0) <= 0) {
+      throw Object.assign(
+        new Error(`${stockItem.item_name} has no cost price. Inventory must record its cost before it can be billed.`),
+        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
+      );
+    }
     if (isSellLine && !costOnly && Number(stockItem.selling_price || 0) <= 0) {
       throw Object.assign(
         new Error(`${stockItem.item_name} has no selling price. Finance or inventory must price it before it can be billed.`),
@@ -2284,8 +2353,6 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
   const doctorId = Number(consultation.doctor_id);
-  ensureTreatmentCatalogue(db, { doctorId });
-
   const visit = getQuickVisit(Number(req.params.consultationId), doctorId);
   if (!visit) {
     return res.status(404).json({ error: "This visit was not found in your doctor workspace." });
@@ -2313,7 +2380,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
 
   const decorated = decorateInventoryItems(rows);
   const items = decorated.flatMap((item) => {
-    const recipe = treatmentServiceByName(item.item_name)
+    const recipe = treatmentServiceByItem(item)
       || drugAdministrationByCategory(item.folder_name, item.parent_folder_name);
     const isService = String(item.item_kind || "stock") === "service";
     return [{
@@ -2333,7 +2400,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       requires_catheter: serviceRequiresCatheter(recipe),
       requires_ngt: serviceRequiresNgt(recipe),
       included_label: includedLabel(recipe),
-      cost_only: isUnchargedConsumable(item.item_name),
+      cost_only: isUnchargedConsumable(item),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),
       available_to_use: isService
@@ -3108,7 +3175,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         const placeholders = requestedIds.map(() => "?").join(",");
         const stockRows = db
           .prepare(`
-            SELECT i.id, i.item_name, i.selling_price, COALESCE(i.item_kind, 'stock') AS item_kind,
+            SELECT i.id, i.item_name, i.selling_price, i.cost_price, i.catalogue_key, i.is_cost_only,
+              COALESCE(i.item_kind, 'stock') AS item_kind,
               COALESCE(f.name, '') AS folder_name,
               COALESCE(parent.name, '') AS parent_folder_name
             FROM inventory i
@@ -3126,7 +3194,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         stockById = new Map(stockRows.map((item) => [Number(item.id), item]));
         const changedPrices = requestedIds.flatMap((itemId) => {
           const item = stockById.get(itemId);
-          if (isUnchargedConsumable(item?.item_name)) return [];
+          if (isUnchargedConsumable(item)) return [];
           const reviewedPrice = reviewedUnitPrices.get(itemId);
           const currentPrice = roundCurrency(stockById.get(itemId)?.selling_price);
           return reviewedPrice !== undefined && Math.abs(reviewedPrice - currentPrice) >= 0.005
@@ -3157,7 +3225,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         chargeLines = requestedIds.map((itemId) => {
           const item = stockById.get(itemId);
           const quantity = mergedQuantities.get(itemId);
-          const costOnly = isUnchargedConsumable(item.item_name);
+          const costOnly = isUnchargedConsumable(item);
           const standardUnitPrice = costOnly ? 0 : roundCurrency(item.selling_price);
           const reviewedUnitPrice = costOnly
             ? 0
@@ -3271,6 +3339,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         ...componentItemIds,
       ])];
       const addedItems = normalizeBillingItems([...appliedItems, ...servicesWithStock]);
+      const directSaleItems = unsubmittedDispensingItemsForBill(bill.id, baseItems);
+      const submissionItems = normalizeBillingItems([...directSaleItems, ...addedItems]);
 
       if (addedItems.length || feeChanged || feeConfirmed || sourceReference || latestSubmission?.workflow_status === "needs_doctor") {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);
@@ -3325,7 +3395,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       }
 
       const amountAdded = roundCurrency(
-        addedItems.reduce((sum, item) => sum + (item.type === "Sale" ? Number(item.amount || 0) : 0), 0),
+        submissionItems.reduce((sum, item) => sum + (item.type === "Sale" ? Number(item.amount || 0) : 0), 0),
       );
       const inserted = db
         .prepare(`
@@ -3340,8 +3410,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           doctorId,
           req.auth.id,
           operationId,
-          addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-          JSON.stringify(addedItems),
+          submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+          JSON.stringify(submissionItems),
           amountAdded,
           "completed",
         );
@@ -3439,7 +3509,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         eventType: "submitted",
         nextStatus: "completed",
         details: {
-          item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+          item_count: submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           amount_added: amountAdded,
           consultation_fee: {
             previous_type: String(previousFee.description || ""),
@@ -3484,7 +3554,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         submission_id: Number(inserted.lastInsertRowid),
         bill_id: Number(bill.id),
         amount_added: amountAdded,
-        item_count: addedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+        item_count: submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
         consultation_fee: { type: consultationFeeType, amount: consultationFeeAmount, changed: feeChanged },
         source_reference: sourceReference,
         workflow_status: "completed",

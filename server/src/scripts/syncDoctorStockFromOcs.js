@@ -17,6 +17,8 @@ function getOcsMasterItems() {
         unit,
         cost_price,
         selling_price,
+        catalogue_key,
+        is_cost_only,
         attributes,
         moa_notes
       FROM inventory
@@ -39,7 +41,8 @@ function getActiveDoctors() {
     .all();
 }
 
-function findDoctorItemByName(doctorId, itemName) {
+function findDoctorItem(doctorId, source) {
+  const catalogueKey = String(source.catalogue_key || "").trim();
   return db
     .prepare(`
       SELECT id
@@ -47,24 +50,38 @@ function findDoctorItemByName(doctorId, itemName) {
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
         AND archived_at IS NULL
-        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-      ORDER BY id ASC
+        AND (
+          (? != '' AND catalogue_key = ?)
+          OR LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+        )
+      ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
       LIMIT 1
     `)
-    .get(doctorId, itemName);
+    .get(doctorId, catalogueKey, catalogueKey, source.item_name, catalogueKey, catalogueKey);
 }
 
-function findArchivedDoctorItemByName(doctorId, itemName) {
+function findArchivedDoctorItem(doctorId, source) {
+  const catalogueKey = String(source.catalogue_key || "").trim();
   return db.prepare(`
     SELECT id
     FROM inventory
     WHERE stock_scope = 'doctor'
       AND owner_doctor_id = ?
       AND archived_at IS NOT NULL
-      AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-    ORDER BY id ASC
+      AND (
+        (? != '' AND catalogue_key = ?)
+        OR LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+      )
+    ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
     LIMIT 1
-  `).get(doctorId, itemName);
+  `).get(
+    doctorId,
+    catalogueKey,
+    catalogueKey,
+    source.item_name,
+    catalogueKey,
+    catalogueKey,
+  );
 }
 
 function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) {
@@ -72,7 +89,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   const itemKind = String(source.item_kind || "stock") === "service" ? "service" : "stock";
   const minimumQuantity = itemKind === "service" ? 0 : Number(source.minimum_quantity || 0);
   const sellingPrice = Number(source.selling_price || 0);
-  const existing = findDoctorItemByName(doctorId, itemName);
+  const existing = findDoctorItem(doctorId, source);
 
   const alignExisting = db.prepare(`
     UPDATE inventory
@@ -86,6 +103,8 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
         WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
         ELSE selling_price
       END,
+      catalogue_key = CASE WHEN ? != '' THEN ? ELSE catalogue_key END,
+      is_cost_only = ?,
       attributes = ?,
       moa_notes = ?,
       archived_at = NULL,
@@ -104,6 +123,9 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       source.unit || "unit",
       sellingPrice,
       sellingPrice,
+      String(source.catalogue_key || "").trim(),
+      String(source.catalogue_key || "").trim(),
+      Number(source.is_cost_only || 0) === 1 ? 1 : 0,
       source.attributes || "",
       source.moa_notes || "",
       existing.id,
@@ -111,7 +133,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
     return "updated";
   }
 
-  const archived = findArchivedDoctorItemByName(doctorId, itemName);
+  const archived = findArchivedDoctorItem(doctorId, source);
   if (archived) {
     alignExisting.run(
       itemKind,
@@ -122,6 +144,9 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       source.unit || "unit",
       sellingPrice,
       sellingPrice,
+      String(source.catalogue_key || "").trim(),
+      String(source.catalogue_key || "").trim(),
+      Number(source.is_cost_only || 0) === 1 ? 1 : 0,
       source.attributes || "",
       source.moa_notes || "",
       archived.id,
@@ -132,9 +157,10 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   db.prepare(`
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-      cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+      cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+      catalogue_key, is_cost_only, updated_at
     )
-    VALUES (?, ?, ?, 'doctor', ?, 0, ?, ?, ?, ?, '', ?, ?, NULL, CURRENT_TIMESTAMP)
+    VALUES (?, ?, ?, 'doctor', ?, 0, ?, ?, ?, ?, '', ?, ?, NULL, ?, ?, CURRENT_TIMESTAMP)
   `).run(
     itemName,
     itemKind,
@@ -146,6 +172,8 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
     sellingPrice,
     source.attributes || "",
     source.moa_notes || "",
+    String(source.catalogue_key || "").trim(),
+    Number(source.is_cost_only || 0) === 1 ? 1 : 0,
   );
   return "inserted";
 }

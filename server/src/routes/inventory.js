@@ -34,6 +34,10 @@ const { getTodayLocal, isValidCurrencyAmount, toNumber } = require("../lib/utils
 const { getBillingCutoverDate } = require("../lib/billingCutover");
 const { attachSaleDeductToPatientBill } = require("../lib/saleBillingLinkage");
 const {
+  catalogueKeyForName,
+  isUnchargedConsumable,
+} = require("../lib/treatmentSupplies");
+const {
   applyStocktakeSession,
   cancelStocktakeSession,
   bulkReleaseShipment,
@@ -1078,6 +1082,30 @@ function buildMovementLocationMeta(actionType, meta = {}, context = {}) {
   };
 }
 
+const pendingMovementNotifications = new Map();
+let movementNotificationFlushScheduled = false;
+
+function scheduleMovementNotification(itemId, userId) {
+  pendingMovementNotifications.set(Number(itemId), userId || null);
+  if (movementNotificationFlushScheduled) return;
+  movementNotificationFlushScheduled = true;
+  queueMicrotask(() => {
+    const pending = [...pendingMovementNotifications.entries()];
+    pendingMovementNotifications.clear();
+    movementNotificationFlushScheduled = false;
+    for (const [pendingItemId, pendingUserId] of pending) {
+      void maybeNotifyLowStock(pendingItemId, pendingUserId).catch((error) => {
+        console.warn("[push] low stock notification failed:", error?.message || error);
+      });
+      try {
+        publishInventoryChange({ itemId: pendingItemId, changedByUserId: pendingUserId });
+      } catch (error) {
+        console.warn("[inventory] movement publish failed:", error?.message || error);
+      }
+    }
+  });
+}
+
 function recordMovement({
   itemId,
   movementType,
@@ -1171,11 +1199,7 @@ function recordMovement({
     finalMetaJson,
   );
 
-  void maybeNotifyLowStock(itemId, userId).catch((error) => {
-    console.warn("[push] low stock notification failed:", error?.message || error);
-  });
-
-  void publishInventoryChange({ itemId, changedByUserId: userId });
+  scheduleMovementNotification(itemId, userId);
   return movementId;
 }
 
@@ -2433,6 +2457,11 @@ router.post("/items", (req, res) => {
   const sellingPrice = roundCurrency(req.body.selling_price);
   const attributes = String(req.body.attributes || "").trim();
   const moaNotes = String(req.body.moa_notes || "").trim();
+  const catalogueKey = catalogueKeyForName(itemName);
+  const isCostOnly = isUnchargedConsumable({
+    item_name: itemName,
+    catalogue_key: catalogueKey,
+  }) ? 1 : 0;
   // Catalogue expiry_date is deprecated. It is not an operational default for receipts or FEFO.
   const expiryDate = null;
 
@@ -2465,11 +2494,25 @@ router.post("/items", (req, res) => {
     .prepare(`
       INSERT INTO inventory (
         item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-        cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+        cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+        catalogue_key, is_cost_only, updated_at
       )
-      VALUES (?, ?, 'ocs', NULL, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+      VALUES (?, ?, 'ocs', NULL, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `)
-    .run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate);
+    .run(
+      itemName,
+      folderId,
+      quantity,
+      minimumQuantity,
+      unit,
+      costPrice,
+      sellingPrice,
+      attributes,
+      moaNotes,
+      expiryDate,
+      catalogueKey,
+      isCostOnly,
+    );
 
   const createdItemId = Number(result.lastInsertRowid);
 
@@ -2489,6 +2532,7 @@ router.put("/items/:id", (req, res) => {
   const itemId = Number(req.params.id);
   const existing = findItemForRequest(req, itemId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
+  const expectedVersion = Number(req.body?.expected_version ?? req.body?.row_version ?? 0);
 
   const isOcsMasterRow =
     String(existing.stock_scope || "") === "ocs" &&
@@ -2589,20 +2633,52 @@ router.put("/items/:id", (req, res) => {
     }
   }
 
+  if (!Number.isInteger(expectedVersion) || expectedVersion <= 0) {
+    return res.status(409).json({
+      error: "This catalogue item must be refreshed before it can be saved.",
+      code: "INVENTORY_VERSION_REQUIRED",
+    });
+  }
+  if (expectedVersion !== Number(existing.row_version || 1)) {
+    return res.status(409).json({
+      error: "This catalogue item changed on another device. Refresh it before saving.",
+      code: "INVENTORY_VERSION_CONFLICT",
+    });
+  }
+
   const previousQuantity = Number(existing.quantity || 0);
   const updatedBagItemIds = [];
 
   try {
     db.transaction(() => {
-      db.prepare(`
+      const updated = db.prepare(`
         UPDATE inventory
         SET
           item_name = ?, folder_id = ?, quantity = ?, minimum_quantity = ?, unit = ?,
           cost_price = ?, selling_price = ?, attributes = ?, moa_notes = ?, expiry_date = ?,
           row_version = row_version + 1,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
+        WHERE id = ? AND row_version = ?
+      `).run(
+        itemName,
+        folderId,
+        quantity,
+        minimumQuantity,
+        unit,
+        costPrice,
+        sellingPrice,
+        attributes,
+        moaNotes,
+        expiryDate,
+        itemId,
+        expectedVersion,
+      );
+      if (updated.changes !== 1) {
+        throw Object.assign(
+          new Error("This catalogue item changed on another device. Refresh it before saving."),
+          { status: 409, code: "INVENTORY_VERSION_CONFLICT" },
+        );
+      }
       if (isOcsMasterRow) {
         const renamedBagIds = renameDoctorBagCatalogue(existing.item_name, itemName);
         updatedBagItemIds.push(...renamedBagIds);
@@ -2645,7 +2721,10 @@ router.put("/items/:id", (req, res) => {
       }
     })();
   } catch (error) {
-    return res.status(400).json({ error: error?.message || "Unable to update stock item." });
+    return res.status(error?.status || 400).json({
+      error: error?.message || "Unable to update stock item.",
+      ...(error?.code ? { code: error.code } : {}),
+    });
   }
 
   if (isDoctor && doctorId) {
@@ -3687,6 +3766,13 @@ router.post("/items/:id/actions", (req, res) => {
     });
   }
 
+  if (actionType === "stock_out" && stockOutReason === "Sale" && isUnchargedConsumable(item)) {
+    return res.status(409).json({
+      error: `${item.item_name} is a cost-only consumable and cannot be charged directly to a patient. Deduct it through the related service or treatment.`,
+      code: "UNCHARGED_CONSUMABLE_NOT_SALEABLE",
+    });
+  }
+
   let salePatient = null;
   if (actionType === "stock_out" && stockOutReason === "Sale") {
     const requestedPatientId = Number(req.body.patient_id || 0);
@@ -3980,9 +4066,10 @@ router.post("/restock", (req, res) => {
           .prepare(`
             INSERT INTO inventory (
               item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-              cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+              cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+              catalogue_key, is_cost_only, updated_at
             )
-            VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           `)
           .run(
             source.item_name,
@@ -3996,6 +4083,8 @@ router.post("/restock", (req, res) => {
             source.attributes || "",
             source.moa_notes || "",
             source.expiry_date || null,
+            String(source.catalogue_key || "").trim(),
+            Number(source.is_cost_only || 0) === 1 ? 1 : 0,
           );
         targetItemId = Number(created.lastInsertRowid);
       }
@@ -4198,9 +4287,10 @@ router.post("/restock/my-inventory", (req, res) => {
             .prepare(`
               INSERT INTO inventory (
                 item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-                cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+                cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+                catalogue_key, is_cost_only, updated_at
               )
-              VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, CURRENT_TIMESTAMP)
+              VALUES (?, ?, 'doctor', ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             `)
             .run(
               source.item_name,
@@ -4214,6 +4304,8 @@ router.post("/restock/my-inventory", (req, res) => {
               source.attributes || "",
               source.moa_notes || "",
               source.expiry_date || null,
+              String(source.catalogue_key || "").trim(),
+              Number(source.is_cost_only || 0) === 1 ? 1 : 0,
             );
           targetItemId = Number(created.lastInsertRowid);
         }

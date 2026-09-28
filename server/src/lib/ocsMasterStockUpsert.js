@@ -1,5 +1,9 @@
 const { db, initializeDatabase } = require("../db");
 const { REQUIRED_INVENTORY_FOLDERS } = require("../config/inventoryFolders");
+const {
+  catalogueKeyForName,
+  isUnchargedConsumable,
+} = require("./treatmentSupplies");
 
 const REQUIRED_FOLDERS = REQUIRED_INVENTORY_FOLDERS;
 const STOCK_SCOPE = "ocs";
@@ -80,7 +84,7 @@ function getFolderIdByCategory(category) {
   return row ? Number(row.id) : null;
 }
 
-function findOcsItemByName(name) {
+function findOcsItemByName(name, catalogueKey = "") {
   return db
     .prepare(`
       SELECT id, quantity
@@ -88,24 +92,30 @@ function findOcsItemByName(name) {
       WHERE stock_scope = ?
         AND owner_doctor_id IS NULL
         AND archived_at IS NULL
-        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-      ORDER BY id ASC
+        AND (
+          (? != '' AND catalogue_key = ?)
+          OR LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+        )
+      ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
       LIMIT 1
     `)
-    .get(STOCK_SCOPE, name);
+    .get(STOCK_SCOPE, catalogueKey, catalogueKey, name, catalogueKey, catalogueKey);
 }
 
-function findArchivedOcsItemByName(name) {
+function findArchivedOcsItemByName(name, catalogueKey = "") {
   return db.prepare(`
     SELECT id
     FROM inventory
     WHERE stock_scope = ?
       AND owner_doctor_id IS NULL
       AND archived_at IS NOT NULL
-      AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-    ORDER BY id ASC
+      AND (
+        (? != '' AND catalogue_key = ?)
+        OR LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+      )
+    ORDER BY CASE WHEN ? != '' AND catalogue_key = ? THEN 0 ELSE 1 END, id ASC
     LIMIT 1
-  `).get(STOCK_SCOPE, name);
+  `).get(STOCK_SCOPE, catalogueKey, catalogueKey, name, catalogueKey, catalogueKey);
 }
 
 function syncBatches(itemId, quantity, expiryDate) {
@@ -123,6 +133,11 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
   const quantity = Number(row.current_quantity ?? 0);
   const minimumQuantity = Number(row.par_level ?? 0);
   const expiryDate = row.nearest_expiry ? String(row.nearest_expiry).trim() : null;
+  const catalogueKey = catalogueKeyForName(itemName);
+  const isCostOnly = isUnchargedConsumable({
+    item_name: itemName,
+    catalogue_key: catalogueKey,
+  }) ? 1 : 0;
 
   if (!itemName) {
     throw new Error("Row is missing name.");
@@ -134,15 +149,18 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
     throw new Error(`${itemName}: par_level must be a non-negative integer.`);
   }
 
-  const existing = findOcsItemByName(itemName);
+  const existing = findOcsItemByName(itemName, catalogueKey);
 
   if (existing) {
     if (insertOnly) {
       db.prepare(`
         UPDATE inventory
-        SET folder_id = ?, updated_at = CURRENT_TIMESTAMP
+        SET folder_id = ?,
+            catalogue_key = CASE WHEN ? != '' THEN ? ELSE catalogue_key END,
+            is_cost_only = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(folderId, existing.id);
+      `).run(folderId, catalogueKey, catalogueKey, isCostOnly, existing.id);
       return { action: "skipped", id: existing.id, itemName };
     }
 
@@ -151,14 +169,16 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
       SET
         folder_id = ?,
         minimum_quantity = ?,
+        catalogue_key = CASE WHEN ? != '' THEN ? ELSE catalogue_key END,
+        is_cost_only = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(folderId, minimumQuantity, existing.id);
+    `).run(folderId, minimumQuantity, catalogueKey, catalogueKey, isCostOnly, existing.id);
 
     return { action: "updated", id: existing.id, itemName };
   }
 
-  if (findArchivedOcsItemByName(itemName)) {
+  if (findArchivedOcsItemByName(itemName, catalogueKey)) {
     throw new Error(`${itemName}: an archived warehouse item already exists. Restore it explicitly before importing this catalogue row.`);
   }
 
@@ -168,15 +188,25 @@ function upsertOcsMasterStockRow(row, folderId, { insertOnly = false } = {}) {
       .prepare(`
         INSERT INTO inventory (
           item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-          cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+          cost_price, selling_price, notes, attributes, moa_notes, expiry_date,
+          catalogue_key, is_cost_only, updated_at
         )
-        VALUES (?, ?, ?, NULL, ?, ?, 'unit', 0, 0, '', '', '', ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, NULL, ?, ?, 'unit', 0, 0, '', '', '', ?, ?, ?, CURRENT_TIMESTAMP)
       `)
-      .run(itemName, folderId, STOCK_SCOPE, quantity, minimumQuantity, expiryDate);
+      .run(
+        itemName,
+        folderId,
+        STOCK_SCOPE,
+        quantity,
+        minimumQuantity,
+        expiryDate,
+        catalogueKey,
+        isCostOnly,
+      );
     itemId = Number(result.lastInsertRowid);
   } catch (error) {
     if (String(error?.message || "").includes("UNIQUE constraint failed")) {
-      const retry = findOcsItemByName(itemName);
+      const retry = findOcsItemByName(itemName, catalogueKey);
       if (retry) {
         return { action: insertOnly ? "skipped" : "updated", id: retry.id, itemName };
       }
