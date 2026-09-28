@@ -25,7 +25,6 @@ const ocsPediatricDrugsPdfCatalog = [
   pediatricDrug("Augmentin ES-600 - 50ml (enfant)"),
   pediatricDrug("Augmentin Nourrisson"),
   pediatricDrug("Azithro Suspension (Zocin)"),
-  pediatricDrug("Celestene 0.05%"),
   pediatricDrug("Nurofen Syr"),
   pediatricDrug("Emefilm. 4mg"),
   pediatricDrug("Panotile"),

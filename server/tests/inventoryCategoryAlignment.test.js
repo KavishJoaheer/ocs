@@ -12,12 +12,14 @@ const { db, initializeDatabase } = require("../src/db");
 const { ocsConsumablesExtension } = require("../src/config/ocsConsumablesExtension");
 const { ocsConsumablesPdfCatalog } = require("../src/config/ocsConsumablesPdfCatalog");
 const { ocsIVDrugsPdfCatalog } = require("../src/config/ocsIVDrugsPdfCatalog");
+const { ocsPediatricDrugsPdfCatalog } = require("../src/config/ocsPediatricDrugsPdfCatalog");
 const {
   alignInventoryCategories,
   RETIRED_OCS_CONSUMABLE_SKUS,
   RETIRED_OCS_IV_COMBINATION_SKUS,
   RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
+  RETIRED_OCS_WAREHOUSE_ONLY_SKUS,
 } = require("../src/lib/inventoryCategoryAlignment");
 
 const TARGET_FOLDER = "Catherisation & NGT";
@@ -404,4 +406,34 @@ test("discontinued drug stock leaves warehouse and doctor bags", () => {
     assert.ok(row.archived_at, String(id));
     assert.equal(Number(row.quantity), 0);
   }
+});
+
+test("named syrups and IV lasilix leave the warehouse and stay in doctor bags", () => {
+  assert.equal(ocsPediatricDrugsPdfCatalog.some((item) => item.name === "Celestene 0.05%"), false);
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Pediatric Drugs' AND owner_doctor_id IS NULL LIMIT 1").get()?.id
+    || Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('Pediatric Drugs')").run().lastInsertRowid);
+  const doctorId = Number(db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 1").get().id);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, ?, ?, ?, 0, 'unit', 10, 0)
+  `);
+  const warehouseIds = RETIRED_OCS_WAREHOUSE_ONLY_SKUS.map((name) => {
+    const qty = name === "IV Lasilix - first 20mg" ? 38 : 0;
+    return Number(insert.run(name, folderId, "ocs", null, qty).lastInsertRowid);
+  });
+  const bagId = Number(insert.run("Otrivine", folderId, "doctor", doctorId, 2).lastInsertRowid);
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= warehouseIds.length);
+  assert.ok(result.written_off >= 1);
+  for (const id of warehouseIds) {
+    const row = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(id);
+    assert.ok(row.archived_at, String(id));
+    assert.equal(Number(row.quantity), 0);
+  }
+  const bag = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(bagId);
+  assert.equal(bag.archived_at, null);
+  assert.equal(Number(bag.quantity), 2);
 });

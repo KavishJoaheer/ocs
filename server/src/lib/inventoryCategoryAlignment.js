@@ -66,6 +66,16 @@ const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
   "O2 second 30 mins",
 ];
+const RETIRED_OCS_WAREHOUSE_ONLY_SKUS = [
+  "Supp.Diclowal 12.5mg / 25mg",
+  "Supp.Vogalene 5mg",
+  "Celestene 0.05%",
+  "Gramocef Syrup (antibiotic)",
+  "IV lasilix - each next 20mg",
+  "IV Lasilix - first 20mg",
+  "Avelac Syrup (lactulose)",
+  "Otrivine",
+];
 const RETIRED_OCS_CATALOG_ITEMS = [
   ...RETIRED_OCS_CONSUMABLE_SKUS,
   ...RETIRED_OCS_IV_COMBINATION_SKUS,
@@ -148,7 +158,7 @@ function retireRemovedOcsCatalogItems() {
       ...RETIRED_OCS_CATALOG_ITEMS,
       ...legacyOxygenStockNames(db),
     ])];
-    const loadRows = db.prepare(`
+    const rowSelect = `
       SELECT i.*,
         COALESCE((
           SELECT SUM(b.quantity_remaining)
@@ -163,14 +173,22 @@ function retireRemovedOcsCatalogItems() {
       FROM inventory i
       WHERE LOWER(TRIM(i.item_name)) = LOWER(TRIM(?))
         AND i.archived_at IS NULL
+    `;
+    const loadRows = db.prepare(`
+      ${rowSelect}
         AND (
           (i.stock_scope = 'ocs' AND i.owner_doctor_id IS NULL)
           OR (i.stock_scope = 'doctor' AND i.owner_doctor_id IS NOT NULL)
         )
     `);
-    for (const itemName of names) {
+    const loadWarehouseRows = db.prepare(`
+      ${rowSelect}
+        AND i.stock_scope = 'ocs'
+        AND i.owner_doctor_id IS NULL
+    `);
+    function retireRows(itemName, rows) {
       recordOcsCatalogExclusion(itemName);
-      for (const row of loadRows.all(itemName)) {
+      for (const row of rows) {
         if (Number(row.reserved_quantity || 0) > 0) {
           blocked += 1;
           continue;
@@ -188,6 +206,10 @@ function retireRemovedOcsCatalogItems() {
           WHERE id = ? AND archived_at IS NULL
         `).run(row.id).changes || 0);
       }
+    }
+    for (const itemName of names) retireRows(itemName, loadRows.all(itemName));
+    for (const itemName of RETIRED_OCS_WAREHOUSE_ONLY_SKUS) {
+      retireRows(itemName, loadWarehouseRows.all(itemName));
     }
     return { archived, blocked, written_off: writtenOff };
   })();
@@ -337,6 +359,7 @@ module.exports = {
   RETIRED_OCS_IV_COMBINATION_SKUS,
   RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
+  RETIRED_OCS_WAREHOUSE_ONLY_SKUS,
   RETIRED_OCS_CATALOG_ITEMS,
   retireRemovedOcsCatalogItems,
 };
