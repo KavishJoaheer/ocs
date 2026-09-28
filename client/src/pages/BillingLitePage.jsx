@@ -1676,10 +1676,9 @@ function BillingLitePage() {
                   return (
                     <article
                       key={item.id}
-                      className={`relative flex min-h-52 flex-col rounded-2xl border border-l-4 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,77,80,0.1)] ${
+                      className={`relative flex min-h-52 flex-col rounded-2xl border bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,77,80,0.1)] ${
                         quantity > 0 ? "border-[#2aa7a0] bg-teal-50/40 ring-2 ring-[#2aa7a0]/20" : "border-slate-200"
-                      } ${isUnavailable ? "border-l-slate-300 bg-slate-50" : "shadow-[0_6px_20px_rgba(23,77,80,0.06)]"}`}
-                      style={isUnavailable ? undefined : { borderLeftColor: tone.hex }}
+                      } ${isUnavailable ? "bg-slate-50" : "shadow-[0_6px_20px_rgba(23,77,80,0.06)]"}`}
                     >
                       <button
                         type="button"
