@@ -90,8 +90,7 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   await page.getByLabel("Consultation doctor").selectOption(String(doctor.id));
   await doctorPickerResponse;
   const findAnotherVisit = page.getByRole("button", { name: "Find another visit", exact: true });
-  if ((page.viewportSize()?.width || 0) < 768) {
-    await expect(findAnotherVisit).toBeVisible();
+  if ((page.viewportSize()?.width || 0) < 768 && await findAnotherVisit.isVisible()) {
     await findAnotherVisit.click();
   }
   const patientPickerButton = page.getByRole("button", { name: /Select patient/i });
@@ -107,7 +106,7 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
   await page.getByRole("button").filter({ hasText: /Review/ }).click();
-  await expect(page.getByRole("heading", { name: "Review billing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review invoice" })).toBeVisible();
   return { doctor, patient, visit };
 }
 
@@ -144,8 +143,8 @@ for (const device of [
     await page.goto(`${STAFF_BASE}/billing`);
 
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Find another visit", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Find another visit", exact: true }).click();
+    const findAnotherVisit = page.getByRole("button", { name: "Find another visit", exact: true });
+    if (await findAnotherVisit.isVisible()) await findAnotherVisit.click();
     await page.getByRole("button", { name: /Select patient/i }).click();
 
     const picker = page.locator(".billing-patient-picker-panel");
@@ -154,27 +153,28 @@ for (const device of [
     const pickerBox = await picker.boundingBox();
     expect(pickerBox?.x).toBeGreaterThanOrEqual(0);
     expect((pickerBox?.x || 0) + (pickerBox?.width || 0)).toBeLessThanOrEqual(device.width);
-    await page.getByRole("button", { name: "Close patient search", exact: true }).last().click();
-
     await page
-      .getByRole("button", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
-      .first()
+      .getByRole("option", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
       .click();
+    await page.getByLabel("2. Consultation").selectOption(String(visit.consultation_id));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
 
     const reviewBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Review" });
     await expect(reviewBar).toBeVisible();
     const reviewBox = await reviewBar.boundingBox();
-    const navBox = await page.locator("#ocs-bottom-nav").boundingBox();
-    expect((reviewBox?.y || 0) + (reviewBox?.height || 0)).toBeLessThanOrEqual(navBox?.y || device.height);
+    await expect(page.locator("#ocs-bottom-nav")).toBeHidden();
+    expect((reviewBox?.y || 0) + (reviewBox?.height || 0)).toBeLessThanOrEqual(device.height);
 
     await reviewBar.click();
-    await expect(page.getByRole("heading", { name: "Review billing" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Review invoice" })).toBeVisible();
+    await expect(page.getByLabel("Consultation price")).toHaveCount(0);
+    await page.getByRole("button", { name: "Adjust prices", exact: true }).click();
     await expect(page.getByLabel("Consultation price")).toHaveCount(1);
     const issueBar = page.getByRole("button", { name: /Issue invoice for Rs/i });
     await expect(issueBar).toBeVisible();
     const issueBox = await issueBar.boundingBox();
-    expect((issueBox?.y || 0) + (issueBox?.height || 0)).toBeLessThanOrEqual(navBox?.y || device.height);
+    expect((issueBox?.y || 0) + (issueBox?.height || 0)).toBeLessThanOrEqual(device.height);
   });
 }
 
@@ -191,10 +191,10 @@ test.describe("operator billing", () => {
     await expect(page.getByLabel("Consultation doctor")).toBeVisible();
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByLabel("Manual invoice receipt reference")).toBeVisible();
+    await expect(page.getByLabel("Receipt reference")).toBeVisible();
     await expect(page.getByLabel("Payment method")).toBeVisible();
     await expect(page.getByLabel("Payment date")).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: /Raise invoice by Doctor/i })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /issuing this invoice on behalf/i })).toBeVisible();
     await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
   });
 
@@ -212,7 +212,7 @@ test.describe("operator billing", () => {
     await expect(bottomNav.getByRole("link", { name: "Inventory", exact: true })).toBeVisible();
 
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByLabel("Manual invoice receipt reference")).toBeVisible();
+    await expect(page.getByLabel("Receipt reference")).toBeVisible();
     await expect(page.getByLabel("Payment method")).toBeVisible();
     await expect(page.getByText(/Payment is recorded when the invoice is issued/i)).toBeVisible();
   });
@@ -223,9 +223,9 @@ test.describe("operator billing", () => {
     await page.goto(`${STAFF_BASE}/billing`);
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
     await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await page.getByLabel("Manual invoice receipt reference").fill(`E2E-PAY-${Date.now()}`);
+    await page.getByLabel("Receipt reference").fill(`E2E-PAY-${Date.now()}`);
     await page.getByLabel("Payment method").selectOption("cash");
-    await page.getByRole("checkbox", { name: /Raise invoice by Doctor/i }).check();
+    await page.getByRole("checkbox", { name: /issuing this invoice on behalf/i }).check();
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Completed", { exact: true })).toBeVisible();
