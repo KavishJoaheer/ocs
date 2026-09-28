@@ -1130,6 +1130,12 @@ function BillingLitePage() {
     toast.success("Saved offline submission discarded.");
   }
 
+  function cancelBilling() {
+    if (!window.confirm("Cancel this bill? Nothing is saved and no stock is taken from the bag.")) return;
+    resetFlow("today");
+    toast.success("Bill cancelled. Nothing was saved.");
+  }
+
   function resetFlow(destination = "today") {
     setSelectedVisit(null);
     setCatalog([]);
@@ -1539,11 +1545,18 @@ function BillingLitePage() {
             <div className="mb-5 flex items-center justify-between gap-3 text-white">
               <button
                 type="button"
-                onClick={() => resetFlow("today")}
+                onClick={cancelBilling}
                 className="flex size-12 items-center justify-center rounded-2xl bg-white/10 transition active:scale-95"
-                aria-label="Back to visits"
+                aria-label="Cancel this bill"
               >
                 <ArrowLeft className="size-6" />
+              </button>
+              <button
+                type="button"
+                onClick={cancelBilling}
+                className="min-h-12 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+              >
+                Cancel
               </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white/70">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
@@ -1845,13 +1858,22 @@ function BillingLitePage() {
 
         {!isLoading && view === "review" && selectedVisit ? (
           <section className="billing-mobile-action-space mx-auto max-w-2xl">
-            <button
-              type="button"
-              onClick={() => setView("catalog")}
-              className="mb-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
-            >
-              <ArrowLeft className="size-5" /> Edit charges
-            </button>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setView("catalog")}
+                className="inline-flex min-h-12 items-center gap-2 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+              >
+                <ArrowLeft className="size-5" /> Edit charges
+              </button>
+              <button
+                type="button"
+                onClick={cancelBilling}
+                className="min-h-12 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+              >
+                Cancel
+              </button>
+            </div>
             <div className="overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
               <div className="bg-[#173f47] px-6 py-6 text-white">
                 <p className="text-sm font-bold text-white/65">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>

@@ -1706,6 +1706,13 @@ function CreateBillingModal({
     }), needle);
   }, [inventoryOptions, inventoryOverlayQuery, inventoryCategory]);
 
+  function cancelCreate() {
+    if (step > 1 || items.length > 0) {
+      if (!window.confirm("Cancel this bill? Nothing is saved and no stock is taken.")) return;
+    }
+    onClose();
+  }
+
   function handleConsultationTypeChange(nextType) {
     setConsultationType(nextType);
     if (!consultationPriceEditable) {
@@ -2551,6 +2558,15 @@ function CreateBillingModal({
             style={{ paddingBottom: "max(1.5rem, var(--sab))" }}
           >
             <div className="flex gap-3">
+              {step > 1 ? (
+                <button
+                  type="button"
+                  onClick={cancelCreate}
+                  className="min-h-12 rounded-2xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700"
+                >
+                  Cancel
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => step === 1 ? onClose() : setStep((current) => current - 1)}
@@ -2576,6 +2592,15 @@ function CreateBillingModal({
           </div>
         ) : (
           <div className="flex justify-end gap-3">
+            {step > 1 ? (
+              <button
+                type="button"
+                onClick={cancelCreate}
+                className="rounded-2xl border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+              >
+                Cancel
+              </button>
+            ) : null}
               <button
                 type="button"
                 onClick={() => step === 1 ? onClose() : setStep((current) => current - 1)}
