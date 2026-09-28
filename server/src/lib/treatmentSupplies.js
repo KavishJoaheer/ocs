@@ -212,6 +212,13 @@ function isTreatmentSupplyName(name) {
   return supplyNames.has(String(name || "").trim().toLowerCase());
 }
 
+function isUnchargedConsumable(name) {
+  const key = String(name || "").trim().toLowerCase();
+  if (key === "intrafix (drip set / infusion set)") return true;
+  if (Object.values(CANNULAS).some((itemName) => itemName.toLowerCase() === key)) return true;
+  return Object.values(SYRINGES).some((itemName) => itemName.toLowerCase() === key);
+}
+
 function serviceRequiresMask(service) {
   return Boolean(service?.components?.some((component) => component.role === "mask"));
 }
@@ -538,6 +545,7 @@ module.exports = {
   drugAdministrationByCategory,
   includedLabel,
   isTreatmentSupplyName,
+  isUnchargedConsumable,
   resolveTreatmentComponents,
   resolveRecipeComponents,
   serviceRequiresCannula,

@@ -2016,9 +2016,8 @@ test('future financial dates and zero-priced supply sales are blocked without si
   db.prepare('UPDATE inventory SET cost_price=0 WHERE id=?').run(noCost.id);
   const noCostCtx=context('Missing cost block');
   const noCostBill=await bill(noCostCtx,[stockLine(noCost,1)],{operation_id:randomUUID()});
-  assert.equal(noCostBill.status,409,JSON.stringify(noCostBill.data));
-  assert.equal(noCostBill.data.code,'SUPPLY_COST_REQUIRED');
-  assert.equal(row(noCost.id).quantity,20);
+  assert.equal(noCostBill.status,201,JSON.stringify(noCostBill.data));
+  assert.equal(row(noCost.id).quantity,19);
 });
 
 test('legacy credit notes must be classified and finance lists remain searchable and paginated', async () => {

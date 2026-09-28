@@ -112,7 +112,7 @@ function useLiveItemLots(open, item) {
     if (!open || !item?.id || embedded.length) return undefined;
     let ignore = false;
     api
-      .get(`/inventory/items/${item.id}/batches`)
+      .get(`/inventory/items/${item.id}/batches${Number(item.owner_doctor_id) ? `?doctorId=${Number(item.owner_doctor_id)}` : ""}`)
       .then((response) => {
         if (!ignore) {
           setLoadedLots({
@@ -3694,7 +3694,7 @@ export default function InventoryPage() {
     void Promise.all(
       openIds.map(async (id) => {
         try {
-          const response = await api.get(`/inventory/items/${id}/batches`);
+          const response = await api.get(`/inventory/items/${id}/batches${currentInventoryQueryRef.current}`);
           return [id, response.batches || []];
         } catch {
           return [id, null];
@@ -3721,7 +3721,7 @@ export default function InventoryPage() {
     if (!key) return [];
     if (!fresh && batchMap[key]) return batchMap[key];
     try {
-      const response = await api.get(`/inventory/items/${key}/batches`);
+      const response = await api.get(`/inventory/items/${key}/batches${inventoryListQuery}`);
       const rows = response.batches || [];
       setBatchMap((prev) => ({ ...prev, [key]: rows }));
       return rows;

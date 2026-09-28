@@ -776,7 +776,16 @@ function findItemForRequest(req, itemId) {
       const doctorItem = findItem(itemId, "doctor", selectedDoctorId);
       if (doctorItem) return doctorItem;
     }
-    return findItem(itemId, "ocs", null);
+    const warehouseItem = findItem(itemId, "ocs", null);
+    if (warehouseItem) return warehouseItem;
+    return db.prepare(`
+      SELECT *
+      FROM inventory
+      WHERE id = ?
+        AND stock_scope = 'doctor'
+        AND COALESCE(item_kind, 'stock') = 'stock'
+        AND archived_at IS NULL
+    `).get(itemId);
   }
 
   return null;

@@ -1532,3 +1532,87 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   assert.equal(bagQuantity("Syringe (20ml)"), 3);
   assert.equal(bagQuantity("N/S 100ml"), 3);
 });
+
+test("a zero-cost medicine is charged at its selling price and syringes, cannulas, and intrafix are cost only", async () => {
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  const today = getTodayLocal();
+  const folderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE owner_doctor_id IS NULL ORDER BY id LIMIT 1").get().id);
+  function stock(name, quantity, sellingPrice, unitCost) {
+    let row = db.prepare(`
+      SELECT id FROM inventory
+      WHERE stock_scope = 'doctor' AND owner_doctor_id = ?
+        AND lower(trim(item_name)) = lower(trim(?)) AND archived_at IS NULL
+      LIMIT 1
+    `).get(doctorId, name);
+    if (!row) {
+      row = { id: Number(db.prepare(`
+        INSERT INTO inventory (
+          item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity,
+          minimum_quantity, unit, cost_price, selling_price, updated_at
+        ) VALUES (?, 'stock', ?, 'doctor', ?, 0, 0, 'unit', ?, ?, CURRENT_TIMESTAMP)
+      `).run(name, folderId, doctorId, unitCost, sellingPrice).lastInsertRowid) };
+    }
+    db.prepare(`
+      UPDATE inventory
+      SET item_kind = 'stock', folder_id = ?, quantity = ?, cost_price = ?, selling_price = ?, archived_at = NULL
+      WHERE id = ?
+    `).run(folderId, quantity, unitCost, sellingPrice, row.id);
+    db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', ?, 0, 'usable')
+    `).run(row.id, quantity, unitCost);
+    return Number(row.id);
+  }
+  const medicineId = stock(`IV Pabrinex test ${Date.now()}`, 4, 350, 0);
+  const syringeId = stock("Syringe (10ml)", 8, 25, 5);
+  const cannulaId = stock("Cannula (Green)", 6, 40, 9);
+  const intrafixId = stock("Intrafix (Drip Set / Infusion set)", 5, 80, 11);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '18:10', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const nextConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Cost only consumable test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(nextConsultationId, patientId, null, "Day Consultation");
+
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.data.items.find((item) => item.id === syringeId).cost_only, true);
+  assert.equal(catalog.data.items.find((item) => item.id === medicineId).cost_only, false);
+
+  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("COST-ONLY"),
+    items: [
+      { inventory_item_id: medicineId, quantity: 1, unit_price: 350 },
+      { inventory_item_id: syringeId, quantity: 3, unit_price: 25 },
+      { inventory_item_id: cannulaId, quantity: 1, unit_price: 40 },
+      { inventory_item_id: intrafixId, quantity: 2, unit_price: 80 },
+    ],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+  const bill = db.prepare("SELECT items, total_amount FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
+  const lines = JSON.parse(bill.items);
+  const medicine = lines.find((line) => line.inventory_item_id === medicineId);
+  const syringe = lines.find((line) => line.inventory_item_id === syringeId);
+  assert.equal(medicine.amount, 350);
+  assert.equal(syringe.amount, 0);
+  assert.equal(syringe.unit_price, 0);
+  assert.equal(lines.find((line) => line.inventory_item_id === cannulaId).amount, 0);
+  assert.equal(lines.find((line) => line.inventory_item_id === intrafixId).amount, 0);
+  const consultationFee = lines.find((line) => line.is_consultation_fee);
+  assert.equal(Number(bill.total_amount), Number(consultationFee.amount) + 350);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(syringeId).quantity, 5);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(cannulaId).quantity, 5);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(intrafixId).quantity, 3);
+  const movement = db.prepare(`
+    SELECT unit_price_snapshot, unit_cost_snapshot, meta_json
+    FROM inventory_movements
+    WHERE item_id = ? ORDER BY id DESC LIMIT 1
+  `).get(syringeId);
+  assert.equal(Number(movement.unit_price_snapshot), 0);
+  assert.equal(Number(movement.unit_cost_snapshot), 5);
+  assert.equal(JSON.parse(movement.meta_json).billed_quantity, 0);
+});

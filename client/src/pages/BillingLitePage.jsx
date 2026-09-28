@@ -460,14 +460,10 @@ function BillingLitePage() {
 
   const visibleCatalog = useMemo(() => {
     return [...matchingCatalog].sort((a, b) => {
-      const bAvailable = b.is_service_charge
-        ? true
-        : Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0;
-      const aAvailable = a.is_service_charge
-        ? true
-        : Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0;
-      const availabilityDifference = Number(bAvailable) - Number(aAvailable);
-      return availabilityDifference || a.item_name.localeCompare(b.item_name);
+      const ready = (item) => item.is_service_charge
+        || (item.cost_only && Number(item.available_to_use || 0) > 0)
+        || (Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0);
+      return Number(ready(b)) - Number(ready(a)) || a.item_name.localeCompare(b.item_name);
     });
   }, [matchingCatalog]);
 
@@ -479,11 +475,13 @@ function BillingLitePage() {
     [catalog, cart],
   );
   function reviewedSupplyPrice(item) {
+    if (item.cost_only) return 0;
     const edited = supplyPriceEdits[item.id]?.price;
     return Number(edited === undefined ? item.selling_price || 0 : edited);
   }
 
   function supplyPriceWasAdjusted(item) {
+    if (item.cost_only) return false;
     return Math.abs(reviewedSupplyPrice(item) - Number(item.selling_price || 0)) >= 0.005;
   }
 
@@ -497,6 +495,7 @@ function BillingLitePage() {
       return "Explain the consultation price adjustment in at least 8 characters.";
     }
     for (const item of selectedItems) {
+      if (item.cost_only) continue;
       const price = reviewedSupplyPrice(item);
       if (!Number.isFinite(price) || price <= 0) {
         return `Enter a valid positive price for ${item.item_name}.`;
@@ -963,7 +962,7 @@ function BillingLitePage() {
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
         quantity: item.quantity,
-        unit_price: reviewedSupplyPrice(item),
+        unit_price: item.cost_only ? 0 : reviewedSupplyPrice(item),
         price_adjustment_reason: supplyPriceWasAdjusted(item)
           ? String(supplyPriceEdits[item.id]?.reason || "").trim()
           : undefined,
@@ -1641,7 +1640,7 @@ function BillingLitePage() {
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
-                  const priceMissing = !item.cost_price_ready || Number(item.selling_price || 0) <= 0;
+                  const priceMissing = !item.cost_only && !item.is_service_charge && Number(item.selling_price || 0) <= 0;
                   const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing;
                   const isFavorite = favorites.has(item.id);
                   return (
@@ -1668,9 +1667,11 @@ function BillingLitePage() {
                       <div className="mt-auto pt-5">
                       <div className="flex items-end justify-between gap-3">
                         <div className="min-w-0">
-                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
+                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
                           <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {item.included_label
+                            {item.cost_only
+                              ? (available < 1 ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`)
+                              : item.included_label
                               ? `From the bag: ${item.included_label}`
                               : item.is_service_charge && Number(item.selling_price || 0) <= 0
                                 ? "Price and reason required"
@@ -1825,13 +1826,21 @@ function BillingLitePage() {
                         <div className="min-w-0">
                           <p className="font-black text-[#173f47]">{item.item_name}</p>
                           <p className="mt-1 text-sm font-semibold text-slate-500">
-                            Quantity {item.quantity} · Standard price {formatRupees(item.selling_price)}
+                            {item.cost_only
+                              ? `Quantity ${item.quantity} · Not charged`
+                              : `Quantity ${item.quantity} · Standard price ${formatRupees(item.selling_price)}`}
                           </p>
                           {item.included_label ? (
                             <p className="mt-1 text-sm font-semibold text-[#17666a]">From the bag: {item.quantity} × {item.included_label}</p>
                           ) : null}
                           {supplyChoiceFields(item)}
                         </div>
+                        {item.cost_only ? (
+                          <div className="rounded-xl bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#17666a]">
+                            Taken from the bag. The patient is not charged. The lot cost is kept as an expense.
+                          </div>
+                        ) : (
+                          <>
                         <label>
                           <span className="text-xs font-black uppercase tracking-wide text-slate-500">Unit price</span>
                           <span className="relative mt-1 block">
@@ -1877,6 +1886,8 @@ function BillingLitePage() {
                             <span className="mt-1 block text-xs font-semibold text-amber-800">Required · minimum 8 characters · saved with this invoice</span>
                           </label>
                         ) : null}
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

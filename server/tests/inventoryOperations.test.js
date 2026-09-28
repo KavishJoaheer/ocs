@@ -3542,6 +3542,25 @@ test("derived stock fields exclude expired units from available-to-use and disti
   assert.doesNotMatch(String(bag.data.tab_summaries.stock.location_heading), /My Stock/i);
 });
 
+test("opening a doctor bag item loads its batches for an operator", async () => {
+  const bagItemId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, quantity, minimum_quantity, unit, cost_price, selling_price,
+      stock_scope, owner_doctor_id
+    ) VALUES (?, ?, 20, 10, 'unit', 0, 500, 'doctor', ?)
+  `).run(`Lasilix bag ${Date.now()}`, folderId, doctorId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 20, '2032-12-31', 0, 0)
+  `).run(bagItemId);
+
+  const batches = await api("GET", `/api/inventory/items/${bagItemId}/batches?doctorId=${doctorId}`, { token: operatorToken });
+  assert.equal(batches.status, 200, JSON.stringify(batches.data));
+  assert.equal(batches.data.batches.length, 1);
+  assert.equal(batches.data.batches[0].expiry_date, "2032-12-31");
+  assert.equal(Number(batches.data.batches[0].quantity_remaining), 20);
+});
+
 test("doctor inventory metrics match dashboard and exclude zero-quantity missing expiry", async () => {
   const parName = `ParZero ${Date.now()}`;
   const missingName = `MissZero ${Date.now()}`;

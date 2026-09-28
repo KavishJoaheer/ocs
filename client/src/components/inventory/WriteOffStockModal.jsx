@@ -97,7 +97,7 @@ export default function WriteOffStockModal({
     if (embedded.length) return undefined;
     let ignore = false;
     api
-      .get(`/inventory/items/${item.id}/batches`)
+      .get(`/inventory/items/${item.id}/batches${Number(item.owner_doctor_id) ? `?doctorId=${Number(item.owner_doctor_id)}` : ""}`)
       .then((response) => {
         if (!ignore) {
           setLoadedBagLots({

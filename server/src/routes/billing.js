@@ -41,6 +41,7 @@ const {
   drugAdministrationByCategory,
   ensureTreatmentCatalogue,
   includedLabel,
+  isUnchargedConsumable,
   resolveTreatmentComponents,
   resolveRecipeComponents,
   serviceRequiresCannula,
@@ -910,12 +911,6 @@ function deductIncludedTreatmentComponents({
       );
     }
     const qty = Number(component.quantity || 0);
-    if (Number(stockItem.cost_price || 0) <= 0) {
-      throw Object.assign(
-        new Error(`${stockItem.item_name} has no cost price. Record its cost before ${treatmentName} can be billed.`),
-        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
-      );
-    }
     const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
     const atp = Number(decorated.available_to_promise ?? decorated.available_to_use ?? 0);
     if (qty > atp) {
@@ -1159,8 +1154,9 @@ function applyInventoryTransactions({
     }
 
     const isSellLine = line.type !== "Wastage" && line.type !== "Adjustment";
+    const costOnly = isSellLine && isUnchargedConsumable(stockItem.item_name);
     if (!isSellLine && line.dispensing_movement_ids?.length) throw Object.assign(new Error("A recorded sale must be reconciled as a sale, not a new wastage or adjustment."),{status:409});
-    if (isSellLine && Number(stockItem.selling_price || 0) <= 0) {
+    if (isSellLine && !costOnly && Number(stockItem.selling_price || 0) <= 0) {
       throw Object.assign(
         new Error(`${stockItem.item_name} has no selling price. Finance or inventory must price it before it can be billed.`),
         { status: 409, extra: { code: "SUPPLY_PRICE_REQUIRED", inventory_item_id: Number(stockItem.id) } },
@@ -1189,13 +1185,6 @@ function applyInventoryTransactions({
         linkedSaleMovementIds = markSaleMovementsBilled(matched, billingId);
         qtyToDecrement = qty - consumedQty;
       }
-    }
-
-    if (isSellLine && qtyToDecrement > 0 && Number(stockItem.cost_price || 0) <= 0) {
-      throw Object.assign(
-        new Error(`${stockItem.item_name} has no cost price. Finance or inventory must record its supplier cost before it can be billed.`),
-        { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
-      );
     }
 
     const decorated = decorateInventoryItems([stockItem])[0] || stockItem;
@@ -1268,6 +1257,8 @@ function applyInventoryTransactions({
             ? `Clinical wastage: ${line.wastage_reason}`
             : actionType === "adjustment"
               ? "Inventory adjustment recorded from billing."
+            : costOnly
+              ? "Used from the bag. Not charged to the patient."
             : "Billed to patient.",
         userId,
         appointmentId: consultation.appointment_id,
@@ -1276,7 +1267,8 @@ function applyInventoryTransactions({
           item_name: stockItem.item_name,
           emergency_override: Boolean(line.emergency_override),
           dispensed_quantity: qtyToDecrement,
-          billed_quantity: qty,
+          billed_quantity: costOnly ? 0 : qty,
+          cost_only_consumable: costOnly,
           batch_shortfall: 0,
           allocations,
           performed_by_user_id: actor?.id || userId || null,
@@ -1290,15 +1282,19 @@ function applyInventoryTransactions({
           selected_batch_id: actionType === "wastage" ? Number(line.batch_id) : null,
           linked_sale_movement_ids: linkedSaleMovementIds,
           linked_sale_credit_qty: qty - qtyToDecrement,
-          catalog_unit_price: roundCurrency(stockItem.selling_price),
-          billed_unit_price: line.price_adjustment_reason
-            ? roundCurrency(line.unit_price)
-            : roundCurrency(stockItem.selling_price),
+          catalog_unit_price: costOnly ? 0 : roundCurrency(stockItem.selling_price),
+          billed_unit_price: costOnly
+            ? 0
+            : line.price_adjustment_reason
+              ? roundCurrency(line.unit_price)
+              : roundCurrency(stockItem.selling_price),
           price_adjustment_reason: line.price_adjustment_reason || null,
         },
-        unitPriceSnapshot: line.price_adjustment_reason
-          ? roundCurrency(line.unit_price)
-          : roundCurrency(stockItem.selling_price),
+        unitPriceSnapshot: costOnly
+          ? 0
+          : line.price_adjustment_reason
+            ? roundCurrency(line.unit_price)
+            : roundCurrency(stockItem.selling_price),
       });
       recordMovementAllocations(movementId, allocations);
       inventoryMovementIds.push(movementId);
@@ -1306,11 +1302,14 @@ function applyInventoryTransactions({
 
     touchedItemIds.add(Number(stockItem.id));
 
-    const billedUnitPrice = line.price_adjustment_reason
-      ? roundCurrency(line.unit_price)
-      : roundCurrency(stockItem.selling_price);
-    const computedAmount =
-      line.type === "Wastage"
+    const billedUnitPrice = costOnly
+      ? 0
+      : line.price_adjustment_reason
+        ? roundCurrency(line.unit_price)
+        : roundCurrency(stockItem.selling_price);
+    const computedAmount = costOnly
+      ? 0
+      : line.type === "Wastage"
         ? roundCurrency(allocations.reduce(
             (sum, allocation) => sum + Number(allocation.quantity || 0) * Number(allocation.unit_cost || 0),
             0,
@@ -2334,6 +2333,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       requires_catheter: serviceRequiresCatheter(recipe),
       requires_ngt: serviceRequiresNgt(recipe),
       included_label: includedLabel(recipe),
+      cost_only: isUnchargedConsumable(item.item_name),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),
       available_to_use: isService
@@ -2866,14 +2866,16 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       return res.status(400).json({ error: "Every selected supply needs a valid whole-number quantity." });
     }
     if (item?.unit_price !== undefined && item?.unit_price !== null && item?.unit_price !== "") {
-      if (!isValidCurrencyAmount(item.unit_price) || Number(item.unit_price) <= 0) {
-        return res.status(400).json({ error: "Every reviewed supply price must be a positive currency amount." });
+      if (!isValidCurrencyAmount(item.unit_price) || Number(item.unit_price) < 0) {
+        return res.status(400).json({ error: "Every reviewed supply price must be zero or a positive currency amount." });
       }
-      const reviewedPrice = roundCurrency(item.unit_price);
-      if (reviewedUnitPrices.has(itemId) && reviewedUnitPrices.get(itemId) !== reviewedPrice) {
-        return res.status(400).json({ error: "A supply cannot contain conflicting reviewed prices." });
+      if (Number(item.unit_price) > 0) {
+        const reviewedPrice = roundCurrency(item.unit_price);
+        if (reviewedUnitPrices.has(itemId) && reviewedUnitPrices.get(itemId) !== reviewedPrice) {
+          return res.status(400).json({ error: "A supply cannot contain conflicting reviewed prices." });
+        }
+        reviewedUnitPrices.set(itemId, reviewedPrice);
       }
-      reviewedUnitPrices.set(itemId, reviewedPrice);
     }
     const priceAdjustmentReason = String(item?.price_adjustment_reason || "").trim().slice(0, 500);
     if (reviewedPriceReasons.has(itemId) && reviewedPriceReasons.get(itemId) !== priceAdjustmentReason) {
@@ -3123,6 +3125,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         }
         stockById = new Map(stockRows.map((item) => [Number(item.id), item]));
         const changedPrices = requestedIds.flatMap((itemId) => {
+          const item = stockById.get(itemId);
+          if (isUnchargedConsumable(item?.item_name)) return [];
           const reviewedPrice = reviewedUnitPrices.get(itemId);
           const currentPrice = roundCurrency(stockById.get(itemId)?.selling_price);
           return reviewedPrice !== undefined && Math.abs(reviewedPrice - currentPrice) >= 0.005
@@ -3153,11 +3157,14 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         chargeLines = requestedIds.map((itemId) => {
           const item = stockById.get(itemId);
           const quantity = mergedQuantities.get(itemId);
-          const standardUnitPrice = roundCurrency(item.selling_price);
-          const reviewedUnitPrice = reviewedUnitPrices.has(itemId)
-            ? reviewedUnitPrices.get(itemId)
-            : standardUnitPrice;
-          const priceWasAdjusted = Math.abs(reviewedUnitPrice - standardUnitPrice) >= 0.005;
+          const costOnly = isUnchargedConsumable(item.item_name);
+          const standardUnitPrice = costOnly ? 0 : roundCurrency(item.selling_price);
+          const reviewedUnitPrice = costOnly
+            ? 0
+            : reviewedUnitPrices.has(itemId)
+              ? reviewedUnitPrices.get(itemId)
+              : standardUnitPrice;
+          const priceWasAdjusted = !costOnly && Math.abs(reviewedUnitPrice - standardUnitPrice) >= 0.005;
           return {
             description: item.item_name,
             amount: roundCurrency(reviewedUnitPrice * quantity),
@@ -3165,6 +3172,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             type: "Sale",
             quantity,
             inventory_item_id: item.item_kind === "service" ? null : itemId,
+            ...(costOnly ? { cost_only_consumable: true } : {}),
             syringe_size: syringeSizes.get(itemId) || "",
             saline_size: salineSizes.get(itemId) || "",
             cannula_size: cannulaSizes.get(itemId) || "",
