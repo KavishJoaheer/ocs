@@ -79,6 +79,22 @@ try {
   console.warn("[inventory] Treatment supply catalogue failed:", error.message);
 }
 
+try {
+  const doctorCatalogue = syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
+  if (doctorCatalogue.inserted > 0 || doctorCatalogue.restored > 0 || doctorCatalogue.pruned > 0) {
+    console.log(
+      `[inventory] Doctor bags now follow the OCS warehouse catalogue (${doctorCatalogue.doctors} doctors, ${doctorCatalogue.inserted} added, ${doctorCatalogue.restored} restored, ${doctorCatalogue.pruned} removed).`,
+    );
+  }
+  if (doctorCatalogue.prune_blocked > 0) {
+    console.warn(
+      `[inventory] ${doctorCatalogue.prune_blocked} doctor-bag row(s) are not in the warehouse catalogue and still hold stock, so they were left in place.`,
+    );
+  }
+} catch (error) {
+  console.warn("[inventory] Doctor bag catalogue sync failed:", error.message);
+}
+
 if (isEnvTrue("SEED_OCS_MASTER_STOCK")) {
   try {
     const summary = seedOcsMasterStockSync({ skipInit: true });

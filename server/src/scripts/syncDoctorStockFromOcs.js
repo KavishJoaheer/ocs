@@ -5,22 +5,20 @@
  */
 
 const { db, initializeDatabase } = require("../db");
-const { RETIRED_OCS_CATALOG_ITEMS } = require("../lib/inventoryCategoryAlignment");
 
 function getOcsMasterItems() {
   return db
     .prepare(`
       SELECT
         item_name,
+        item_kind,
         folder_id,
-        quantity,
         minimum_quantity,
         unit,
         cost_price,
         selling_price,
         attributes,
-        moa_notes,
-        expiry_date
+        moa_notes
       FROM inventory
       WHERE stock_scope = 'ocs'
         AND owner_doctor_id IS NULL
@@ -71,27 +69,41 @@ function findArchivedDoctorItemByName(doctorId, itemName) {
 
 function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) {
   const itemName = String(source.item_name || "").trim();
-  const minimumQuantity = Number(source.minimum_quantity || 0);
+  const itemKind = String(source.item_kind || "stock") === "service" ? "service" : "stock";
+  const minimumQuantity = itemKind === "service" ? 0 : Number(source.minimum_quantity || 0);
+  const sellingPrice = Number(source.selling_price || 0);
   const existing = findDoctorItemByName(doctorId, itemName);
 
+  const alignExisting = db.prepare(`
+    UPDATE inventory
+    SET
+      item_kind = ?,
+      folder_id = ?,
+      minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE ? END,
+      quantity = CASE WHEN ? = 'service' THEN 0 ELSE quantity END,
+      unit = ?,
+      selling_price = CASE
+        WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
+        ELSE selling_price
+      END,
+      attributes = ?,
+      moa_notes = ?,
+      archived_at = NULL,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+
   if (existing) {
-    if (insertOnly) {
-      return "skipped";
-    }
-    db.prepare(`
-      UPDATE inventory
-      SET
-        folder_id = ?,
-        minimum_quantity = ?,
-        unit = ?,
-        attributes = ?,
-        moa_notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
+    if (insertOnly) return "skipped";
+    alignExisting.run(
+      itemKind,
       source.folder_id,
+      itemKind,
       minimumQuantity,
+      itemKind,
       source.unit || "unit",
+      sellingPrice,
+      sellingPrice,
       source.attributes || "",
       source.moa_notes || "",
       existing.id,
@@ -99,38 +111,46 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
     return "updated";
   }
 
-  if (findArchivedDoctorItemByName(doctorId, itemName)) {
-    throw new Error(`${itemName}: an archived doctor-bag item already exists. Restore it explicitly instead of recreating it.`);
-  }
-
-  const result = db
-    .prepare(`
-      INSERT INTO inventory (
-        item_name, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
-        cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-      )
-      VALUES (?, ?, 'doctor', ?, 0, ?, ?, ?, ?, '', ?, ?, NULL, CURRENT_TIMESTAMP)
-    `)
-    .run(
-      itemName,
+  const archived = findArchivedDoctorItemByName(doctorId, itemName);
+  if (archived) {
+    alignExisting.run(
+      itemKind,
       source.folder_id,
-      doctorId,
+      itemKind,
       minimumQuantity,
+      itemKind,
       source.unit || "unit",
-      Number(source.cost_price || 0),
-      Number(source.selling_price || 0),
+      sellingPrice,
+      sellingPrice,
       source.attributes || "",
       source.moa_notes || "",
+      archived.id,
     );
+    return "restored";
+  }
 
-  void result;
+  db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
+    )
+    VALUES (?, ?, ?, 'doctor', ?, 0, ?, ?, ?, ?, '', ?, ?, NULL, CURRENT_TIMESTAMP)
+  `).run(
+    itemName,
+    itemKind,
+    source.folder_id,
+    doctorId,
+    minimumQuantity,
+    source.unit || "unit",
+    Number(source.cost_price || 0),
+    sellingPrice,
+    source.attributes || "",
+    source.moa_notes || "",
+  );
   return "inserted";
 }
 
 function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
-  const retiredNameKeys = new Set(
-    RETIRED_OCS_CATALOG_ITEMS.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean),
-  );
   const doctorItems = db
     .prepare(`
       SELECT id, item_name
@@ -145,7 +165,7 @@ function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
   let blocked = 0;
   doctorItems.forEach((row) => {
     const key = String(row.item_name || "").trim().toLowerCase();
-    if (ocsNameKeys.has(key) || retiredNameKeys.has(key)) return;
+    if (ocsNameKeys.has(key)) return;
     const state = db.prepare(`
       SELECT i.quantity,
         COALESCE((SELECT SUM(quantity_remaining) FROM inventory_batches WHERE item_id = i.id), 0) AS batch_quantity,
@@ -195,6 +215,7 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, inse
     doctors: doctors.length,
     inserted: 0,
     updated: 0,
+    restored: 0,
     skipped: 0,
     pruned: 0,
     prune_blocked: 0,
@@ -208,6 +229,7 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, inse
         const action = upsertDoctorItemFromOcs(Number(doctor.id), source, { insertOnly });
         if (action === "inserted") summary.inserted += 1;
         else if (action === "updated") summary.updated += 1;
+        else if (action === "restored") summary.restored += 1;
         else summary.skipped += 1;
       });
 

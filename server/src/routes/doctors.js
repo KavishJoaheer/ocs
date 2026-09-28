@@ -2,6 +2,7 @@ const express = require("express");
 const { db } = require("../db");
 const { hashPassword } = require("../lib/security");
 const { revokeStaffSessionsForUser } = require("../lib/auth");
+const { syncDoctorStockFromOcsSync } = require("../scripts/syncDoctorStockFromOcs");
 
 const router = express.Router();
 
@@ -170,6 +171,11 @@ router.post("/", (req, res) => {
   });
 
   const doctorId = createDoctor();
+  try {
+    syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
+  } catch (error) {
+    console.warn("[inventory] New doctor bag could not be filled from the warehouse catalogue:", error.message);
+  }
   res.status(201).json(getDoctorRow(doctorId));
 });
 
