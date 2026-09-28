@@ -40,7 +40,7 @@ test("every doctor bag repeats the warehouse catalogue without copying warehouse
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
       quantity, minimum_quantity, unit, cost_price, selling_price
-    ) VALUES ('Warehouse Catalogue Item', 'stock', ?, 'doctor', ?, 3, 0, 'unit', 9, 0)
+    ) VALUES ('Warehouse Catalogue Item', 'stock', ?, 'doctor', ?, 3, 0, 'unit', 1, 2)
   `).run(folderId, first.id).lastInsertRowid);
   const extraBagId = Number(db.prepare(`
     INSERT INTO inventory (
@@ -57,16 +57,21 @@ test("every doctor bag repeats the warehouse catalogue without copying warehouse
 
   const summary = syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
   assert.ok(summary.inserted >= doctors.length);
-  assert.ok(summary.prune_blocked >= 1);
+  assert.equal(summary.prune_blocked, 0);
 
-  const kept = db.prepare("SELECT quantity, selling_price FROM inventory WHERE id = ?").get(keptBagId);
+  const kept = db.prepare("SELECT quantity, cost_price, selling_price FROM inventory WHERE id = ?").get(keptBagId);
   assert.equal(Number(kept.quantity), 3);
+  assert.equal(Number(kept.cost_price), 9);
   assert.equal(Number(kept.selling_price), 40);
   const extra = db.prepare("SELECT archived_at FROM inventory WHERE id = ?").get(extraBagId);
   assert.ok(extra.archived_at);
   const stockedExtra = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(stockedExtraId);
-  assert.equal(stockedExtra.archived_at, null);
-  assert.equal(Number(stockedExtra.quantity), 4);
+  assert.ok(stockedExtra.archived_at);
+  assert.equal(Number(stockedExtra.quantity), 0);
+  const writtenOff = db.prepare(`
+    SELECT quantity, action_type FROM inventory_movements WHERE item_id = ? AND action_type = 'remove'
+  `).get(stockedExtraId);
+  assert.equal(Number(writtenOff.quantity), 4);
 
   for (const doctor of doctors) {
     const item = db.prepare(`

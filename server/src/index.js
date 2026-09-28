@@ -89,7 +89,7 @@ try {
   }
   if (doctorCatalogue.prune_blocked > 0) {
     console.warn(
-      `[inventory] ${doctorCatalogue.prune_blocked} doctor-bag row(s) are not in the warehouse catalogue and still hold stock, so they were left in place.`,
+      `[inventory] ${doctorCatalogue.prune_blocked} doctor-bag row(s) are not in the warehouse catalogue and stay because they are reserved for a collection.`,
     );
   }
 } catch (error) {

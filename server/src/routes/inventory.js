@@ -2682,20 +2682,24 @@ router.put("/items/:id", (req, res) => {
       if (isOcsMasterRow) {
         const renamedBagIds = renameDoctorBagCatalogue(existing.item_name, itemName);
         updatedBagItemIds.push(...renamedBagIds);
-      }
-      if (isOcsMasterRow && priceChanged) {
+        const itemKind = String(existing.item_kind || "stock") === "service" ? "service" : "stock";
         const bagRows = db.prepare(`
           UPDATE inventory
           SET
+            folder_id = ?,
+            unit = ?,
             cost_price = ?,
             selling_price = ?,
+            item_kind = ?,
+            quantity = CASE WHEN ? = 'service' THEN 0 ELSE quantity END,
+            minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE minimum_quantity END,
             row_version = row_version + 1,
             updated_at = CURRENT_TIMESTAMP
           WHERE stock_scope = 'doctor'
             AND owner_doctor_id IS NOT NULL
             AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
           RETURNING id
-        `).all(costPrice, sellingPrice, itemName);
+        `).all(folderId, unit, costPrice, sellingPrice, itemKind, itemKind, itemKind, itemName);
         updatedBagItemIds.push(...bagRows.map((row) => Number(row.id)));
       }
       if (priceChanged) {

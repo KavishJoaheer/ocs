@@ -95,6 +95,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   const itemName = String(source.item_name || "").trim();
   const itemKind = String(source.item_kind || "stock") === "service" ? "service" : "stock";
   const minimumQuantity = itemKind === "service" ? 0 : Number(source.minimum_quantity || 0);
+  const costPrice = Number(source.cost_price || 0);
   const sellingPrice = Number(source.selling_price || 0);
   const existing = findDoctorItem(doctorId, source);
 
@@ -107,10 +108,8 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE ? END,
       quantity = CASE WHEN ? = 'service' THEN 0 ELSE quantity END,
       unit = ?,
-      selling_price = CASE
-        WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
-        ELSE selling_price
-      END,
+      cost_price = ?,
+      selling_price = ?,
       catalogue_key = CASE WHEN ? != '' THEN ? ELSE catalogue_key END,
       is_cost_only = ?,
       attributes = ?,
@@ -135,7 +134,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       minimumQuantity,
       itemKind,
       source.unit || "unit",
-      sellingPrice,
+      costPrice,
       sellingPrice,
       String(source.catalogue_key || "").trim(),
       String(source.catalogue_key || "").trim(),
@@ -157,7 +156,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       minimumQuantity,
       itemKind,
       source.unit || "unit",
-      sellingPrice,
+      costPrice,
       sellingPrice,
       String(source.catalogue_key || "").trim(),
       String(source.catalogue_key || "").trim(),
@@ -210,18 +209,55 @@ function pruneDoctorItemsNotInOcsCatalog(doctorId, ocsNameKeys) {
     const key = String(row.item_name || "").trim().toLowerCase();
     if (ocsNameKeys.has(key)) return;
     const state = db.prepare(`
-      SELECT i.quantity,
+      SELECT i.item_name, i.quantity, i.owner_doctor_id,
         COALESCE((SELECT SUM(quantity_remaining) FROM inventory_batches WHERE item_id = i.id), 0) AS batch_quantity,
         COALESCE((SELECT SUM(quantity) FROM inventory_reservations WHERE inventory_id = i.id AND status = 'active'), 0) AS reserved_quantity
       FROM inventory i WHERE i.id = ?
     `).get(row.id);
-    if (Number(state?.quantity || 0) !== 0 || Number(state?.batch_quantity || 0) !== 0 || Number(state?.reserved_quantity || 0) !== 0) {
+    if (Number(state?.reserved_quantity || 0) > 0) {
       blocked += 1;
       return;
+    }
+    const writeOffQty = Math.max(Number(state?.quantity || 0), Number(state?.batch_quantity || 0));
+    if (writeOffQty > 0) {
+      db.prepare(`
+        UPDATE inventory_batches
+        SET quantity_remaining = 0,
+            row_version = COALESCE(row_version, 1) + 1
+        WHERE item_id = ? AND quantity_remaining > 0
+      `).run(row.id);
+      db.prepare(`
+        UPDATE inventory
+        SET quantity = 0,
+            row_version = COALESCE(row_version, 1) + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(row.id);
+      const metaJson = JSON.stringify({
+        reason: "Not in the OCS warehouse catalogue",
+        automated: true,
+        performed_by_role: "system",
+        owner_doctor_id: state?.owner_doctor_id || null,
+      });
+      db.prepare(`
+        INSERT INTO inventory_movements (
+          item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
+          recorded_by_user_id, note, action_type, reference_type, reference_id, meta_json
+        ) VALUES (?, 'out', ?, ?, 0, ?, NULL, ?, 'remove', 'catalogue_sync', ?, ?)
+      `).run(
+        row.id,
+        writeOffQty,
+        Number(state?.quantity || 0),
+        state?.owner_doctor_id || null,
+        `${state?.item_name || row.item_name} is not in the OCS warehouse catalogue, so it was removed from the bag.`,
+        String(row.id),
+        metaJson,
+      );
     }
     archived += Number(db.prepare(`
       UPDATE inventory
       SET archived_at = CURRENT_TIMESTAMP,
+          quantity = 0,
           row_version = COALESCE(row_version, 1) + 1,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND archived_at IS NULL
