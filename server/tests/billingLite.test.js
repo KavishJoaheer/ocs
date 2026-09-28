@@ -1392,6 +1392,8 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   });
   assert.equal(missing.status, 400, JSON.stringify(missing.data));
   assert.equal(missing.data.code, "TREATMENT_SYRINGE_REQUIRED");
+  assert.equal(imDrug.syringe_optional, true);
+  assert.equal(washout.syringe_optional, false);
   assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(imDrugId).quantity), 5);
 
   const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
@@ -1443,6 +1445,35 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   `).all(billed.data.submission.bill_id);
   assert.equal(includedMovements.length, 6);
   assert.equal(includedMovements.every((movement) => JSON.parse(movement.meta_json).treatment_component === true), true);
+
+  const noSyringeAppointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '17:06', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const noSyringeConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'IM drug without a syringe')
+  `).run(noSyringeAppointmentId, patientId, doctorId, today).lastInsertRowid);
+  ensureBillingForConsultation(noSyringeConsultationId, patientId, null, "Day Consultation");
+  const syringeBefore = Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(componentIds.syringe3).quantity);
+  const drugBefore = Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(imDrugId).quantity);
+  const noSyringe = await api("POST", `/billing/quick/visits/${noSyringeConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("ADMIN-NO-SYRINGE"),
+    items: [{ inventory_item_id: imDrugId, quantity: 1, unit_price: 100, syringe_size: "0" }],
+  });
+  assert.equal(noSyringe.status, 201, JSON.stringify(noSyringe.data));
+  const noSyringeLines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(noSyringe.data.submission.bill_id).items);
+  const noSyringeDrug = noSyringeLines.find((line) => line.description === "IM administration test drug");
+  assert.equal(noSyringeDrug.syringe_size, "0");
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(componentIds.syringe3).quantity), syringeBefore);
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(imDrugId).quantity), drugBefore - 1);
+  const noSyringeMovements = db.prepare(`
+    SELECT id FROM inventory_movements
+    WHERE item_id = ?
+      AND CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
+  `).all(componentIds.syringe3, noSyringe.data.submission.bill_id);
+  assert.equal(noSyringeMovements.length, 0);
 });
 
 test("bladder procedures move to services and catheterisation or NGT takes the chosen tube", async () => {

@@ -385,7 +385,8 @@ function resolveRecipeComponents(service, {
     throw error;
   }
   const syringe = String(syringeSize || "").trim();
-  if (serviceRequiresSyringe(service) && !SYRINGES[syringe]) {
+  const skipSyringe = syringe === "0" && service.route === "im";
+  if (serviceRequiresSyringe(service) && !SYRINGES[syringe] && !skipSyringe) {
     const error = new Error(`Choose a syringe for ${service.itemName}.`);
     error.status = 400;
     error.extra = { code: "TREATMENT_SYRINGE_REQUIRED", service_name: service.itemName };
@@ -412,7 +413,7 @@ function resolveRecipeComponents(service, {
     error.extra = { code: "TREATMENT_NGT_REQUIRED", service_name: service.itemName };
     throw error;
   }
-  return service.components.map((component) => {
+  return service.components.filter((component) => !(skipSyringe && component.role === "syringe")).map((component) => {
     const itemName = component.role === "mask"
       ? MASKS[mask]
       : component.role === "enema"

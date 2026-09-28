@@ -512,7 +512,10 @@ function BillingLitePage() {
       if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
         return `Choose a cannula for ${item.item_name}.`;
       }
-      if (item.requires_syringe && !["3", "5", "10", "20", "50"].includes(syringeSizeByItem[item.id])) {
+      const syringeChoice = syringeSizeByItem[item.id];
+      const syringeChosen = ["3", "5", "10", "20", "50"].includes(syringeChoice)
+        || (item.syringe_optional && syringeChoice === "0");
+      if (item.requires_syringe && !syringeChosen) {
         return `Choose a syringe for ${item.item_name}.`;
       }
       if (item.requires_saline && !["100", "500"].includes(salineSizeByItem[item.id])) {
@@ -797,6 +800,7 @@ function BillingLitePage() {
               className={selectClass}
             >
               <option value="">Choose syringe</option>
+              {item.syringe_optional ? <option value="0">No syringe</option> : null}
               <option value="3">Syringe (3ml)</option>
               <option value="5">Syringe (5ml)</option>
               <option value="10">Syringe (10ml)</option>
@@ -1674,6 +1678,8 @@ function BillingLitePage() {
                               ? "Cost price required"
                               : item.cost_only
                               ? (available < 1 ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`)
+                              : item.syringe_optional && syringeSizeByItem[item.id] === "0"
+                              ? "No syringe is taken from the bag"
                               : item.included_label
                               ? `From the bag: ${item.included_label}`
                               : item.is_service_charge && Number(item.selling_price || 0) <= 0
@@ -1833,7 +1839,9 @@ function BillingLitePage() {
                               ? `Quantity ${item.quantity} · Not charged`
                               : `Quantity ${item.quantity} · Standard price ${formatRupees(item.selling_price)}`}
                           </p>
-                          {item.included_label ? (
+                          {item.syringe_optional && syringeSizeByItem[item.id] === "0" ? (
+                            <p className="mt-1 text-sm font-semibold text-[#17666a]">No syringe. Nothing is taken from the bag.</p>
+                          ) : item.included_label ? (
                             <p className="mt-1 text-sm font-semibold text-[#17666a]">From the bag: {item.quantity} × {item.included_label}</p>
                           ) : null}
                           {supplyChoiceFields(item)}

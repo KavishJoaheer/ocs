@@ -2396,6 +2396,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       requires_enema: serviceRequiresEnema(recipe),
       requires_cannula: serviceRequiresCannula(recipe),
       requires_syringe: serviceRequiresSyringe(recipe),
+      syringe_optional: recipe?.route === "im",
       requires_saline: serviceRequiresSaline(recipe),
       requires_catheter: serviceRequiresCatheter(recipe),
       requires_ngt: serviceRequiresNgt(recipe),
