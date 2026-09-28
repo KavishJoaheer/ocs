@@ -4803,6 +4803,7 @@ test("nearest usable expiry ignores quarantined lots and includes unpriced dated
 
 test("direct sale accepts a billable visit and rejects it after payment without another deduction", async () => {
   const { patientId, consultationId } = seedConsultationForBilling();
+  const consultationDate = db.prepare("SELECT consultation_date FROM consultations WHERE id = ?").get(consultationId).consultation_date;
   const stock = seedDoctorBillableItem({
     name: `Paid visit direct sale ${Date.now()}`,
     batches: [{ qty: 3, expiry: "2031-05-01" }],
@@ -4817,6 +4818,7 @@ test("direct sale accepts a billable visit and rejects it after payment without 
       reason: "Sale",
       patient_id: patientId,
       consultation_id: consultationId,
+      dispensed_on: consultationDate,
       expected_version: Number(before.row_version),
     },
   });
@@ -4836,6 +4838,7 @@ test("direct sale accepts a billable visit and rejects it after payment without 
       reason: "Sale",
       patient_id: patientId,
       consultation_id: consultationId,
+      dispensed_on: consultationDate,
       expected_version: Number(afterFirstSale.row_version),
     },
   });
@@ -4853,7 +4856,9 @@ test("direct sale date is bound to the consultation, cutover and open finance da
     batches: [{ qty: 3, expiry: "2031-06-01" }],
   });
   const version = () => Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(stock.itemId).row_version);
-  const wrongDate = offsetLocalDate(-1);
+  const wrongDate = new Date(Date.parse(`${consultationDate}T00:00:00.000Z`) - 86400000)
+    .toISOString()
+    .slice(0, 10);
   const mismatch = await api("POST", `/api/inventory/items/${stock.itemId}/actions`, {
     token: doctorToken,
     body: {

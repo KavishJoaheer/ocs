@@ -81,6 +81,14 @@
   .billing-mobile-action-space {
     padding-bottom: calc(var(--ocs-mobile-nav-clearance, 5.5rem) + 6rem);
   }
+
+  body.billing-focus-mode {
+    --ocs-mobile-nav-clearance: env(safe-area-inset-bottom, 0px);
+  }
+
+  body.billing-focus-mode #ocs-bottom-nav {
+    display: none;
+  }
 }
 
 @media (min-width: 768px) {

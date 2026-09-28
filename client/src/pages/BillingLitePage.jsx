@@ -178,6 +178,13 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
   return `${available} ${item.unit}${available === 1 ? "" : "s"} available`;
 }
 
+function isCatalogItemReady(item) {
+  if (item.is_service_charge) return true;
+  const available = Number(item.available_to_use || 0);
+  if (!item.cost_price_ready || available < 1) return false;
+  return item.cost_only || Number(item.selling_price || 0) > 0;
+}
+
 function BillingLitePage() {
   const { user } = useAuth();
   const operatorIssueOnly = user?.role === "operator";
@@ -198,7 +205,7 @@ function BillingLitePage() {
   const [salineSizeByItem, setSalineSizeByItem] = useState({});
   const [catheterSizeByItem, setCatheterSizeByItem] = useState({});
   const [ngtSizeByItem, setNgtSizeByItem] = useState({});
-  const [category, setCategory] = useState("All supplies");
+  const [category, setCategory] = useState("Available");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [lookup, setLookup] = useState("");
   const [lookupResults, setLookupResults] = useState([]);
@@ -232,6 +239,7 @@ function BillingLitePage() {
   const [consultationPrice, setConsultationPrice] = useState("2000");
   const [consultationAdjustmentReason, setConsultationAdjustmentReason] = useState("");
   const [supplyPriceEdits, setSupplyPriceEdits] = useState({});
+  const [priceAdjustmentsOpen, setPriceAdjustmentsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [isLookingUp, setIsLookingUp] = useState(false);
@@ -250,6 +258,12 @@ function BillingLitePage() {
   useEffect(() => {
     document.title = "Billing · OCS Médecins";
   }, []);
+
+  useEffect(() => {
+    const focused = view === "catalog" || view === "review";
+    document.body.classList.toggle("billing-focus-mode", focused);
+    return () => document.body.classList.remove("billing-focus-mode");
+  }, [view]);
 
   useEffect(() => {
     billingDoctorIdRef.current = billingDoctorId;
@@ -454,7 +468,7 @@ function BillingLitePage() {
 
   const categories = useMemo(() => {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
-    return ["Favourites", "All supplies", ...[...names].sort((a, b) => a.localeCompare(b))];
+    return ["Available", "Favourites", "All supplies", ...[...names].sort((a, b) => a.localeCompare(b))];
   }, [catalog]);
 
   const matchingCatalog = useMemo(() => {
@@ -462,6 +476,7 @@ function BillingLitePage() {
     return catalog.filter((item) => {
       const inCategory =
         category === "All supplies" ||
+        (category === "Available" && isCatalogItemReady(item)) ||
         (category === "Favourites" && favorites.has(item.id)) ||
         item.subcategory === category ||
         item.category === category;
@@ -477,10 +492,7 @@ function BillingLitePage() {
 
   const visibleCatalog = useMemo(() => {
     return [...matchingCatalog].sort((a, b) => {
-      const ready = (item) => item.is_service_charge
-        || (item.cost_price_ready && item.cost_only && Number(item.available_to_use || 0) > 0)
-        || (item.cost_price_ready && Number(item.available_to_use || 0) > 0 && Number(item.selling_price || 0) > 0);
-      return Number(ready(b)) - Number(ready(a)) || a.item_name.localeCompare(b.item_name);
+      return Number(isCatalogItemReady(b)) - Number(isCatalogItemReady(a)) || a.item_name.localeCompare(b.item_name);
     });
   }, [matchingCatalog]);
 
@@ -717,7 +729,8 @@ function BillingLitePage() {
       setCatheterSizeByItem(itemSelectionMap(clarificationItems, "catheter_size"));
       setNgtSizeByItem(itemSelectionMap(clarificationItems, "ngt_size"));
       setSelectedVisit(resolvedVisit);
-      setCategory("All supplies");
+      setCategory("Available");
+      setPriceAdjustmentsOpen(false);
       setView("catalog");
     } catch (error) {
       toast.error(error.message || "Supplies could not be loaded.");
@@ -745,6 +758,12 @@ function BillingLitePage() {
       toast.error("Select the consultation doctor first.");
       return;
     }
+    setPriceAdjustmentsOpen(
+      Math.abs(amount - configuredAmount) >= 0.005
+      || selectedItems.some((item) => !item.cost_only && (
+        Number(item.selling_price || 0) <= 0 || supplyPriceWasAdjusted(item)
+      )),
+    );
     setView("review");
   }
 
@@ -962,7 +981,7 @@ function BillingLitePage() {
       return;
     }
     if (operatorIssueOnly && !operatorDoctorConfirmation) {
-      toast.error('Select "Raise invoice by Doctor" before issuing.');
+      toast.error("Confirm that you’re issuing this invoice on behalf of the doctor.");
       return;
     }
     setIsSubmitting(true);
@@ -1109,6 +1128,7 @@ function BillingLitePage() {
       setCatheterSizeByItem(itemSelectionMap(queuedItems, "catheter_size"));
       setNgtSizeByItem(itemSelectionMap(queuedItems, "ngt_size"));
       setSupplyPriceEdits(nextSupplyPriceEdits);
+      setPriceAdjustmentsOpen(Object.keys(nextSupplyPriceEdits).length > 0 || Boolean(fee.adjustment_reason));
       setSelectedVisit(visit);
       setConsultationType(fee.type || visit.consultation_fee?.type || "Day Consultation");
       setConsultationPrice(String(fee.amount ?? visit.consultation_fee?.amount ?? 0));
@@ -1156,6 +1176,7 @@ function BillingLitePage() {
     setCatheterSizeByItem({});
     setNgtSizeByItem({});
     setSupplyPriceEdits({});
+    setPriceAdjustmentsOpen(false);
     setLookupResults([]);
     setCatalogSearch("");
     setLastSubmissionOffline(false);
@@ -1555,25 +1576,17 @@ function BillingLitePage() {
         {!isLoading && view === "catalog" && selectedVisit ? (
           <section className="billing-mobile-action-space">
             <div className="mb-5 flex items-center justify-between gap-3 text-white">
-              <button
-                type="button"
-                onClick={cancelBilling}
-                className="flex size-12 items-center justify-center rounded-2xl bg-white/10 transition active:scale-95"
-                aria-label="Cancel this bill"
-              >
-                <ArrowLeft className="size-6" />
-              </button>
-              <button
-                type="button"
-                onClick={cancelBilling}
-                className="min-h-12 rounded-2xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
-              >
-                Cancel
-              </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white/70">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
                 <h1 className="truncate text-2xl font-black">Charges</h1>
               </div>
+              <button
+                type="button"
+                onClick={cancelBilling}
+                className="min-h-11 rounded-xl bg-white/10 px-4 font-bold text-white transition active:scale-95"
+              >
+                Cancel
+              </button>
               <button
                 type="button"
                 onClick={reviewBilling}
@@ -1595,7 +1608,7 @@ function BillingLitePage() {
               </div>
             ) : null}
 
-            <div className="mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)]">
+            <div className="mb-4 rounded-2xl border border-white/70 bg-white p-3 shadow-[0_8px_24px_rgba(23,77,80,0.09)] sm:p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <label className="min-w-0 flex-1">
                   <span className="text-sm font-black text-slate-700">Consultation</span>
@@ -1614,7 +1627,7 @@ function BillingLitePage() {
                     ))}
                   </select>
                 </label>
-                <div className="rounded-xl bg-[#edf8f6] px-4 py-3 sm:min-w-40 sm:text-right">
+                <div className="rounded-xl bg-[#edf8f6] px-3 py-2.5 sm:min-w-40 sm:text-right">
                   <p className="text-xs font-black uppercase tracking-wide text-slate-500">Standard price</p>
                   <p className="mt-0.5 text-lg font-black text-[#17666a]">{formatRupees(consultationFees[consultationType] || 0)}</p>
                 </div>
@@ -1650,7 +1663,7 @@ function BillingLitePage() {
                       category === name ? "bg-[#17666a] text-white shadow-sm" : "bg-[#edf6f5] text-[#315e64]"
                     }`}
                   >
-                    {name === "Favourites" ? "★ Favourites" : name}
+                    {name === "Favourites" ? "★ Favourites" : name === "Available" ? "Available now" : name}
                   </button>
                 ))}
               </div>
@@ -1753,13 +1766,13 @@ function BillingLitePage() {
                   title={category === "Favourites" ? "No favourite supplies yet" : "No supplies found"}
                   description={
                     category === "Favourites"
-                      ? "Open All supplies and tap the star on frequently used items."
+                      ? "Open Available now and tap the star on frequently used items."
                       : "Try another category or search term."
                   }
                   action={
                     category === "Favourites" ? (
-                      <button type="button" onClick={() => setCategory("All supplies")} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
-                        Browse all supplies
+                      <button type="button" onClick={() => setCategory("Available")} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
+                        Browse available supplies
                       </button>
                     ) : null
                   }
@@ -1770,7 +1783,7 @@ function BillingLitePage() {
             <button
               type="button"
               onClick={reviewBilling}
-              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#f2b52b] px-6 text-[#173f47] shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98] md:hidden"
+              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-14 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-2xl bg-[#f2b52b] px-5 text-[#173f47] shadow-[0_12px_30px_rgba(23,63,71,0.22)] transition active:scale-[0.98] md:hidden"
             >
               <span className="text-left">
                 <span className="block text-sm font-bold">{selectedUnitCount ? `${selectedUnitCount} supply unit${selectedUnitCount === 1 ? "" : "s"}` : "Consultation only"}</span>
@@ -1800,11 +1813,20 @@ function BillingLitePage() {
               </button>
             </div>
             <div className="overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
-              <div className="bg-[#173f47] px-6 py-6 text-white">
-                <p className="text-sm font-bold text-white/65">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
-                <h1 className="mt-1 text-3xl font-black">Review billing</h1>
+              <div className="flex items-end justify-between gap-4 bg-[#173f47] px-5 py-5 text-white sm:px-6">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-white/65">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
+                  <h1 className="mt-1 text-2xl font-black sm:text-3xl">Review invoice</h1>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPriceAdjustmentsOpen((current) => !current)}
+                  className="min-h-10 shrink-0 rounded-xl bg-white/10 px-3 text-sm font-bold text-white transition hover:bg-white/15 active:scale-95"
+                >
+                  {priceAdjustmentsOpen ? "Done" : "Adjust prices"}
+                </button>
               </div>
-              <div className="p-6">
+              <div className="p-5 sm:p-6">
                 <div className="grid gap-4 border-b border-slate-200 pb-5 sm:grid-cols-[1fr_11rem]">
                   <div className="min-w-0">
                     <p className="text-lg font-black">{consultationType}</p>
@@ -1812,22 +1834,29 @@ function BillingLitePage() {
                       Standard tariff: {formatRupees(consultationFees[consultationType] || 0)}
                     </p>
                   </div>
-                  <label>
-                    <span className="text-xs font-black uppercase tracking-wide text-slate-500">Consultation price</span>
-                    <span className="relative mt-1 block">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min="0.01"
-                        max={MAX_CONSULTATION_FEE}
-                        step="0.01"
-                        value={consultationPrice}
-                        onChange={(event) => setConsultationPrice(event.target.value)}
-                        className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-right font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
-                      />
-                    </span>
-                  </label>
+                  {priceAdjustmentsOpen ? (
+                    <label>
+                      <span className="text-xs font-black uppercase tracking-wide text-slate-500">Consultation price</span>
+                      <span className="relative mt-1 block">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">Rs</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          max={MAX_CONSULTATION_FEE}
+                          step="0.01"
+                          value={consultationPrice}
+                          onChange={(event) => setConsultationPrice(event.target.value)}
+                          className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-right font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
+                        />
+                      </span>
+                    </label>
+                  ) : (
+                    <div className="rounded-xl bg-slate-50 px-4 py-3 text-right">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Consultation</p>
+                      <p className="mt-0.5 font-black text-[#173f47]">{formatRupees(consultationPrice)}</p>
+                    </div>
+                  )}
                   {Math.abs(Number(consultationPrice || 0) - Number(consultationFees[consultationType] || 0)) >= 0.005 ? (
                     <label className="sm:col-span-2">
                       <span className="text-sm font-black text-amber-900">Reason for consultation price adjustment <span aria-hidden="true">*</span></span>
@@ -1867,7 +1896,7 @@ function BillingLitePage() {
                           <div className="rounded-xl bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#17666a]">
                             Taken from the bag. The patient is not charged. The lot cost is kept as an expense.
                           </div>
-                        ) : (
+                        ) : priceAdjustmentsOpen || Number(item.selling_price || 0) <= 0 ? (
                           <>
                         <label>
                           <span className="text-xs font-black uppercase tracking-wide text-slate-500">Unit price</span>
@@ -1915,6 +1944,11 @@ function BillingLitePage() {
                           </label>
                         ) : null}
                           </>
+                        ) : (
+                          <div className="rounded-xl bg-slate-50 px-4 py-3 text-right">
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Line total</p>
+                            <p className="mt-0.5 font-black text-[#173f47]">{formatRupees(reviewedSupplyPrice(item) * item.quantity)}</p>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -1928,7 +1962,7 @@ function BillingLitePage() {
 
                 <div className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <label className="block">
-                    <span className="text-sm font-black text-slate-700">Manual invoice receipt reference</span>
+                    <span className="text-sm font-black text-slate-700">Receipt reference</span>
                     <input
                       value={sourceReference}
                       onChange={(event) => setSourceReference(event.target.value)}
@@ -1991,10 +2025,7 @@ function BillingLitePage() {
                         className="mt-1 size-4"
                       />
                       <span>
-                        Raise invoice by Doctor
-                        <span className="mt-1 block text-xs font-semibold text-slate-600">
-                          I confirm this invoice is being raised on behalf of {selectedVisit.doctor_name || "the selected consultation doctor"}.
-                        </span>
+                        I’m issuing this invoice on behalf of {selectedVisit.doctor_name || "the selected consultation doctor"}.
                       </span>
                     </label>
                   ) : null}
@@ -2025,7 +2056,7 @@ function BillingLitePage() {
               type="button"
               onClick={submitBilling}
               disabled={isSubmitting}
-              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-16 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-[1.4rem] bg-[#17666a] px-5 text-white shadow-[0_20px_50px_rgba(23,63,71,0.3)] transition active:scale-[0.98] disabled:opacity-60 md:hidden"
+              className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-14 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-2xl bg-[#17666a] px-5 text-white shadow-[0_12px_30px_rgba(23,63,71,0.22)] transition active:scale-[0.98] disabled:opacity-60 md:hidden"
               aria-label={`Issue invoice for ${formatRupees(grandTotal)}`}
             >
               <span className="text-left">
