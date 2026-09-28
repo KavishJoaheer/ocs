@@ -41,7 +41,6 @@ const {
   drugAdministrationByCategory,
   ensureTreatmentCatalogue,
   includedLabel,
-  isTreatmentSupplyName,
   resolveTreatmentComponents,
   resolveRecipeComponents,
   serviceRequiresCannula,
@@ -2315,7 +2314,6 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
 
   const decorated = decorateInventoryItems(rows);
   const items = decorated.flatMap((item) => {
-    if (isTreatmentSupplyName(item.item_name)) return [];
     const recipe = treatmentServiceByName(item.item_name)
       || drugAdministrationByCategory(item.folder_name, item.parent_folder_name);
     const isService = String(item.item_kind || "stock") === "service";

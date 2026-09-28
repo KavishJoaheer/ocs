@@ -183,7 +183,6 @@ function BillingLitePage() {
   const [ngtSizeByItem, setNgtSizeByItem] = useState({});
   const [category, setCategory] = useState("All supplies");
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [showUnavailable, setShowUnavailable] = useState(false);
   const [lookup, setLookup] = useState("");
   const [lookupResults, setLookupResults] = useState([]);
   const [patientOptions, setPatientOptions] = useState([]);
@@ -460,30 +459,17 @@ function BillingLitePage() {
   }, [catalog, catalogSearch, category, favorites]);
 
   const visibleCatalog = useMemo(() => {
-    return matchingCatalog
-      .filter((item) => showUnavailable || (
-        item.is_service_charge
-          ? true
-          : Number(item.available_to_use || 0) > 0 && item.cost_price_ready && Number(item.selling_price || 0) > 0
-      ))
-      .sort((a, b) => {
-        const bAvailable = b.is_service_charge
-          ? true
-          : Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0;
-        const aAvailable = a.is_service_charge
-          ? true
-          : Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0;
-        const availabilityDifference = Number(bAvailable) - Number(aAvailable);
-        return availabilityDifference || a.item_name.localeCompare(b.item_name);
-      });
-  }, [matchingCatalog, showUnavailable]);
-
-  const unavailableCount = useMemo(
-    () => matchingCatalog.filter((item) => item.is_service_charge
-      ? false
-      : Number(item.available_to_use || 0) < 1 || !item.cost_price_ready || Number(item.selling_price || 0) <= 0).length,
-    [matchingCatalog],
-  );
+    return [...matchingCatalog].sort((a, b) => {
+      const bAvailable = b.is_service_charge
+        ? true
+        : Number(b.available_to_use || 0) > 0 && b.cost_price_ready && Number(b.selling_price || 0) > 0;
+      const aAvailable = a.is_service_charge
+        ? true
+        : Number(a.available_to_use || 0) > 0 && a.cost_price_ready && Number(a.selling_price || 0) > 0;
+      const availabilityDifference = Number(bAvailable) - Number(aAvailable);
+      return availabilityDifference || a.item_name.localeCompare(b.item_name);
+    });
+  }, [matchingCatalog]);
 
   const selectedItems = useMemo(
     () =>
@@ -639,7 +625,6 @@ function BillingLitePage() {
     setCatheterSizeByItem({});
     setNgtSizeByItem({});
     setCatalogSearch("");
-    setShowUnavailable(false);
     await openCatalog(visit);
   }
 
@@ -713,8 +698,7 @@ function BillingLitePage() {
       setCatheterSizeByItem(itemSelectionMap(clarificationItems, "catheter_size"));
       setNgtSizeByItem(itemSelectionMap(clarificationItems, "ngt_size"));
       setSelectedVisit(resolvedVisit);
-      const hasSavedFavourite = items.some((item) => favorites.has(item.id));
-      setCategory(hasSavedFavourite ? "Favourites" : "All supplies");
+      setCategory("All supplies");
       setView("catalog");
     } catch (error) {
       toast.error(error.message || "Supplies could not be loaded.");
@@ -1632,20 +1616,8 @@ function BillingLitePage() {
                     className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-bold outline-none transition focus:border-[#2aa7a0] focus:bg-white"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-3 lg:shrink-0">
+                <div className="flex items-center justify-end gap-3 lg:shrink-0">
                   <span className="text-sm font-bold text-slate-500">{visibleCatalog.length} shown</span>
-                  {unavailableCount ? (
-                    <button
-                      type="button"
-                      aria-pressed={showUnavailable}
-                      onClick={() => setShowUnavailable((current) => !current)}
-                      className={`min-h-11 rounded-xl px-4 text-sm font-black transition ${
-                        showUnavailable ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {showUnavailable ? "Hide out of stock" : `Show out of stock (${unavailableCount})`}
-                    </button>
-                  ) : null}
                 </div>
               </div>
               <div className="ocs-h-scroll mt-3 border-t border-slate-100 pt-3">
@@ -1751,22 +1723,16 @@ function BillingLitePage() {
               <div className="mt-5">
                 <EmptyState
                   icon={PackageOpen}
-                  title={category === "Favourites" ? "No favourite supplies yet" : showUnavailable ? "No supplies found" : "No available supplies found"}
+                  title={category === "Favourites" ? "No favourite supplies yet" : "No supplies found"}
                   description={
                     category === "Favourites"
                       ? "Open All supplies and tap the star on frequently used items."
-                      : showUnavailable
-                        ? "Try another category or search term."
-                        : "Try another category, change your search, or show out-of-stock supplies."
+                      : "Try another category or search term."
                   }
                   action={
                     category === "Favourites" ? (
                       <button type="button" onClick={() => setCategory("All supplies")} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
                         Browse all supplies
-                      </button>
-                    ) : !showUnavailable && unavailableCount ? (
-                      <button type="button" onClick={() => setShowUnavailable(true)} className="rounded-2xl bg-[#17666a] px-6 py-3 font-black text-white">
-                        Show out-of-stock supplies
                       </button>
                     ) : null
                   }

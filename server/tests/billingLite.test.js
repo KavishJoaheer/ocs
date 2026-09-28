@@ -1037,9 +1037,25 @@ test("a billed nebulizer takes the chosen mask and nebule from the bag without c
   assert.equal(administration.selling_price, 500);
   assert.equal(administration.requires_mask, false);
   assert.ok(ear);
+  assert.ok(catalog.data.items.some((item) => item.item_name === "Dulopro nebule"));
+  const hiddenName = `Unpriced bag item ${Date.now()}`;
+  const consumableId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+  db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, 'doctor', ?, 0, 0, 'unit', 0, 0)
+  `).run(hiddenName, consumableId, doctorId);
+  const fullCatalog = await api("GET", `/billing/quick/catalog/${catalogConsultationId}`);
+  assert.equal(fullCatalog.status, 200, JSON.stringify(fullCatalog.data));
+  const unpriced = fullCatalog.data.items.find((item) => item.item_name === hiddenName);
+  assert.ok(unpriced);
+  assert.equal(unpriced.is_service_charge, false);
+  assert.equal(Number(unpriced.available_to_use), 0);
+  assert.equal(Number(unpriced.selling_price), 0);
   assert.equal(ear.selling_price, 800);
   assert.equal(ear.category, "Services");
-  assert.equal(catalog.data.items.some((item) => item.item_name === "Adult Face Mask"), false);
+  assert.equal(catalog.data.items.some((item) => item.item_name === "Adult Face Mask"), true);
   assert.ok(extraOxygen);
   assert.equal(extraOxygen.requires_mask, false);
 
