@@ -516,7 +516,7 @@ function BillingLitePage() {
         return `Choose a syringe for ${item.item_name}.`;
       }
       if (item.requires_saline && !["100", "500"].includes(salineSizeByItem[item.id])) {
-        return `Choose N/S 100ml or N/S 500ml for ${item.item_name}.`;
+        return `Choose IV N/S 100ml or IV N/S 500ml for ${item.item_name}.`;
       }
       if (item.requires_catheter && !["14", "16", "18", "20", "22"].includes(catheterSizeByItem[item.id])) {
         return `Choose a Foley catheter for ${item.item_name}.`;
@@ -817,8 +817,8 @@ function BillingLitePage() {
               className={selectClass}
             >
               <option value="">Choose N/S</option>
-              <option value="100">N/S 100ml</option>
-              <option value="500">N/S 500ml</option>
+              <option value="100">IV N/S 100ml</option>
+              <option value="500">IV N/S 500ml</option>
             </select>
           </label>
         ) : null}

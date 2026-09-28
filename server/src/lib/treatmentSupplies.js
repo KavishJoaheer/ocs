@@ -38,8 +38,8 @@ const SYRINGES = Object.freeze({
 });
 
 const SALINES = Object.freeze({
-  "100": "N/S 100ml",
-  "500": "N/S 500ml",
+  "100": "IV N/S 100ml",
+  "500": "IV N/S 500ml",
 });
 
 const CATHETERS = Object.freeze({
@@ -393,7 +393,7 @@ function resolveRecipeComponents(service, {
   }
   const saline = String(salineSize || "").trim();
   if (serviceRequiresSaline(service) && !SALINES[saline]) {
-    const error = new Error(`Choose N/S 100ml or N/S 500ml for ${service.itemName}.`);
+    const error = new Error(`Choose IV N/S 100ml or IV N/S 500ml for ${service.itemName}.`);
     error.status = 400;
     error.extra = { code: "TREATMENT_SALINE_REQUIRED", service_name: service.itemName };
     throw error;

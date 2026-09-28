@@ -45,7 +45,21 @@ function applyKnownCostToUnpricedDoctorBags(itemName, costPrice) {
 function renameDoctorBagCatalogue(oldName, newName) {
   const from = String(oldName || "").trim();
   const to = String(newName || "").trim();
-  if (!from || !to || from.toLowerCase() === to.toLowerCase()) return [];
+  if (!from || !to) return [];
+  if (from.toLowerCase() === to.toLowerCase()) {
+    if (from === to) return [];
+    return db.prepare(`
+      UPDATE inventory
+      SET item_name = ?,
+          row_version = COALESCE(row_version, 1) + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE stock_scope = 'doctor'
+        AND owner_doctor_id IS NOT NULL
+        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+        AND item_name != ?
+      RETURNING id
+    `).all(to, from, to).map((row) => Number(row.id));
+  }
 
   const rows = db.prepare(`
     SELECT id, owner_doctor_id, quantity, cost_price, selling_price,

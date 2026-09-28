@@ -1303,9 +1303,18 @@ test("enema and staple-removal services deduct the chosen bag supply", async () 
 test("services and standalone IM drugs consume their uncharged supplies while IV drugs do not", async () => {
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
-  const consumableId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
-  const imFolderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'IM Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id);
-  const ivFolderId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'IV Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id);
+  const folderId = (name) => {
+    const existing = db.prepare(
+      "SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1",
+    ).get(name);
+    if (existing) return Number(existing.id);
+    return Number(db.prepare(
+      "INSERT INTO inventory_folders (name, parent_id, owner_doctor_id, updated_at) VALUES (?, NULL, NULL, CURRENT_TIMESTAMP)",
+    ).run(name).lastInsertRowid);
+  };
+  const consumableId = folderId("Consumable");
+  const imFolderId = folderId("IM Drugs");
+  const ivFolderId = folderId("IV Drugs");
 
   function stock(name, folderId, quantity, sellingPrice, unitCost) {
     let row = db.prepare(`
@@ -1343,7 +1352,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
     cannulaBlue: stock("Cannula (Blue)", consumableId, 5, 0, 7),
     cannulaPink: stock("Cannula (Pink)", consumableId, 5, 0, 9),
     intrafix: stock("Intrafix (Drip Set / Infusion set)", consumableId, 5, 0, 11),
-    saline500: stock("N/S 500ml", ivFolderId, 5, 0, 30),
+    saline500: stock("IV N/S 500ml", ivFolderId, 5, 0, 30),
   };
   const imDrugId = stock("IM administration test drug", imFolderId, 5, 100, 20);
   const ivDrugId = stock("IV administration test drug", ivFolderId, 5, 200, 40);
@@ -1410,7 +1419,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   assert.equal(lines.some((line) => line.description === "IV administration test drug"), true);
   const componentNames = [
     "Syringe (3ml)", "Syringe (5ml)", "Syringe (10ml)", "Irrigation Syringe (50ml)",
-    "Cannula (Blue)", "Cannula (Pink)", "Intrafix (Drip Set / Infusion set)", "N/S 500ml",
+    "Cannula (Blue)", "Cannula (Pink)", "Intrafix (Drip Set / Infusion set)", "IV N/S 500ml",
   ];
   assert.equal(lines.some((line) => componentNames.includes(line.description)), false);
   assert.deepEqual(
@@ -1509,7 +1518,7 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   addBagItem("2 Way Foley Catheter (Ch/Fr 18)", 2);
   addBagItem("NGT (14fg x105cm)", 3);
   addBagItem("Syringe (20ml)", 4);
-  addBagItem("N/S 100ml", 4);
+  addBagItem("IV N/S 100ml", 4);
   db.prepare("UPDATE inventory SET selling_price = 1200 WHERE id = ?").run(catheterisation.id);
   db.prepare("UPDATE inventory SET selling_price = 900 WHERE id = ?").run(ngt.id);
 
@@ -1550,7 +1559,7 @@ test("bladder procedures move to services and catheterisation or NGT takes the c
   assert.equal(bagQuantity("2 Way Foley Catheter (Ch/Fr 18)"), 2);
   assert.equal(bagQuantity("NGT (14fg x105cm)"), 2);
   assert.equal(bagQuantity("Syringe (20ml)"), 3);
-  assert.equal(bagQuantity("N/S 100ml"), 3);
+  assert.equal(bagQuantity("IV N/S 100ml"), 3);
 });
 
 test("billing requires medicine cost and keeps syringes, cannulas, and intrafix cost only", async () => {

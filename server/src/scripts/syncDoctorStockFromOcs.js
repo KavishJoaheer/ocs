@@ -5,6 +5,13 @@
  */
 
 const { db, initializeDatabase } = require("../db");
+const { renameDoctorBagCatalogue } = require("../lib/doctorBagCatalogueSync");
+
+const LEGACY_BAG_NAMES = [
+  ["Syringe 5ml", "Syringe (5ml)"],
+  ["N/S 100ml", "IV N/S 100ml"],
+  ["N/S 500ml", "IV N/S 500ml"],
+];
 
 function getOcsMasterItems() {
   return db
@@ -94,6 +101,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   const alignExisting = db.prepare(`
     UPDATE inventory
     SET
+      item_name = ?,
       item_kind = ?,
       folder_id = ?,
       minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE ? END,
@@ -114,7 +122,13 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
 
   if (existing) {
     if (insertOnly) return "skipped";
+    const currentName = db.prepare("SELECT item_name FROM inventory WHERE id = ?").get(existing.id)?.item_name;
+    if (String(currentName || "").trim() !== itemName) {
+      renameDoctorBagCatalogue(currentName, itemName);
+    }
+    const target = findDoctorItem(doctorId, source) || existing;
     alignExisting.run(
+      itemName,
       itemKind,
       source.folder_id,
       itemKind,
@@ -128,7 +142,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       Number(source.is_cost_only || 0) === 1 ? 1 : 0,
       source.attributes || "",
       source.moa_notes || "",
-      existing.id,
+      target.id,
     );
     return "updated";
   }
@@ -136,6 +150,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   const archived = findArchivedDoctorItem(doctorId, source);
   if (archived) {
     alignExisting.run(
+      itemName,
       itemKind,
       source.folder_id,
       itemKind,
@@ -252,6 +267,11 @@ function syncDoctorStockFromOcsSync({ skipInit = false, pruneExtras = true, inse
   };
 
   const run = db.transaction(() => {
+    for (const [from, to] of LEGACY_BAG_NAMES) {
+      if (ocsNameKeys.has(String(to).trim().toLowerCase())) {
+        renameDoctorBagCatalogue(from, to);
+      }
+    }
     doctors.forEach((doctor) => {
       ocsItems.forEach((source) => {
         const action = upsertDoctorItemFromOcs(Number(doctor.id), source, { insertOnly });
