@@ -49,21 +49,21 @@ const STATUS_META = {
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 
-const FOLDER_LABEL_COLOR = {
-  "services": "text-teal-700",
-  "pediatric drugs": "text-violet-700",
-  "wound dressing": "text-rose-700",
-  "consumable": "text-lime-800",
-  "im drugs": "text-orange-700",
-  "catherisation & ngt": "text-indigo-700",
-  "iv drugs": "text-blue-700",
-  "o2 & nebuliser": "text-cyan-700",
-  "investigation": "text-fuchsia-700",
-  "oral drugs": "text-emerald-700",
+const FOLDER_CARD_TONE = {
+  "services": { label: "text-teal-700", wash: "bg-teal-50" },
+  "pediatric drugs": { label: "text-violet-700", wash: "bg-violet-50" },
+  "wound dressing": { label: "text-rose-700", wash: "bg-rose-50" },
+  "consumable": { label: "text-lime-800", wash: "bg-lime-50" },
+  "im drugs": { label: "text-orange-700", wash: "bg-orange-50" },
+  "catherisation & ngt": { label: "text-indigo-700", wash: "bg-indigo-50" },
+  "iv drugs": { label: "text-blue-700", wash: "bg-blue-50" },
+  "o2 & nebuliser": { label: "text-cyan-700", wash: "bg-cyan-50" },
+  "investigation": { label: "text-fuchsia-700", wash: "bg-fuchsia-50" },
+  "oral drugs": { label: "text-emerald-700", wash: "bg-emerald-50" },
 };
 
-function folderLabelClass(name) {
-  return FOLDER_LABEL_COLOR[String(name || "").trim().toLowerCase()] || "text-slate-500";
+function folderTone(name) {
+  return FOLDER_CARD_TONE[String(name || "").trim().toLowerCase()] || { label: "text-slate-500", wash: "bg-white" };
 }
 
 const MAX_CONSULTATION_FEE = 4500;
@@ -1665,12 +1665,13 @@ function BillingLitePage() {
                   const costMissing = !item.is_service_charge && !item.cost_price_ready;
                   const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing || costMissing;
                   const isFavorite = favorites.has(item.id);
+                  const tone = folderTone(item.subcategory || item.category);
                   return (
                     <article
                       key={item.id}
                       className={`relative flex min-h-44 flex-col rounded-2xl border p-4 transition ${
                         quantity > 0 ? "border-[#2aa7a0] ring-2 ring-[#2aa7a0]/20" : "border-slate-200/80"
-                      } ${isUnavailable ? "bg-slate-50" : "bg-white shadow-[0_8px_24px_rgba(23,77,80,0.07)]"}`}
+                      } ${isUnavailable ? "bg-slate-50" : `${tone.wash} shadow-[0_8px_24px_rgba(23,77,80,0.07)]`}`}
                     >
                       <button
                         type="button"
@@ -1684,7 +1685,7 @@ function BillingLitePage() {
                       </button>
                       <div className="pr-10">
                         <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]">{item.item_name}</p>
-                        <p className={`mt-1 line-clamp-1 text-sm font-medium ${folderLabelClass(item.subcategory || item.category)}`}>{item.subcategory || item.category}</p>
+                        <p className={`mt-1 line-clamp-1 text-sm font-medium ${tone.label}`}>{item.subcategory || item.category}</p>
                       </div>
                       <div className="mt-auto pt-5">
                       <div className="flex items-end justify-between gap-3">
