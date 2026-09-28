@@ -1495,7 +1495,7 @@ test("treatment templates charge medicines, silently consume configured supplies
   assert.equal(afterReversalReported.metrics.total_stock_cost_amount, 0);
 });
 
-test("services and standalone IM or IV drugs consume their uncharged administration supplies", async () => {
+test("services and standalone IM drugs consume their uncharged supplies while IV drugs do not", async () => {
   const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
   const today = getTodayLocal();
   const consumableId = Number(db.prepare("SELECT id FROM inventory_folders WHERE name = 'Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id);
@@ -1566,11 +1566,11 @@ test("services and standalone IM or IV drugs consume their uncharged administrat
   );
   assert.deepEqual(
     [imDrug.requires_syringe, imDrug.requires_cannula, ivDrug.requires_syringe, ivDrug.requires_cannula],
-    [true, false, true, true],
+    [true, false, false, false],
   );
   assert.equal(abdominal.included_label, "1 syringe, 1 cannula, and 1 Intrafix (Drip Set / Infusion set)");
   assert.equal(imDrug.included_label, "1 syringe");
-  assert.equal(ivDrug.included_label, "1 syringe, 1 cannula, and 1 Intrafix (Drip Set / Infusion set)");
+  assert.equal(ivDrug.included_label, "");
   const missing = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
     ...quickIssueFields("ADMIN-SUPPLIES-MISSING"),
@@ -1594,7 +1594,7 @@ test("services and standalone IM or IV drugs consume their uncharged administrat
         saline_size: "500",
       },
       { inventory_item_id: imDrugId, quantity: 1, unit_price: 100, syringe_size: "3" },
-      { inventory_item_id: ivDrugId, quantity: 1, unit_price: 200, syringe_size: "10", cannula_size: "pink" },
+      { inventory_item_id: ivDrugId, quantity: 1, unit_price: 200 },
     ],
   });
   assert.equal(billed.status, 201, JSON.stringify(billed.data));
@@ -1613,11 +1613,11 @@ test("services and standalone IM or IV drugs consume their uncharged administrat
     {
       syringe3: 4,
       syringe5: 4,
-      syringe10: 4,
+      syringe10: 5,
       syringe50: 4,
       cannulaBlue: 4,
-      cannulaPink: 4,
-      intrafix: 3,
+      cannulaPink: 5,
+      intrafix: 4,
       saline500: 4,
     },
   );
@@ -1627,7 +1627,7 @@ test("services and standalone IM or IV drugs consume their uncharged administrat
     WHERE CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
       AND CAST(json_extract(meta_json, '$.billed_quantity') AS INTEGER) = 0
   `).all(billed.data.submission.bill_id);
-  assert.equal(includedMovements.length, 9);
+  assert.equal(includedMovements.length, 6);
   assert.equal(includedMovements.every((movement) => JSON.parse(movement.meta_json).treatment_component === true), true);
 });
 

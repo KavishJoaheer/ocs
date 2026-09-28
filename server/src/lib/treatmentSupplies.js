@@ -197,11 +197,7 @@ const DRUG_ADMINISTRATION = Object.freeze({
   iv: Object.freeze({
     itemName: "IV drug administration",
     route: "iv",
-    components: Object.freeze([
-      { role: "syringe", quantity: 1 },
-      { role: "cannula", quantity: 1 },
-      { itemName: "Intrafix (Drip Set / Infusion set)", quantity: 1 },
-    ]),
+    components: Object.freeze([]),
   }),
 });
 
