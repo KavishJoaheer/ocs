@@ -1,4 +1,5 @@
 import PendingInventorySync from "../components/inventory/PendingInventorySync.jsx";
+import FolderCategoryMenu from "../components/inventory/FolderCategoryMenu.jsx";
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -5070,27 +5071,18 @@ export default function InventoryPage() {
             </label>
           </div>
           <div className={cx("flex items-center gap-2", stickyInventoryActions ? "lg:hidden" : "md:hidden")}>
-            <label className="min-w-0 flex-1">
-              <span className="sr-only">Stock category</span>
-              <select
-                aria-label="Stock category"
-                value={selectedView || "all"}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSelectedView(value);
-                  const folder = categoryFolders.find((entry) => String(entry.id) === value);
-                  setActiveCategory(folder?.name || "All");
-                }}
-                className="min-h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
-              >
-                <option value="all">All categories ({items.length})</option>
-                {categoryFolders.map((folder) => (
-                  <option key={`mobile-category-${folder.id}`} value={String(folder.id)}>
-                    {folder.name} ({folderCounts.get(String(folder.id)) || 0})
-                  </option>
-                ))}
-              </select>
-            </label>
+            <FolderCategoryMenu
+              variant="field"
+              ariaLabel="Stock category"
+              value={selectedView || "all"}
+              folders={categoryFolders}
+              counts={folderCounts}
+              totalCount={items.length}
+              onChange={(value, folder) => {
+                setSelectedView(value);
+                setActiveCategory(folder?.name || "All");
+              }}
+            />
             <button
               type="button"
               aria-expanded={stockFiltersOpen}
@@ -5102,27 +5094,20 @@ export default function InventoryPage() {
             </button>
           </div>
           <div className={cx("flex-wrap items-center gap-2", stockFiltersOpen ? "flex" : stickyInventoryActions ? "hidden lg:flex" : "hidden md:flex")}>
-            <label className={cx("hidden min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3", stickyInventoryActions ? "lg:flex" : "md:flex")}>
+            <div className={cx("hidden min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3", stickyInventoryActions ? "lg:flex" : "md:flex")}>
               <span className="text-xs font-semibold text-slate-500">Category</span>
-              <select
-                aria-label="Stock category"
+              <FolderCategoryMenu
+                ariaLabel="Stock category"
                 value={selectedView || "all"}
-                onChange={(event) => {
-                  const value = event.target.value;
+                folders={categoryFolders}
+                counts={folderCounts}
+                totalCount={items.length}
+                onChange={(value, folder) => {
                   setSelectedView(value);
-                  const folder = categoryFolders.find((entry) => String(entry.id) === value);
                   setActiveCategory(folder?.name || "All");
                 }}
-                className="max-w-48 bg-transparent text-xs font-semibold text-slate-700 outline-none"
-              >
-                <option value="all">All ({items.length})</option>
-                {categoryFolders.map((folder) => (
-                  <option key={`desktop-category-${folder.id}`} value={String(folder.id)}>
-                    {folder.name} ({folderCounts.get(String(folder.id)) || 0})
-                  </option>
-                ))}
-              </select>
-            </label>
+              />
+            </div>
             {!canManageOcs ? <button
               type="button"
               onClick={() => applyChaseFilter("low")}

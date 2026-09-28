@@ -35,6 +35,7 @@ import {
   OFFLINE_SAVED_TOAST,
   queueQuickBillingMutation,
 } from "../lib/inventoryOfflineSync.js";
+import { folderTone } from "../lib/folderTones.js";
 
 const STATUS_META = {
   ready: { label: "Ready to bill", className: "bg-amber-50 text-amber-800 ring-amber-200" },
@@ -48,23 +49,6 @@ const STATUS_META = {
   corrected: { label: "Paid correction", className: "bg-slate-100 text-slate-700 ring-slate-300" },
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
-
-const FOLDER_CARD_TONE = {
-  "services": { label: "text-teal-700", wash: "bg-teal-50" },
-  "pediatric drugs": { label: "text-violet-700", wash: "bg-violet-50" },
-  "wound dressing": { label: "text-rose-700", wash: "bg-rose-50" },
-  "consumable": { label: "text-lime-800", wash: "bg-lime-50" },
-  "im drugs": { label: "text-orange-700", wash: "bg-orange-50" },
-  "catherisation & ngt": { label: "text-indigo-700", wash: "bg-indigo-50" },
-  "iv drugs": { label: "text-blue-700", wash: "bg-blue-50" },
-  "o2 & nebuliser": { label: "text-cyan-700", wash: "bg-cyan-50" },
-  "investigation": { label: "text-fuchsia-700", wash: "bg-fuchsia-50" },
-  "oral drugs": { label: "text-emerald-700", wash: "bg-emerald-50" },
-};
-
-function folderTone(name) {
-  return FOLDER_CARD_TONE[String(name || "").trim().toLowerCase()] || { label: "text-slate-500", wash: "bg-white" };
-}
 
 const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
