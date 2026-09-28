@@ -257,9 +257,9 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
 
 function HighlightStat({ icon: Icon, label, value, compact = false }) {
   const tone = label.toLowerCase().includes("lab")
-    ? "violet"
+    ? "aqua"
     : label.toLowerCase().includes("appointment")
-      ? "coral"
+      ? "gold"
       : "teal";
 
   if (compact) {
