@@ -162,6 +162,22 @@ function EmptyState({ icon: Icon = CalendarDays, title, description, action }) {
   );
 }
 
+function catalogStockLabel(item, { available, costMissing, priceMissing, unavailable, syringeSize }) {
+  if (costMissing) return "Cost price required";
+  if (item.cost_only) {
+    return available < 1
+      ? "Out of stock"
+      : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`;
+  }
+  if (item.syringe_optional && syringeSize === "0") return "No syringe deducted";
+  if (item.included_label) return `Deducts from bag: ${item.included_label}`;
+  if (item.is_service_charge && Number(item.selling_price || 0) <= 0) return "Price and reason required";
+  if (priceMissing) return "Pricing required";
+  if (item.is_service_charge) return "Service · no stock deducted";
+  if (unavailable) return "Out of stock";
+  return `${available} ${item.unit}${available === 1 ? "" : "s"} available`;
+}
+
 function BillingLitePage() {
   const { user } = useAuth();
   const operatorIssueOnly = user?.role === "operator";
@@ -1181,7 +1197,7 @@ function BillingLitePage() {
     <div className="relative min-h-[70svh] rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
       <div className="absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
 
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-10 pt-5">
+      <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-10 pt-5">
         {isLoading ? (
           <div className="flex min-h-[55svh] items-center justify-center">
             <LoaderCircle className="size-10 animate-spin text-white" aria-label="Loading quick billing" />
@@ -1641,7 +1657,7 @@ function BillingLitePage() {
             </div>
 
             {visibleCatalog.length ? (
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
@@ -1650,50 +1666,49 @@ function BillingLitePage() {
                   const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing || costMissing;
                   const isFavorite = favorites.has(item.id);
                   const tone = folderTone(item.subcategory || item.category);
+                  const stockLabel = catalogStockLabel(item, {
+                    available,
+                    costMissing,
+                    priceMissing,
+                    unavailable: isUnavailable,
+                    syringeSize: syringeSizeByItem[item.id],
+                  });
                   return (
                     <article
                       key={item.id}
-                      className={`relative flex min-h-44 flex-col rounded-2xl border border-l-4 p-4 transition ${
-                        quantity > 0 ? "border-[#2aa7a0] ring-2 ring-[#2aa7a0]/20" : "border-slate-200/80"
-                      } ${isUnavailable ? "border-l-slate-300 bg-slate-50" : "shadow-[0_8px_24px_rgba(23,77,80,0.07)]"}`}
-                      style={isUnavailable ? undefined : { backgroundColor: tone.washHex, borderLeftColor: tone.hex }}
+                      className={`relative flex min-h-52 flex-col rounded-2xl border border-l-4 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,77,80,0.1)] ${
+                        quantity > 0 ? "border-[#2aa7a0] bg-teal-50/40 ring-2 ring-[#2aa7a0]/20" : "border-slate-200"
+                      } ${isUnavailable ? "border-l-slate-300 bg-slate-50" : "shadow-[0_6px_20px_rgba(23,77,80,0.06)]"}`}
+                      style={isUnavailable ? undefined : { borderLeftColor: tone.hex }}
                     >
                       <button
                         type="button"
                         onClick={() => toggleFavorite(item.id)}
-                        className={`absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl transition active:scale-90 ${
-                          isFavorite ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-400"
+                        className={`absolute right-3 top-3 flex size-9 items-center justify-center rounded-xl border transition active:scale-90 ${
+                          isFavorite ? "border-amber-200 bg-amber-50 text-amber-600" : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
                         }`}
                         aria-label={isFavorite ? `Remove ${item.item_name} from favourites` : `Add ${item.item_name} to favourites`}
                       >
                         <Star className={`size-5 ${isFavorite ? "fill-current" : ""}`} />
                       </button>
                       <div className="pr-10">
-                        <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]">{item.item_name}</p>
-                        <p className={`mt-1 line-clamp-1 text-sm font-medium ${tone.label}`}>{item.subcategory || item.category}</p>
+                        <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]" title={item.item_name}>{item.item_name}</p>
+                        <p
+                          className="mt-2 inline-flex max-w-full rounded-full border px-2.5 py-1 text-xs font-semibold"
+                          style={{ color: tone.hex, backgroundColor: `${tone.hex}0d`, borderColor: `${tone.hex}26` }}
+                        >
+                          <span className="truncate">{item.subcategory || item.category}</span>
+                        </p>
                       </div>
                       <div className="mt-auto pt-5">
-                      <div className="flex items-end justify-between gap-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                         <div className="min-w-0">
                           <p className={`text-lg font-semibold ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
-                          <p className={`mt-1 text-sm font-medium ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
-                            {costMissing
-                              ? "Cost price required"
-                              : item.cost_only
-                              ? (available < 1 ? "Out of stock" : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`)
-                              : item.syringe_optional && syringeSizeByItem[item.id] === "0"
-                              ? "No syringe is taken from the bag"
-                              : item.included_label
-                              ? `From the bag: ${item.included_label}`
-                              : item.is_service_charge && Number(item.selling_price || 0) <= 0
-                                ? "Price and reason required"
-                                : priceMissing
-                                  ? "Pricing required"
-                                  : item.is_service_charge
-                                    ? "Non-stock service"
-                                    : isUnavailable
-                                      ? "Out of stock"
-                                      : `${available} ${item.unit}${available === 1 ? "" : "s"}`}
+                          <p
+                            className={`mt-1 line-clamp-2 text-sm font-medium leading-5 ${isUnavailable ? "text-rose-600" : "text-slate-600"}`}
+                            title={stockLabel}
+                          >
+                            {stockLabel}
                           </p>
                         </div>
                         {quantity > 0 ? (

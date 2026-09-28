@@ -239,6 +239,21 @@ textarea {
   display: none;
 }
 
+.category-menu-scrollbar {
+  scrollbar-color: rgb(148 163 184 / 0.65) transparent;
+  scrollbar-width: thin;
+}
+
+.category-menu-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+
+.category-menu-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid white;
+  border-radius: 999px;
+  background: rgb(148 163 184 / 0.7);
+}
+
 /* Form controls that must not bleed past their column on mobile */
 .ocs-form-control {
   box-sizing: border-box;

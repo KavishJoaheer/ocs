@@ -28,9 +28,8 @@ export default function FolderCategoryMenu({
   const panelRef = useRef(null);
   const selected = folders.find((folder) => String(folder.id) === String(value)) || null;
   const tone = selected ? folderTone(selected.name) : null;
-  const label = selected
-    ? `${selected.name} (${counts?.get(String(selected.id)) || 0})`
-    : `All (${totalCount})`;
+  const selectedCount = selected ? counts?.get(String(selected.id)) || 0 : totalCount;
+  const label = selected?.name || "All";
 
   useEffect(() => {
     if (!open) return undefined;
@@ -65,8 +64,8 @@ export default function FolderCategoryMenu({
   }
 
   const buttonClass = variant === "field"
-    ? "flex min-h-11 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-left text-sm font-semibold"
-    : "flex max-w-52 items-center gap-1 bg-transparent text-left text-xs font-semibold outline-none";
+    ? "flex min-h-11 w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-700 transition hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17666a]/30"
+    : "flex max-w-52 items-center gap-1.5 rounded-lg bg-transparent px-1.5 py-1 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#17666a]/30";
 
   const panel = open && position && typeof document !== "undefined"
     ? createPortal(
@@ -74,7 +73,7 @@ export default function FolderCategoryMenu({
         ref={panelRef}
         role="listbox"
         aria-label={ariaLabel}
-        className="fixed z-[100] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+        className="category-menu-scrollbar fixed z-[100] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
         style={{ top: position.top, left: position.left, width: position.width, maxHeight: position.maxHeight }}
       >
         <button
@@ -82,10 +81,13 @@ export default function FolderCategoryMenu({
           role="option"
           aria-selected={!selected}
           onClick={() => choose("all")}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+            !selected ? "bg-teal-50 text-[#174f53]" : "text-slate-700 hover:bg-slate-50"
+          }`}
         >
-          {!selected ? <Check className="size-4 shrink-0" /> : <span className="size-4 shrink-0" />}
-          <span>All ({totalCount})</span>
+          {!selected ? <Check className="size-4 shrink-0 text-[#17666a]" /> : <span className="size-4 shrink-0" />}
+          <span className="min-w-0 flex-1">All categories</span>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600">{totalCount}</span>
         </button>
         {folders.map((folder) => {
           const rowTone = folderTone(folder.name);
@@ -97,12 +99,20 @@ export default function FolderCategoryMenu({
               role="option"
               aria-selected={active}
               onClick={() => choose(String(folder.id), folder)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-slate-50"
-              style={{ color: rowTone.hex, backgroundColor: active ? rowTone.washHex : undefined }}
+              className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                active ? "bg-teal-50 text-[#174f53]" : "text-slate-700 hover:bg-slate-50"
+              }`}
             >
-              {active ? <Check className="size-4 shrink-0" /> : <span className="size-4 shrink-0" />}
+              {active ? <Check className="size-4 shrink-0 text-[#17666a]" /> : <span className="size-4 shrink-0" />}
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: rowTone.hex }}
+                aria-hidden="true"
+              />
               <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-              <span className="shrink-0 tabular-nums text-slate-400">({counts?.get(String(folder.id)) || 0})</span>
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-600">
+                {counts?.get(String(folder.id)) || 0}
+              </span>
             </button>
           );
         })}
@@ -121,9 +131,18 @@ export default function FolderCategoryMenu({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
         className={buttonClass}
-        style={{ color: tone?.hex || "#334155" }}
       >
-        <span className="truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {tone ? (
+            <span
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: tone.hex }}
+              aria-hidden="true"
+            />
+          ) : null}
+          <span className="truncate">{label}</span>
+          <span className="shrink-0 text-slate-500 tabular-nums">({selectedCount})</span>
+        </span>
         <ChevronDown className="size-3.5 shrink-0 text-slate-400" />
       </button>
       {panel}
