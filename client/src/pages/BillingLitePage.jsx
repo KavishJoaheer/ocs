@@ -1666,14 +1666,14 @@ function BillingLitePage() {
                         <Star className={`size-5 ${isFavorite ? "fill-current" : ""}`} />
                       </button>
                       <div className="pr-10">
-                        <p className="line-clamp-2 text-base font-black leading-6 text-[#173f47]">{item.item_name}</p>
-                        <p className="mt-1 line-clamp-1 text-sm font-semibold text-slate-400">{item.subcategory || item.category}</p>
+                        <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]">{item.item_name}</p>
+                        <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-400">{item.subcategory || item.category}</p>
                       </div>
                       <div className="mt-auto pt-5">
                       <div className="flex items-end justify-between gap-3">
                         <div className="min-w-0">
-                          <p className={`text-lg font-black ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
-                          <p className={`mt-1 text-sm font-bold ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
+                          <p className={`text-lg font-semibold ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
+                          <p className={`mt-1 text-sm font-medium ${isUnavailable ? "text-rose-600" : "text-slate-500"}`}>
                             {costMissing
                               ? "Cost price required"
                               : item.cost_only
@@ -1703,7 +1703,7 @@ function BillingLitePage() {
                             >
                               <Minus className="size-5" />
                             </button>
-                            <span className="min-w-9 text-center text-lg font-black tabular-nums">{quantity}</span>
+                            <span className="min-w-9 text-center text-lg font-semibold tabular-nums">{quantity}</span>
                             <button
                               type="button"
                               onClick={() => changeQuantity(item, 1)}
@@ -1717,7 +1717,7 @@ function BillingLitePage() {
                           <button
                             type="button"
                             onClick={() => changeQuantity(item, 1)}
-                            className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#17666a] px-4 font-black text-white transition active:scale-95"
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#17666a] px-4 font-semibold text-white transition active:scale-95"
                           >
                             <Plus className="size-5" /> Add
                           </button>
