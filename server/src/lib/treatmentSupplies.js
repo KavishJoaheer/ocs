@@ -20,6 +20,13 @@ const CANNULAS = Object.freeze({
   yellow: "Cannula (Yellow)",
 });
 
+const SYRINGES = Object.freeze({
+  "3": "Syringe (3ml)",
+  "5": "Syringe (5ml)",
+  "10": "Syringe (10ml)",
+  "20": "Syringe (20ml)",
+});
+
 const CATHETERS = Object.freeze({
   "14": "2 Way Foley Catheter (Ch/Fr 14)",
   "16": "2 Way Foley Catheter (Ch/Fr 16)",
@@ -426,6 +433,7 @@ module.exports = {
   MASKS,
   SERVICES,
   SUPPLIES,
+  SYRINGES,
   ensureTreatmentCatalogue,
   includedLabel,
   isTreatmentSupplyName,

@@ -49,6 +49,10 @@ const {
   serviceRequiresNgt,
   treatmentServiceByName,
 } = require("../lib/treatmentSupplies");
+const {
+  resolveTreatmentTemplateSelections,
+  treatmentTemplatesForDoctor,
+} = require("../lib/treatmentTemplates");
 
 const { operationFor } = require("../lib/operationReceipts");
 const {
@@ -875,16 +879,16 @@ function consumeDoctorBatches(itemId, quantity) {
   return consumeAvailableFefo(itemId, quantity);
 }
 
-function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
-  const components = resolveTreatmentComponents(
-    line.description,
-    line.mask_size,
-    line.quantity,
-    line.enema_size,
-    line.cannula_size,
-    line.catheter_size,
-    line.ngt_size,
-  );
+function deductIncludedTreatmentComponents({
+  consultation,
+  components,
+  treatmentName,
+  userId,
+  actor,
+  billingId,
+  selectionMeta = {},
+  templateId = null,
+}) {
   if (!components?.length) return { movementIds: [], touchedItemIds: [] };
   const movementIds = [];
   const touchedItemIds = [];
@@ -902,14 +906,14 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
     `).get(Number(consultation.doctor_id), component.itemName);
     if (!stockItem) {
       throw Object.assign(
-        new Error(`${component.itemName} is not in this doctor's bag, so ${line.description} cannot be billed.`),
+        new Error(`${component.itemName} is not in this doctor's bag, so ${treatmentName} cannot be billed.`),
         { status: 409, extra: { code: "TREATMENT_SUPPLY_MISSING", item_name: component.itemName } },
       );
     }
     const qty = Number(component.quantity || 0);
     if (Number(stockItem.cost_price || 0) <= 0) {
       throw Object.assign(
-        new Error(`${stockItem.item_name} has no cost price. Record its cost before ${line.description} can be billed.`),
+        new Error(`${stockItem.item_name} has no cost price. Record its cost before ${treatmentName} can be billed.`),
         { status: 409, extra: { code: "SUPPLY_COST_REQUIRED", inventory_item_id: Number(stockItem.id) } },
       );
     }
@@ -917,7 +921,7 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
     const atp = Number(decorated.available_to_promise ?? decorated.available_to_use ?? 0);
     if (qty > atp) {
       throw Object.assign(
-        new Error(`Not enough ${stockItem.item_name} in this doctor's bag for ${line.description}. ${atp} available; ${qty} needed.`),
+        new Error(`Not enough ${stockItem.item_name} in this doctor's bag for ${treatmentName}. ${atp} available; ${qty} needed.`),
         {
           status: 409,
           extra: { code: "INSUFFICIENT_ATP", available_to_promise: atp, requested: qty, item_name: stockItem.item_name },
@@ -932,7 +936,7 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
     const allocated = allocations.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
     if (allocated !== qty) {
       throw Object.assign(
-        new Error(`Eligible batches could not cover ${stockItem.item_name} for ${line.description}.`),
+        new Error(`Eligible batches could not cover ${stockItem.item_name} for ${treatmentName}.`),
         { status: 409, extra: { code: "INSUFFICIENT_ELIGIBLE_BATCHES" } },
       );
     }
@@ -951,7 +955,7 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
       previousQuantity,
       nextQuantity,
       actionType: "sell",
-      note: `Included in ${line.description}`,
+      note: `Included in ${treatmentName}`,
       userId,
       appointmentId: consultation.appointment_id,
       consultationId: consultation.id,
@@ -962,19 +966,16 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
         billed_quantity: 0,
         allocations,
         treatment_component: true,
-        treatment_name: line.description,
-        mask_size: line.mask_size || null,
-        enema_size: line.enema_size || null,
-        cannula_size: line.cannula_size || null,
-        catheter_size: line.catheter_size || null,
-        ngt_size: line.ngt_size || null,
+        treatment_name: treatmentName,
+        treatment_template_id: templateId,
+        ...selectionMeta,
         performed_by_user_id: actor?.id || userId || null,
         performed_by_role: actor?.role || "",
         performed_by_name: actor?.full_name || actor?.username || "",
         source_text: actor?.full_name ? `${actor.full_name} (${actor.role || ""})` : "Doctor Stock",
         destination_text: "Patient treatment",
         billing_id: billingId,
-        billing_line_description: line.description,
+        billing_line_description: treatmentName,
         catalog_unit_price: 0,
         billed_unit_price: 0,
       },
@@ -984,6 +985,49 @@ function deductTreatmentSupplies({ consultation, line, userId, actor, billingId 
     touchedItemIds.push(Number(stockItem.id));
   }
   return { movementIds, touchedItemIds };
+}
+
+function deductTreatmentSupplies({ consultation, line, userId, actor, billingId }) {
+  const components = resolveTreatmentComponents(
+    line.description,
+    line.mask_size,
+    line.quantity,
+    line.enema_size,
+    line.cannula_size,
+    line.catheter_size,
+    line.ngt_size,
+  );
+  return deductIncludedTreatmentComponents({
+    consultation,
+    components,
+    treatmentName: line.description,
+    userId,
+    actor,
+    billingId,
+    selectionMeta: {
+      mask_size: line.mask_size || null,
+      enema_size: line.enema_size || null,
+      cannula_size: line.cannula_size || null,
+      catheter_size: line.catheter_size || null,
+      ngt_size: line.ngt_size || null,
+    },
+  });
+}
+
+function movementCostForQuantity(movementIds, itemId, quantity) {
+  const ids = [...new Set((movementIds || []).map(Number).filter(Boolean))];
+  if (!ids.length || !(Number(quantity) > 0)) return 0;
+  const placeholders = ids.map(() => "?").join(",");
+  const row = db.prepare(`
+    SELECT
+      COALESCE(SUM(quantity), 0) AS movement_quantity,
+      COALESCE(SUM(quantity * COALESCE(unit_cost_snapshot, 0)), 0) AS movement_cost
+    FROM inventory_movements
+    WHERE id IN (${placeholders}) AND item_id = ?
+  `).get(...ids, Number(itemId));
+  const movementQuantity = Number(row?.movement_quantity || 0);
+  if (movementQuantity <= 0) return 0;
+  return roundCurrency((Number(row?.movement_cost || 0) / movementQuantity) * Number(quantity));
 }
 
 function insertInventoryMovement({
@@ -2278,7 +2322,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     }];
   });
 
-  res.json({ visit, items });
+  res.json({ visit, items, treatment_templates: treatmentTemplatesForDoctor(db, doctorId) });
 });
 
 router.get("/quick/unbilled-report", (req, res) => {
@@ -2781,6 +2825,9 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
 
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+  const rawTreatmentTemplates = Array.isArray(req.body?.treatment_templates)
+    ? req.body.treatment_templates
+    : [];
   if (rawItems.length > 40) {
     return res.status(400).json({ error: "A quick billing submission can contain up to 40 different supplies." });
   }
@@ -3019,6 +3066,12 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           : item,
       );
 
+      const treatmentTemplateInstances = resolveTreatmentTemplateSelections(db, {
+        doctorId,
+        selections: rawTreatmentTemplates,
+        billedQuantities: mergedQuantities,
+      });
+
       const requestedIds = [...mergedQuantities.keys()];
       let chargeLines = [];
       if (requestedIds.length) {
@@ -3127,6 +3180,77 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         );
       }
       const componentItemIds = [];
+      const appliedItems = [...applied.items];
+      for (const template of treatmentTemplateInstances) {
+        const consumed = deductIncludedTreatmentComponents({
+          consultation,
+          components: template.includedComponents,
+          treatmentName: template.name,
+          userId: req.auth.id,
+          actor: req.auth,
+          billingId: bill.id,
+          templateId: template.id,
+          selectionMeta: Object.fromEntries(
+            Object.entries(template.selections).map(([key, value]) => [`${key}_size`, value]),
+          ),
+        });
+        componentItemIds.push(...consumed.touchedItemIds);
+        const anchorItemId = Number(template.billableComponents[0]?.itemId || 0);
+        const anchorIndex = appliedItems.findIndex((item) => Number(item.inventory_item_id) === anchorItemId);
+        if (anchorIndex < 0) {
+          throw Object.assign(new Error(`The charged items for ${template.name} could not be linked to its included consumables.`), {
+            status: 409,
+            extra: { code: "TREATMENT_TEMPLATE_LINK_FAILED", template_id: template.id },
+          });
+        }
+        const anchor = appliedItems[anchorIndex];
+        const chargedItems = template.billableComponents.map((component) => {
+          const chargedLine = appliedItems.find((item) => Number(item.inventory_item_id) === Number(component.itemId));
+          const movementIds = [
+            ...(chargedLine?.inventory_movement_ids || []),
+            ...(chargedLine?.dispensing_movement_ids || []),
+          ];
+          return {
+            inventory_item_id: component.itemId,
+            item_name: component.itemName,
+            quantity: component.quantity,
+            unit_price: roundCurrency(chargedLine?.unit_price || 0),
+            amount: roundCurrency(Number(chargedLine?.unit_price || 0) * component.quantity),
+            cost_amount: movementCostForQuantity(movementIds, component.itemId, component.quantity),
+          };
+        });
+        const includedCostAmount = roundCurrency(consumed.movementIds.reduce(
+          (sum, movementId) => {
+            const movement = db.prepare("SELECT quantity, unit_cost_snapshot FROM inventory_movements WHERE id = ?").get(movementId);
+            return sum + Number(movement?.quantity || 0) * Number(movement?.unit_cost_snapshot || 0);
+          },
+          0,
+        ));
+        appliedItems[anchorIndex] = {
+          ...anchor,
+          inventory_movement_ids: [...new Set([
+            ...(anchor.inventory_movement_ids || []),
+            ...consumed.movementIds,
+          ])],
+          treatment_templates: [
+            ...(anchor.treatment_templates || []),
+            {
+              template_id: template.id,
+              name: template.name,
+              quantity: template.quantity,
+              selections: template.selections,
+              charged_amount: roundCurrency(chargedItems.reduce((sum, item) => sum + item.amount, 0)),
+              charged_cost_amount: roundCurrency(chargedItems.reduce((sum, item) => sum + item.cost_amount, 0)),
+              included_cost_amount: includedCostAmount,
+              charged_items: chargedItems,
+              included_items: template.includedComponents.map((component) => ({
+                item_name: component.itemName,
+                quantity: component.quantity,
+              })),
+            },
+          ],
+        };
+      }
       const servicesWithStock = serviceChargeLines.map((serviceLine) => {
         const consumed = deductTreatmentSupplies({
           consultation,
@@ -3145,7 +3269,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         ...(applied.touchedItemIds || []),
         ...componentItemIds,
       ])];
-      const addedItems = normalizeBillingItems([...applied.items, ...servicesWithStock]);
+      const addedItems = normalizeBillingItems([...appliedItems, ...servicesWithStock]);
 
       if (addedItems.length || feeChanged || feeConfirmed || sourceReference || latestSubmission?.workflow_status === "needs_doctor") {
         const nextItems = normalizeBillingItems([...baseItems, ...addedItems]);

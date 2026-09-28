@@ -139,6 +139,40 @@ function normalizeBillingItems(items) {
           : {}),
         ...(Array.isArray(item?.dispensing_movement_ids) ? {dispensing_movement_ids: item.dispensing_movement_ids.map(Number)} : {}),
         ...(Array.isArray(item?.inventory_movement_ids) ? {inventory_movement_ids: item.inventory_movement_ids.map(Number).filter(Boolean)} : {}),
+        ...(Array.isArray(item?.treatment_templates)
+          ? {
+              treatment_templates: item.treatment_templates.map((template) => ({
+                template_id: Number(template?.template_id || 0),
+                name: String(template?.name || "").trim().slice(0, 160),
+                quantity: Number.isInteger(Number(template?.quantity)) ? Number(template.quantity) : 1,
+                charged_amount: isValidCurrencyAmount(template?.charged_amount) ? Number(template.charged_amount) : 0,
+                charged_cost_amount: isValidCurrencyAmount(template?.charged_cost_amount) ? Number(template.charged_cost_amount) : 0,
+                included_cost_amount: isValidCurrencyAmount(template?.included_cost_amount) ? Number(template.included_cost_amount) : 0,
+                selections: template?.selections && typeof template.selections === "object"
+                  ? Object.fromEntries(Object.entries(template.selections).map(([key, value]) => [
+                      String(key).slice(0, 50),
+                      String(value).slice(0, 100),
+                    ]))
+                  : {},
+                charged_items: Array.isArray(template?.charged_items)
+                  ? template.charged_items.map((charged) => ({
+                      inventory_item_id: Number(charged?.inventory_item_id || 0),
+                      item_name: String(charged?.item_name || "").trim().slice(0, 200),
+                      quantity: Number.isInteger(Number(charged?.quantity)) ? Number(charged.quantity) : 0,
+                      unit_price: isValidCurrencyAmount(charged?.unit_price) ? Number(charged.unit_price) : 0,
+                      amount: isValidCurrencyAmount(charged?.amount) ? Number(charged.amount) : 0,
+                      cost_amount: isValidCurrencyAmount(charged?.cost_amount) ? Number(charged.cost_amount) : 0,
+                    })).filter((charged) => charged.inventory_item_id > 0 && charged.item_name && charged.quantity > 0)
+                  : [],
+                included_items: Array.isArray(template?.included_items)
+                  ? template.included_items.map((included) => ({
+                      item_name: String(included?.item_name || "").trim().slice(0, 200),
+                      quantity: Number.isInteger(Number(included?.quantity)) ? Number(included.quantity) : 0,
+                    })).filter((included) => included.item_name && included.quantity > 0)
+                  : [],
+              })).filter((template) => template.template_id > 0 && template.name)
+            }
+          : {}),
         appointment_id: item?.appointment_id ? Number(item.appointment_id) : null,
       };
     })
