@@ -724,6 +724,56 @@ test("doctors cannot change quantity through item editing and operators can edit
   assert.equal(operatorQuantityPut.status, 403, JSON.stringify(operatorQuantityPut.data));
 });
 
+test("warehouse cost and selling price changes copy onto every doctor bag for the same item", async () => {
+  const name = `Shared Price ${Date.now()}`;
+  const itemId = insertOcsItem({ name, qty: 4 });
+  const doctorTwoId = db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id;
+  const insertBag = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id, archived_at
+    ) VALUES (?, ?, ?, ?, 0, 'unit', ?, ?, 'doctor', ?, ?)
+  `);
+  const bagId = Number(insertBag.run(name, "stock", folderId, 3, 1, 2, doctorId, null).lastInsertRowid);
+  const otherBagId = Number(insertBag.run(name, "service", folderId, 0, 4, 8, doctorTwoId, null).lastInsertRowid);
+  const archivedBagId = Number(insertBag.run(name, "stock", folderId, 0, 7, 9, doctorId, "2026-09-01 00:00:00").lastInsertRowid);
+  const unrelatedId = Number(insertBag.run(`Other ${name}`, "stock", folderId, 6, 3, 4, doctorId, null).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring)
+    VALUES (?, 3, '2030-01-01', 1, 0)
+  `).run(bagId);
+
+  const updated = await api("PUT", `/api/inventory/items/${itemId}`, {
+    token: adminToken,
+    body: {
+      cost_price: 15,
+      selling_price: 22,
+      adjustment_note: "Warehouse price list applied to every bag",
+    },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+
+  for (const id of [bagId, otherBagId, archivedBagId]) {
+    const row = db.prepare("SELECT quantity, cost_price, selling_price, archived_at FROM inventory WHERE id = ?").get(id);
+    assert.equal(Number(row.cost_price), 15, String(id));
+    assert.equal(Number(row.selling_price), 22, String(id));
+  }
+  const keptBag = db.prepare("SELECT quantity, cost_price, selling_price FROM inventory WHERE id = ?").get(bagId);
+  assert.equal(Number(keptBag.quantity), 3);
+  assert.equal(Number(db.prepare("SELECT unit_cost FROM inventory_batches WHERE item_id = ?").get(bagId).unit_cost), 1);
+  const archived = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(archivedBagId);
+  assert.ok(archived.archived_at);
+  assert.equal(Number(archived.quantity), 0);
+  const unrelated = db.prepare("SELECT cost_price, selling_price, quantity FROM inventory WHERE id = ?").get(unrelatedId);
+  assert.equal(Number(unrelated.cost_price), 3);
+  assert.equal(Number(unrelated.selling_price), 4);
+  assert.equal(Number(unrelated.quantity), 6);
+  const warehouse = db.prepare("SELECT quantity, cost_price, selling_price FROM inventory WHERE id = ?").get(itemId);
+  assert.equal(Number(warehouse.quantity), 4);
+  assert.equal(Number(warehouse.cost_price), 15);
+  assert.equal(Number(warehouse.selling_price), 22);
+});
+
 test("doctor history and receipts are scoped to their own bag", async () => {
   const itemId = insertOcsItem({ name: `Hist ${Date.now()}`, qty: 6 });
   const request = await createAcceptedRequest({ itemId, itemName: "Hist", quantity: 1 });

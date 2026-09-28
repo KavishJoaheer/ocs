@@ -2577,6 +2577,7 @@ router.put("/items/:id", (req, res) => {
   }
 
   const previousQuantity = Number(existing.quantity || 0);
+  const updatedBagItemIds = [];
 
   try {
     db.transaction(() => {
@@ -2589,6 +2590,21 @@ router.put("/items/:id", (req, res) => {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(itemName, folderId, quantity, minimumQuantity, unit, costPrice, sellingPrice, attributes, moaNotes, expiryDate, itemId);
+      if (isOcsMasterRow && priceChanged) {
+        const bagRows = db.prepare(`
+          UPDATE inventory
+          SET
+            cost_price = ?,
+            selling_price = ?,
+            row_version = row_version + 1,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE stock_scope = 'doctor'
+            AND owner_doctor_id IS NOT NULL
+            AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
+          RETURNING id
+        `).all(costPrice, sellingPrice, existing.item_name);
+        updatedBagItemIds.push(...bagRows.map((row) => Number(row.id)));
+      }
       if (priceChanged) {
         recordAudit({
           actionType: "update_catalogue_pricing",
@@ -2606,6 +2622,7 @@ router.put("/items/:id", (req, res) => {
             new_selling_price: sellingPrice,
             cost_price_changed: costPriceChanged,
             selling_price_changed: sellingPriceChanged,
+            doctor_bag_rows_updated: updatedBagItemIds.length,
           }),
         });
       }
@@ -2621,6 +2638,9 @@ router.put("/items/:id", (req, res) => {
   }
 
   publishInventoryChange({ itemId, changedByUserId: req.auth.id });
+  for (const bagItemId of updatedBagItemIds) {
+    publishInventoryChange({ itemId: bagItemId, changedByUserId: req.auth.id });
+  }
 
   res.json(getPayloadFromRequest(req));
 });
