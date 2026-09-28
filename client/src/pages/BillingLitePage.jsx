@@ -49,6 +49,23 @@ const STATUS_META = {
   completed: { label: "Completed", className: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
 };
 
+const FOLDER_LABEL_COLOR = {
+  "services": "text-teal-700",
+  "pediatric drugs": "text-violet-700",
+  "wound dressing": "text-rose-700",
+  "consumable": "text-lime-800",
+  "im drugs": "text-orange-700",
+  "catherisation & ngt": "text-indigo-700",
+  "iv drugs": "text-blue-700",
+  "o2 & nebuliser": "text-cyan-700",
+  "investigation": "text-fuchsia-700",
+  "oral drugs": "text-emerald-700",
+};
+
+function folderLabelClass(name) {
+  return FOLDER_LABEL_COLOR[String(name || "").trim().toLowerCase()] || "text-slate-500";
+}
+
 const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
 const PATIENT_PICKER_PAGE_SIZE = 60;
@@ -1667,7 +1684,7 @@ function BillingLitePage() {
                       </button>
                       <div className="pr-10">
                         <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]">{item.item_name}</p>
-                        <p className="mt-1 line-clamp-1 text-sm font-medium text-slate-400">{item.subcategory || item.category}</p>
+                        <p className={`mt-1 line-clamp-1 text-sm font-medium ${folderLabelClass(item.subcategory || item.category)}`}>{item.subcategory || item.category}</p>
                       </div>
                       <div className="mt-auto pt-5">
                       <div className="flex items-end justify-between gap-3">
