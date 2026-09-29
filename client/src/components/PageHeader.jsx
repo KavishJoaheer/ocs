@@ -8,11 +8,11 @@ function resolveHeaderTone(eyebrow, title, tone) {
   if (tone && tone !== "auto") return tone;
 
   const text = `${readableText(eyebrow)} ${readableText(title)}`;
-  if (/billing|finance|payment|account/.test(text)) return "gold";
-  if (/consult|clinical|lab|medical/.test(text)) return "aqua";
-  if (/inventory|stock|supply/.test(text)) return "teal";
-  if (/visit|roster|appointment|schedule/.test(text)) return "gold";
-  if (/patient|team|doctor/.test(text)) return "sage";
+  if (/billing|finance|payment|account/.test(text)) return "amber";
+  if (/consult|clinical|lab|medical/.test(text)) return "violet";
+  if (/inventory|stock|supply/.test(text)) return "cobalt";
+  if (/visit|roster|appointment|schedule/.test(text)) return "coral";
+  if (/patient|team|doctor/.test(text)) return "lime";
   return "teal";
 }
 

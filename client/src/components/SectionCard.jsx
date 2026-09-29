@@ -2,15 +2,15 @@ import { cx } from "../lib/utils.js";
 
 function resolveSectionTone(title, variant, tone) {
   if (tone && tone !== "auto") return tone;
-  if (variant === "demographic") return "gold";
+  if (variant === "demographic") return "lime";
   if (typeof title !== "string") return "teal";
 
   const text = title.toLowerCase();
-  if (/billing|finance|payment|receipt|invoice|expense|payroll|tax/.test(text)) return "gold";
-  if (/consult|clinical|lab|medical|note|history/.test(text)) return "aqua";
-  if (/inventory|stock|supply|item|shipment|batch/.test(text)) return "teal";
-  if (/review|alert|particular|exception|correction/.test(text)) return "gold";
-  if (/patient|doctor|kin|profile|detail/.test(text)) return "sage";
+  if (/billing|finance|payment|receipt|invoice|expense|payroll|tax/.test(text)) return "amber";
+  if (/consult|clinical|lab|medical|note|history/.test(text)) return "violet";
+  if (/inventory|stock|supply|item|shipment|batch/.test(text)) return "cobalt";
+  if (/review|alert|particular|exception|correction/.test(text)) return "coral";
+  if (/patient|doctor|kin|profile|detail/.test(text)) return "lime";
   return "teal";
 }
 

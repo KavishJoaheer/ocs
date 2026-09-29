@@ -248,7 +248,7 @@ function ConsultationDetailPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="ocs-metric-card ocs-metric-card--gold rounded-[26px] p-5">
+        <div className="ocs-metric-card ocs-metric-card--lime rounded-[26px] p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
             OCS care number
           </p>
@@ -257,7 +257,7 @@ function ConsultationDetailPage() {
           </p>
         </div>
 
-        <div className="ocs-metric-card ocs-metric-card--aqua rounded-[26px] p-5">
+        <div className="ocs-metric-card ocs-metric-card--cobalt rounded-[26px] p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
             Patient ID
           </p>
@@ -266,7 +266,7 @@ function ConsultationDetailPage() {
           </p>
         </div>
 
-        <div className="ocs-metric-card ocs-metric-card--teal rounded-[26px] p-5">
+        <div className="ocs-metric-card ocs-metric-card--coral rounded-[26px] p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
             Appointment time
           </p>
@@ -275,7 +275,7 @@ function ConsultationDetailPage() {
           </p>
         </div>
 
-        <div className="ocs-metric-card ocs-metric-card--gold rounded-[26px] p-5">
+        <div className="ocs-metric-card ocs-metric-card--amber rounded-[26px] p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
             Billing
           </p>
