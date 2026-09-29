@@ -37,8 +37,8 @@ function actorLabel(name, { expected = false } = {}) {
 
 function DetailSection({ title, children }) {
   return (
-    <section className="ocs-detail-section">
-      <h4 className="ocs-detail-section__title text-xs font-bold uppercase tracking-wider text-slate-500">{title}</h4>
+    <section>
+      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</h4>
       <div className="mt-2">{children}</div>
     </section>
   );

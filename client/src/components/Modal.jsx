@@ -112,14 +112,13 @@ function Modal({
         aria-labelledby={headingId}
         aria-describedby={description ? descriptionId : undefined}
         className={cx(
-          "ocs-modal-panel relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-1.5rem))] max-h-[min(92dvh,100dvh-1.5rem)] flex-col overflow-x-hidden rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:rounded-[34px] sm:p-6",
+          "relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-1.5rem))] max-h-[min(92dvh,100dvh-1.5rem)] flex-col overflow-x-hidden rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:rounded-[34px] sm:p-6 md:border-transparent md:bg-white md:shadow-md",
           sizeClass,
         )}
       >
-        <div className="ocs-modal-panel__glow" aria-hidden="true" />
-        <div className="ocs-modal-panel__header mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">
           <div className="min-w-0">
-            <h3 id={headingId} className="ocs-modal-panel__title text-xl font-semibold text-slate-950 md:text-ocs-slate">
+            <h3 id={headingId} className="text-xl font-semibold text-slate-950 md:text-ocs-slate">
               {title}
             </h3>
             {description ? (
