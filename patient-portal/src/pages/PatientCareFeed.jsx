@@ -295,8 +295,8 @@ export default function PatientCareFeed() {
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#2b8f91]"><Sparkles className="size-3.5" /> From your care team</div>
           <div className="mt-3 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
             <div>
-              <h1 className="font-display text-[2.15rem] font-bold leading-none tracking-tight text-[#304d50] sm:text-5xl">Better health, one story at a time.</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">Thoughtful notes, practical advice, and clinic updates—curated by the people who care for you.</p>
+              <h1 className="font-display text-[2.15rem] font-bold leading-none tracking-tight text-[#304d50] sm:text-5xl">Care that goes beyond the moment.</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">Health tips and thoughtful updates to keep you informed and connected with OCS.</p>
             </div>
             {posts.some((post) => !post.is_read) ? <span className="inline-flex w-fit items-center gap-2 rounded-full bg-[#f7ba24]/16 px-3 py-1.5 text-[11px] font-bold text-[#80600d]"><span className="size-2 rounded-full bg-[#f7ba24]" /> {posts.filter((post) => !post.is_read).length} new</span> : null}
           </div>
