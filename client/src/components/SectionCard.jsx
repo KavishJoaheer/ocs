@@ -10,7 +10,7 @@ function resolveSectionTone(title, variant, tone) {
   if (/consult|clinical|lab|medical|note|history/.test(text)) return "aqua";
   if (/inventory|stock|supply|item|shipment|batch/.test(text)) return "teal";
   if (/review|alert|particular|exception|correction/.test(text)) return "gold";
-  if (/patient|doctor|kin|profile|detail/.test(text)) return "sage";
+  if (/patient|doctor|kin|profile|detail/.test(text)) return "teal";
   return "teal";
 }
 
@@ -34,6 +34,7 @@ function SectionCard({
       className={cx(
         "ocs-section-card max-w-full min-w-0",
         `ocs-section-card--${resolvedTone}`,
+        variant === "demographic" && "ocs-section-card--demographic",
         variant === "demographic"
           ? "rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] shadow-sm"
           : "border border-ocs-teal/15 bg-white/92 shadow-[0_14px_38px_rgba(59,89,92,0.07)] backdrop-blur-sm",
