@@ -171,9 +171,7 @@ function ConsultationCard({ consultation, highlighted = false }) {
         <div className="min-w-0">
           <p className="mb-2 text-sm text-slate-500">Diagnosis</p>
           {consultation.diagnosis ? (
-            <span className="inline-block rounded-full bg-ocs-teal/10 px-3 py-1.5 text-sm font-semibold text-ocs-teal">
-              {consultation.diagnosis}
-            </span>
+            <span className="ocs-status-pill-diagnosis">{consultation.diagnosis}</span>
           ) : (
             <p className="text-sm font-medium text-ocs-slate/70">Not recorded</p>
           )}

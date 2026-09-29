@@ -2069,13 +2069,22 @@ table {
 }
 
 .ocs-status-pill-diagnosis {
-  background: rgb(204 251 241 / 0.8);
-  color: #115e59;
-  font-size: 13px;
+  display: inline-block;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(var(--ocs-brand-gold-rgb), 0.35);
+  border-radius: 10px;
+  background: rgba(var(--ocs-brand-gold-rgb), 0.16);
+  color: var(--brand-dark-grey);
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.4;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+  padding: 7px 10px;
   text-transform: none;
-  padding: 6px 12px;
+  vertical-align: top;
 }
 
 /* Consultation card — premium pressable list item */
@@ -2865,11 +2874,31 @@ button.native-grouped-row {
 }
 
 .profile-teal-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   height: calc(150px + env(safe-area-inset-top, 0px));
   margin-left: calc(-1 * var(--native-pad-screen));
   margin-right: calc(-1 * var(--native-pad-screen));
   padding-top: env(safe-area-inset-top, 0px);
-  background: linear-gradient(135deg, #1a5c52 0%, #0d9e8a 100%);
+  background:
+    radial-gradient(circle at 82% 18%, rgba(94, 217, 210, 0.24), transparent 38%),
+    linear-gradient(135deg, #1a5c52 0%, #0d9e8a 100%);
+  box-shadow: inset 0 -2px 0 rgba(var(--ocs-brand-gold-rgb), 0.72);
+}
+
+.profile-teal-band::after {
+  position: absolute;
+  top: 50%;
+  right: clamp(8px, 5vw, 44px);
+  width: 220px;
+  aspect-ratio: 768 / 751;
+  content: "";
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-49%) rotate(-5deg);
+  -webkit-mask: url("/ocs-medecins-mark.png") center / contain no-repeat;
+  mask: url("/ocs-medecins-mark.png") center / contain no-repeat;
+  pointer-events: none;
 }
 
 @media (min-width: 1024px) {
@@ -2877,7 +2906,15 @@ button.native-grouped-row {
     height: 110px;
     margin-left: 0;
     margin-right: 0;
-    background: #3b595c;
+    background:
+      radial-gradient(circle at 82% 12%, rgba(var(--brand-teal-rgb), 0.12), transparent 34%),
+      var(--brand-dark-grey);
+  }
+
+  .profile-teal-band::after {
+    right: clamp(32px, 9vw, 128px);
+    width: 210px;
+    background: rgba(255, 255, 255, 0.09);
   }
 }
 
@@ -4062,8 +4099,8 @@ button.native-grouped-row {
   }
 
   .ocs-status-pill-diagnosis {
-    background: rgba(var(--brand-teal-rgb), 0.1);
-    color: var(--brand-dark-grey);
+    border-color: rgba(var(--brand-gold-rgb), 0.35);
+    background: rgba(var(--brand-gold-rgb), 0.16);
   }
 
   .consultation-micro-label {
