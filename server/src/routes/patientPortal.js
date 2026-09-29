@@ -40,8 +40,42 @@ const { mintStreamToken } = require("../lib/streamTokens");
 const {
   getPendingChangeForAppointment,
 } = require("../lib/appointmentChangeRequests");
+const { listPatientPosts } = require("../lib/patientCareContent");
 
 const router = express.Router();
+
+router.get("/care-feed", (req, res) => {
+  res.json({ posts: listPatientPosts(req.patientAuth.id) });
+});
+
+router.post("/care-feed/:id/read", (req, res) => {
+  const postId = Number(req.params.id);
+  const post = db.prepare("SELECT id FROM patient_care_posts WHERE id = ? AND status = 'published'").get(postId);
+  if (!post) return res.status(404).json({ error: "This story is no longer available." });
+  db.prepare(`
+    INSERT INTO patient_care_post_reads (patient_user_id, post_id, read_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(patient_user_id, post_id) DO UPDATE SET read_at = CURRENT_TIMESTAMP
+  `).run(req.patientAuth.id, postId);
+  res.json({ ok: true });
+});
+
+router.post("/care-feed/:id/save", (req, res) => {
+  const postId = Number(req.params.id);
+  const post = db.prepare("SELECT id FROM patient_care_posts WHERE id = ? AND status = 'published'").get(postId);
+  if (!post) return res.status(404).json({ error: "This story is no longer available." });
+  const existing = db.prepare(`
+    SELECT 1 FROM patient_care_post_saves WHERE patient_user_id = ? AND post_id = ?
+  `).get(req.patientAuth.id, postId);
+  if (existing) {
+    db.prepare("DELETE FROM patient_care_post_saves WHERE patient_user_id = ? AND post_id = ?").run(req.patientAuth.id, postId);
+    return res.json({ saved: false });
+  }
+  db.prepare(`
+    INSERT INTO patient_care_post_saves (patient_user_id, post_id) VALUES (?, ?)
+  `).run(req.patientAuth.id, postId);
+  return res.json({ saved: true });
+});
 
 const PATIENT_REPORT_TYPES = new Set([
   "application/pdf",

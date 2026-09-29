@@ -17,6 +17,7 @@ import {
   Truck,
   UsersRound,
   X,
+  Newspaper,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -168,6 +169,12 @@ const navItems = [
     label: "HCM news",
     icon: BellRing,
     roles: ["admin", "doctor", "operator", "lab_tech", "accountant"],
+  },
+  {
+    to: "/patient-care-content",
+    label: "Patient stories",
+    icon: Newspaper,
+    roles: ["admin"],
   },
   {
     to: "/team-operations",

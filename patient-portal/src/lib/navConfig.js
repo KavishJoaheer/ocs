@@ -8,6 +8,7 @@ import {
   FileText,
   Calendar,
   User,
+  Newspaper,
 } from "lucide-react";
 
 export const PATIENT_NAV_ITEMS = [
@@ -43,6 +44,14 @@ export const PATIENT_NAV_ITEMS = [
     icon: ReceiptText,
     mobileIcon: ReceiptText,
     mobileIconActive: ReceiptText,
+  },
+  {
+    to: "/care",
+    label: "Care Stories",
+    mobileLabel: "Stories",
+    icon: Newspaper,
+    mobileIcon: Newspaper,
+    mobileIconActive: Newspaper,
   },
   {
     to: "/profile",

@@ -52,7 +52,8 @@ function AppShellContent() {
   const isHealthRecords = pathname === "/health-records" || pathname.startsWith("/health-records/");
   const isAppointments = pathname === "/appointments";
   const isBilling = pathname === "/billing";
-  const isDesktopHeroPage = isHealthRecords || isAppointments || isBilling;
+  const isCareFeed = pathname === "/care";
+  const isDesktopHeroPage = isHealthRecords || isAppointments || isBilling || isCareFeed;
   const isFullBleedMobile =
     isNativeDashboard ||
     isVisitStatus ||

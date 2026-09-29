@@ -65,6 +65,10 @@ const pageMeta = {
     label: "HCM news",
     helper: "",
   },
+  "/patient-care-content": {
+    label: "Patient stories",
+    helper: "Create useful, welcoming content for the patient app.",
+  },
   "/doctor/scheduled-visits": {
     label: "Scheduled visits",
     helper: "Focus on all future scheduled visits still waiting on doctor completion.",
@@ -181,6 +185,7 @@ function AppShell() {
   const isLongTermReview = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
   const isAppointments = location.pathname === "/appointments";
   const isHcmNews = location.pathname === "/hcm-news";
+  const isPatientCareContent = location.pathname === "/patient-care-content";
   const isBilling =
     location.pathname === "/billing" ||
     location.pathname === "/admin/finance" ||
@@ -196,6 +201,7 @@ function AppShell() {
       isLongTermReview ||
       isAppointments ||
       isHcmNews ||
+      isPatientCareContent ||
       isBilling ||
       isLiveReport ||
       isInventory ||

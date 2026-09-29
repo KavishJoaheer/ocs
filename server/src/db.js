@@ -328,6 +328,49 @@ function createHcmNewsReadsTable() {
   `);
 }
 
+function createPatientCareContentTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_care_posts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      eyebrow TEXT NOT NULL DEFAULT '',
+      summary TEXT NOT NULL,
+      body TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'update'
+        CHECK (category IN ('update', 'wellbeing', 'guide', 'newsletter')),
+      visual_theme TEXT NOT NULL DEFAULT 'teal'
+        CHECK (visual_theme IN ('teal', 'gold', 'coral', 'indigo')),
+      is_featured INTEGER NOT NULL DEFAULT 0 CHECK (is_featured IN (0, 1)),
+      status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+      published_at TEXT,
+      created_by_user_id INTEGER,
+      updated_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS patient_care_post_reads (
+      patient_user_id INTEGER NOT NULL,
+      post_id INTEGER NOT NULL,
+      read_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (patient_user_id, post_id),
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE CASCADE,
+      FOREIGN KEY (post_id) REFERENCES patient_care_posts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS patient_care_post_saves (
+      patient_user_id INTEGER NOT NULL,
+      post_id INTEGER NOT NULL,
+      saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (patient_user_id, post_id),
+      FOREIGN KEY (patient_user_id) REFERENCES patient_users(id) ON DELETE CASCADE,
+      FOREIGN KEY (post_id) REFERENCES patient_care_posts(id) ON DELETE CASCADE
+    );
+  `);
+}
+
 function createPatientLocationsTables() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS locations (
@@ -1605,6 +1648,7 @@ function initializeDatabase() {
   createPatientOperatorAccessTable();
   createHcmNewsPostsTable();
   createHcmNewsReadsTable();
+  createPatientCareContentTables();
   createPatientLocationsTables();
   createInventoryFoldersTable();
   createInventoryMovementsTable();
@@ -1679,6 +1723,10 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_created_at ON hcm_news_posts(created_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_updated_at ON hcm_news_posts(updated_at);
     CREATE INDEX IF NOT EXISTS idx_hcm_news_posts_status ON hcm_news_posts(status);
+    CREATE INDEX IF NOT EXISTS idx_patient_care_posts_status_published
+      ON patient_care_posts(status, published_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_patient_care_posts_featured
+      ON patient_care_posts(is_featured, published_at DESC);
     CREATE INDEX IF NOT EXISTS idx_locations_category ON locations(category);
     CREATE INDEX IF NOT EXISTS idx_patient_locations_patient ON patient_locations(patient_id);
     CREATE INDEX IF NOT EXISTS idx_patient_locations_location ON patient_locations(location_id);

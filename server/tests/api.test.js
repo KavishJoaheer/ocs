@@ -186,6 +186,94 @@ test("patient registration returns a normalized profile", async () => {
   );
 });
 
+test("admin publishes a care story that patients can read and save", async () => {
+  const reg = await api("POST", "/api/patient-auth/register", {
+    body: {
+      email: uniqueEmail("care-story"),
+      password: "secret123",
+      full_name: "Care Story Reader",
+      phone: "57001123",
+      national_id: uniqueNationalId("care-story"),
+      date_of_birth: "1991-06-12",
+      gender: "F",
+    },
+  });
+  assert.equal(reg.status, 201, JSON.stringify(reg.data));
+  const patientToken = reg.data.token;
+
+  const forbidden = await api("GET", "/api/patient-care-content", {
+    token: accountantToken,
+  });
+  assert.equal(forbidden.status, 403);
+
+  const created = await api("POST", "/api/patient-care-content", {
+    token: adminToken,
+    body: {
+      title: "A calmer way to prepare for your visit",
+      eyebrow: "Before your appointment",
+      summary: "Three simple things that help you get more from your time with the doctor.",
+      body: "Write down your questions before the visit.\n\nKeep your current medicines nearby.",
+      category: "guide",
+      visual_theme: "indigo",
+      is_featured: true,
+      status: "draft",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const story = created.data.posts.find((post) => post.title.startsWith("A calmer way"));
+  assert.ok(story);
+  assert.equal(story.status, "draft");
+
+  const hiddenFeed = await api("GET", "/api/patient-portal/care-feed", {
+    token: patientToken,
+  });
+  assert.equal(hiddenFeed.status, 200);
+  assert.equal(hiddenFeed.data.posts.some((post) => post.id === story.id), false);
+
+  const published = await api("PUT", `/api/patient-care-content/${story.id}`, {
+    token: adminToken,
+    body: { ...story, status: "published" },
+  });
+  assert.equal(published.status, 200, JSON.stringify(published.data));
+
+  const feed = await api("GET", "/api/patient-portal/care-feed", { token: patientToken });
+  assert.equal(feed.status, 200);
+  const visibleStory = feed.data.posts.find((post) => post.id === story.id);
+  assert.ok(visibleStory);
+  assert.equal(visibleStory.is_featured, true);
+  assert.equal(visibleStory.is_read, false);
+  assert.equal(visibleStory.is_saved, false);
+  assert.equal(visibleStory.read_minutes, 1);
+
+  const read = await api("POST", `/api/patient-portal/care-feed/${story.id}/read`, {
+    token: patientToken,
+  });
+  assert.equal(read.status, 200);
+  const saved = await api("POST", `/api/patient-portal/care-feed/${story.id}/save`, {
+    token: patientToken,
+  });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.saved, true);
+
+  const personalizedFeed = await api("GET", "/api/patient-portal/care-feed", {
+    token: patientToken,
+  });
+  const personalizedStory = personalizedFeed.data.posts.find((post) => post.id === story.id);
+  assert.equal(personalizedStory.is_read, true);
+  assert.equal(personalizedStory.is_saved, true);
+
+  const unsaved = await api("POST", `/api/patient-portal/care-feed/${story.id}/save`, {
+    token: patientToken,
+  });
+  assert.equal(unsaved.status, 200);
+  assert.equal(unsaved.data.saved, false);
+
+  const removed = await api("DELETE", `/api/patient-care-content/${story.id}`, {
+    token: adminToken,
+  });
+  assert.equal(removed.status, 204);
+});
+
 test("patient registration derives DOB and age from a Mauritian NIC", async () => {
   const nationalId = uniqueMauritianNic();
   const parsed = parseMauritianID(nationalId);

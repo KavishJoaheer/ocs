@@ -26,6 +26,7 @@ const visitRequestsRouter = require("./routes/visitRequests");
 const appointmentChangeRequestsRouter = require("./routes/appointmentChangeRequests");
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
+const patientCareContentRouter = require("./routes/patientCareContent");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
 const {
   requireConfirmedChartAccess,
@@ -293,6 +294,12 @@ function createApp() {
     requireAuth,
     authorizeRoles("admin", "doctor", "operator", "lab_tech", "accountant"),
     hcmNewsRouter,
+  );
+  app.use(
+    "/api/patient-care-content",
+    requireAuth,
+    authorizeRoles("admin"),
+    patientCareContentRouter,
   );
   app.use(
     "/api/patients",

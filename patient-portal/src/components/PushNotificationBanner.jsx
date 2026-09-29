@@ -53,7 +53,7 @@ function PushNotificationBanner({ className = "" }) {
     setIsEnabling(true);
     try {
       await subscribeToPushNotifications();
-      toast.success("Visit alerts enabled.");
+      toast.success("Care updates enabled.");
       setVisible(false);
       setIsDenied(false);
     } catch (error) {
@@ -80,11 +80,11 @@ function PushNotificationBanner({ className = "" }) {
           <BellRing className="size-4" />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-bold text-[#22485b]">Get visit alerts on this device</p>
+          <p className="text-sm font-bold text-[#22485b]">Stay connected to your care</p>
           <p className="mt-1 text-xs leading-relaxed text-[#5b7f8a]">
             {isDenied
-              ? "Notifications are blocked. Enable them in your device settings to get doctor-assigned and en-route alerts."
-              : "Know instantly when a doctor is assigned, on the way, or has arrived."}
+              ? "Notifications are blocked. Enable them in your device settings for visit alerts and new care stories."
+              : "Get visit alerts and thoughtful new health stories from your OCS care team."}
           </p>
         </div>
       </div>

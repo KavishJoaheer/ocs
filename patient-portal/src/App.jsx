@@ -14,6 +14,7 @@ const PatientAppointments = lazy(() => import("./pages/PatientAppointments.jsx")
 const PatientHealthRecords = lazy(() => import("./pages/PatientHealthRecords.jsx"));
 const PatientBilling = lazy(() => import("./pages/PatientBilling.jsx"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile.jsx"));
+const PatientCareFeed = lazy(() => import("./pages/PatientCareFeed.jsx"));
 const RequestVisitLayout = lazy(() => import("./pages/request-visit/RequestVisitLayout.jsx"));
 const RequestVisitFormGate = lazy(() => import("./pages/request-visit/RequestVisitFormGate.jsx"));
 const RequestVisitReview = lazy(() => import("./pages/request-visit/RequestVisitReview.jsx"));
@@ -59,6 +60,7 @@ function App() {
         <Route path="health-records/visits/:consultationId" element={<PatientHealthRecords />} />
         <Route path="consultations" element={<Navigate to="/health-records" replace />} />
         <Route path="billing" element={<PatientBilling />} />
+        <Route path="care" element={<PatientCareFeed />} />
         <Route path="profile" element={<PatientProfile />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

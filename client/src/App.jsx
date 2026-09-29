@@ -17,6 +17,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
 const DoctorWorkspacePage = lazy(() => import("./pages/DoctorWorkspacePage.jsx"));
 const DoctorsPage = lazy(() => import("./pages/DoctorsPage.jsx"));
 const HcmNewsPage = lazy(() => import("./pages/HcmNewsPage.jsx"));
+const PatientCareContentPage = lazy(() => import("./pages/PatientCareContentPage.jsx"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage.jsx"));
 const SupplyRequestsPage = lazy(() => import("./pages/SupplyRequestsPage.jsx"));
 const LabWorkspacePage = lazy(() => import("./pages/LabWorkspacePage.jsx"));
@@ -65,6 +66,10 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
             <Route path="/patients/add" element={<PatientAddPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["admin"]} />}>
+            <Route path="/patient-care-content" element={<PatientCareContentPage />} />
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech"]} />}>
