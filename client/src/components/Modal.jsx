@@ -116,6 +116,7 @@ function Modal({
           sizeClass,
         )}
       >
+        <div className="ocs-modal-panel__glow" aria-hidden="true" />
         <div className="ocs-modal-panel__header mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">
           <div className="min-w-0">
             <h3 id={headingId} className="ocs-modal-panel__title text-xl font-semibold text-slate-950 md:text-ocs-slate">

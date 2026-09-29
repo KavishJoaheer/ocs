@@ -264,7 +264,7 @@ function HighlightStat({ icon: Icon, label, value, compact = false }) {
 
   if (compact) {
     return (
-      <div className={`ocs-metric-card ocs-metric-card--compact ocs-metric-card--${tone} min-w-0 rounded-xl border border-white/80 bg-white/90 px-2 py-2 shadow-sm`}>
+      <div className={`ocs-metric-card ocs-metric-card--${tone} min-w-0 rounded-xl px-2 py-2`}>
         <div className="flex flex-col items-center gap-1 text-center">
           <div className="rounded-lg bg-sky-50 p-1.5 text-sky-700">
             <Icon className="size-4" />
@@ -279,7 +279,7 @@ function HighlightStat({ icon: Icon, label, value, compact = false }) {
   }
 
   return (
-    <div className={`ocs-metric-card ocs-metric-card--${tone} max-w-full min-w-0 rounded-2xl border border-transparent bg-white px-3 py-2.5 shadow-md`}>
+    <div className={`ocs-metric-card ocs-metric-card--${tone} max-w-full min-w-0 rounded-2xl px-3 py-2.5`}>
       <div className="flex min-w-0 items-center gap-2.5">
         <div className="shrink-0 rounded-lg bg-ocs-teal/10 p-2 text-ocs-teal">
           <Icon className="size-4" />
@@ -2011,10 +2011,10 @@ function PatientProfilePage() {
   ];
 
   return (
-    <div className="ocs-detail-page ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4 md:bg-slate-50">
+    <div className="ocs-detail-page ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4">
       {isMobile && (
         <div
-          className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
+          className="ocs-mobile-detail-header sticky top-0 z-20 w-full min-w-0 max-w-full px-4 pb-3 backdrop-blur-lg"
           style={{ paddingTop: "var(--sat)" }}
         >
           <div className="flex min-w-0 items-start justify-between gap-3 pt-3">
@@ -2199,7 +2199,7 @@ function PatientProfilePage() {
           ) : null}
 
           {activeTab === "summary" && (
-            <div className="space-y-4 rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-4">
+            <div className="ocs-mobile-detail-canvas space-y-4 rounded-[26px] p-4">
               <div className={cx("grid min-w-0 gap-2", canViewConsultations || canViewLabReports ? "grid-cols-3" : "grid-cols-1")}>
                 <HighlightStat
                   compact
