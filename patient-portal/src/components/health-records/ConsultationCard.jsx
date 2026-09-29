@@ -20,9 +20,12 @@ function formatConsultationDate(date) {
 function formatPrescriptionSummary(consultation) {
   const prescriptions = consultation.prescriptions;
   if (Array.isArray(prescriptions) && prescriptions.length > 0) {
-    return prescriptions
+    const formatted = prescriptions
       .map((item) => [item.name, item.dosage].filter(Boolean).join(" "))
-      .join(", ");
+      .filter(Boolean);
+    return formatted.filter((value, index) => (
+      formatted.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index
+    )).join(", ");
   }
   return consultation.patient_prescription?.trim() || null;
 }
@@ -41,11 +44,11 @@ function resolvePatientDoctorNotes(consultation) {
   return notes;
 }
 
-function ExpandedVisitDetails({ prescription, patientNotes, hasLongPrescription }) {
+function ExpandedVisitDetails({ prescription, patientNotes }) {
   return (
     <div className="mt-4 border-t border-slate-100 bg-slate-50/50 px-[var(--native-pad-card)] pb-5 pt-4">
-      {hasLongPrescription && prescription ? (
-        <section className="hidden lg:block">
+      {prescription ? (
+        <section>
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Prescription</h3>
           <p className="text-ocs-slate break-words text-sm font-medium leading-relaxed">
             {prescription}
@@ -55,9 +58,7 @@ function ExpandedVisitDetails({ prescription, patientNotes, hasLongPrescription 
 
       {patientNotes ? (
         <section
-          className={
-            hasLongPrescription && prescription ? "lg:mt-4 lg:border-t lg:border-slate-100 lg:pt-4" : undefined
-          }
+          className={prescription ? "mt-4 border-t border-slate-100 pt-4" : undefined}
         >
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
           <p className="text-ocs-slate/80 break-words text-sm leading-relaxed">{patientNotes}</p>
@@ -77,11 +78,14 @@ function ConsultationCard({ consultation, highlighted = false }) {
   const patientNotes = resolvePatientDoctorNotes(consultation);
   const hasLongPrescription = Boolean(prescription && prescription.length > MAX_CHAR_LIMIT);
   const hasNotes = Boolean(patientNotes);
-  const isExpandable = hasLongPrescription || hasNotes;
+  const isExpandable = Boolean(prescription) || hasNotes;
   const showAccordion = Boolean(consultation.id) && (isExpandable || highlighted);
 
   const desktopPrescriptionPreview = hasLongPrescription
     ? `${prescription.slice(0, MAX_CHAR_LIMIT).trimEnd()}…`
+    : prescription;
+  const mobilePrescriptionPreview = prescription && prescription.length > 64
+    ? `${prescription.slice(0, 64).trimEnd()}…`
     : prescription;
 
   useEffect(() => {
@@ -137,7 +141,7 @@ function ConsultationCard({ consultation, highlighted = false }) {
 
       <div className="border-t border-brand-teal/10" aria-hidden="true" />
 
-      {/* Mobile — unchanged two-column summary */}
+      {/* Mobile — concise summary with full details on demand */}
       <div
         className="grid grid-cols-2 gap-4 bg-gradient-to-br from-brand-teal/5 to-white lg:hidden"
         style={{ padding: "var(--native-pad-card)" }}
@@ -154,8 +158,8 @@ function ConsultationCard({ consultation, highlighted = false }) {
         <div>
           <p className="native-label mb-2 text-[13px] text-brand-dark-grey">Prescription</p>
           {prescription ? (
-            <p className="break-words text-[14px] font-medium leading-relaxed text-brand-cool-grey">
-              {prescription}
+            <p className="line-clamp-2 break-words text-[14px] font-medium leading-relaxed text-brand-cool-grey">
+              {mobilePrescriptionPreview}
             </p>
           ) : (
             <p className="text-[14px] font-medium text-brand-cool-grey">Not recorded</p>
@@ -200,7 +204,7 @@ function ConsultationCard({ consultation, highlighted = false }) {
           <button
             type="button"
             onClick={() => setIsExpanded((open) => !open)}
-            className="flex w-full items-center justify-center bg-white py-3 text-ocs-teal transition hover:bg-slate-50/80"
+            className="flex w-full items-center justify-center gap-2 bg-white py-3 text-ocs-teal transition hover:bg-slate-50/80"
             aria-expanded={isExpanded}
             aria-label={
               isExpanded
@@ -208,6 +212,7 @@ function ConsultationCard({ consultation, highlighted = false }) {
                 : `Expand visit details for ${doctorName} on ${dateLabel}`
             }
           >
+            <span className="text-[13px] font-semibold lg:hidden">{isExpanded ? "Hide visit details" : "View visit details"}</span>
             {isExpanded ? (
               <ChevronUp className="size-5" strokeWidth={2.25} aria-hidden="true" />
             ) : (
@@ -215,17 +220,14 @@ function ConsultationCard({ consultation, highlighted = false }) {
             )}
           </button>
 
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${
-              isExpanded ? "max-h-[960px] opacity-100" : "max-h-0 opacity-0"
-            }`}
-          >
-            <ExpandedVisitDetails
-              prescription={prescription}
-              patientNotes={patientNotes}
-              hasLongPrescription={hasLongPrescription}
-            />
-          </div>
+          {isExpanded ? (
+            <div className="overflow-hidden animate-fade-in-up">
+              <ExpandedVisitDetails
+                prescription={prescription}
+                patientNotes={patientNotes}
+              />
+            </div>
+          ) : null}
         </>
       ) : null}
     </article>

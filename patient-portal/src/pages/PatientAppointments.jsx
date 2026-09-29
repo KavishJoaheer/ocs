@@ -7,7 +7,6 @@ import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
 import UpcomingAppointmentCard from "../components/appointments/UpcomingAppointmentCard.jsx";
 import PastAppointmentCard from "../components/appointments/PastAppointmentCard.jsx";
-import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 
 function withDoctorPrefix(name) {
   const value = String(name || "").trim();
@@ -186,13 +185,6 @@ function PatientAppointments() {
                 ))}
               </div>
             )}
-            <p className="mt-4 text-[13px] leading-relaxed text-[#5b7f8a]">
-              The clinic confirms any date change before it takes effect. Need help? Call{" "}
-              <a href={CLINIC_TEL_HREF} className="font-semibold text-[#2d8f98] underline-offset-2 hover:underline">
-                {CLINIC_TEL_DISPLAY}
-              </a>
-              .
-            </p>
           </section>
 
           <section

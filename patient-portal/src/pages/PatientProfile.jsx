@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import dayjs from "dayjs";
 import {
@@ -13,6 +14,8 @@ import {
   FileText,
   Save,
   X,
+  ChevronDown,
+  ReceiptText,
 } from "lucide-react";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
@@ -27,6 +30,24 @@ import ProfileCardAction from "../components/profile/ProfileCardAction.jsx";
 import ProfilePrimaryCareContent from "../components/profile/ProfilePrimaryCareCard.jsx";
 import ProfilePasswordCard from "../components/profile/ProfilePasswordCard.jsx";
 import ProfileFamilyCard from "../components/profile/ProfileFamilyCard.jsx";
+import ProfileNotificationSettings from "../components/profile/ProfileNotificationSettings.jsx";
+
+function MobileProfileDisclosure({ title, description, children }) {
+  return (
+    <details className="group border-b border-[rgba(65,200,198,0.12)] last:border-b-0">
+      <summary className="flex min-h-[68px] cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          <p className="text-[14px] font-semibold text-[#1a5c52]">{title}</p>
+          {description ? <p className="mt-0.5 truncate text-[12px] text-[#8a9e9a]">{description}</p> : null}
+        </div>
+        <ChevronDown className="size-5 shrink-0 text-[#2d8f98] transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-3 border-t border-[rgba(65,200,198,0.1)] bg-[rgba(26,160,140,0.035)] p-3">
+        {children}
+      </div>
+    </details>
+  );
+}
 
 function InlineInput({ value, onChange, placeholder, type = "text" }) {
   return (
@@ -70,7 +91,7 @@ function EditActions({ onCancel, onSave, saving }) {
 
 function PatientProfile() {
   const { user, updateUser, logout } = usePatientAuth();
-  const { activeProfile, activeProfileId } = useFamilyProfile();
+  const { activeProfile, activeProfileId, dependents } = useFamilyProfile();
   const isPrimaryProfile = Boolean(activeProfile?.isPrimary);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -438,14 +459,58 @@ function PatientProfile() {
           {personalCard}
           {primaryCareCard}
           {contactCard}
-          {billingCard}
-          {emergencyCard}
-          {isPrimaryProfile ? <ProfileFamilyCard /> : (
+
+          <Link
+            to="/billing"
+            className="profile-crafted-card flex min-h-[68px] items-center gap-3 rounded-[20px] bg-white px-5 text-[#1a5c52]"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(26,160,140,0.08)] text-[#2d8f98]">
+              <ReceiptText className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-semibold">Billing</span>
+              <span className="mt-0.5 block text-[12px] text-[#8a9e9a]">Invoices and outstanding balances</span>
+            </span>
+            <ChevronDown className="size-5 -rotate-90 text-[#2d8f98]" />
+          </Link>
+
+          <div>
+            <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#7f9697]">More about you</p>
+            <section className="profile-crafted-card overflow-hidden rounded-[20px] bg-white">
+              <MobileProfileDisclosure
+                title="Insurance"
+                description={billingForm.insurance_provider || "Add insurance details"}
+              >
+                {billingCard}
+              </MobileProfileDisclosure>
+              <MobileProfileDisclosure
+                title="Emergency contact"
+                description={emergencyForm.next_of_kin_name || "Not yet added"}
+              >
+                {emergencyCard}
+              </MobileProfileDisclosure>
+              {isPrimaryProfile ? (
+                <MobileProfileDisclosure
+                  title="Family members"
+                  description={dependents.length ? `${dependents.length} added` : "No family members yet"}
+                >
+                  <ProfileFamilyCard />
+                </MobileProfileDisclosure>
+              ) : null}
+              {isPrimaryProfile ? (
+                <MobileProfileDisclosure title="Security" description="Notifications and password">
+                  <ProfileNotificationSettings />
+                  <ProfilePasswordCard />
+                </MobileProfileDisclosure>
+              ) : null}
+            </section>
+          </div>
+
+          {!isPrimaryProfile ? (
             <p className="px-1 text-center text-[13px] leading-relaxed text-[#5b7f8a]">
               Account, password, and family members stay on your profile.
             </p>
-          )}
-          {isPrimaryProfile ? <ProfilePasswordCard /> : null}
+          ) : null}
           <button
             type="button"
             onClick={() => logout()}
@@ -470,6 +535,7 @@ function PatientProfile() {
           <div className="profile-desktop-col-right col-span-5 flex flex-col gap-8">
             {primaryCareCard}
             {billingCard}
+            {isPrimaryProfile ? <ProfileNotificationSettings /> : null}
             {isPrimaryProfile ? <ProfilePasswordCard /> : null}
             <button
               type="button"

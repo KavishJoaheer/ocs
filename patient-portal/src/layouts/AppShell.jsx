@@ -2,8 +2,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import Sidebar from "../components/Sidebar.jsx";
 import MobileIdentityHeader from "../components/MobileIdentityHeader.jsx";
-import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
-import PatientAccountLinkBanner from "../components/PatientAccountLinkBanner.jsx";
+import PatientAttentionCenter from "../components/PatientAttentionCenter.jsx";
 import { FamilyProfileProvider } from "../hooks/useFamilyProfile.jsx";
 import { RequestVisitProvider } from "../hooks/useRequestVisit.jsx";
 import "../lib/clientBuildSha.js";
@@ -79,14 +78,13 @@ function AppShellContent() {
                 ].join(" ")
           }
         >
-          <PushNotificationBanner
+          <PatientAttentionCenter
             className={
               isFullBleedMobile
                 ? "mx-[var(--native-pad-screen)] mb-4 lg:mx-0 lg:mb-5"
                 : "mb-5"
             }
           />
-          <PatientAccountLinkBanner className={isFullBleedMobile ? "mx-[var(--native-pad-screen)] mb-4 lg:mx-0" : "mb-5"} />
           <Outlet />
         </div>
       </main>

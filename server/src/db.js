@@ -403,10 +403,25 @@ function createPatientUsersTable() {
       date_of_birth TEXT NOT NULL DEFAULT '',
       gender TEXT NOT NULL DEFAULT 'M' CHECK (gender IN ('M', 'F')),
       is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+      welcome_story_created_at TEXT,
+      welcome_story_read_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
     );
   `);
+}
+
+function ensurePatientUserColumns() {
+  addColumnIfMissing(
+    "patient_users",
+    "welcome_story_created_at",
+    "ALTER TABLE patient_users ADD COLUMN welcome_story_created_at TEXT",
+  );
+  addColumnIfMissing(
+    "patient_users",
+    "welcome_story_read_at",
+    "ALTER TABLE patient_users ADD COLUMN welcome_story_read_at TEXT",
+  );
 }
 
 function createPatientAuthSessionsTable() {
@@ -1653,6 +1668,7 @@ function initializeDatabase() {
   createInventoryFoldersTable();
   createInventoryMovementsTable();
   createPatientUsersTable();
+  ensurePatientUserColumns();
   createPatientAuthSessionsTable();
   createPatientPushSubscriptionsTable();
   createVisitRequestsTable();

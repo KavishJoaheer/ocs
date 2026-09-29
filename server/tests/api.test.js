@@ -228,7 +228,26 @@ test("admin publishes a care story that patients can read and save", async () =>
     token: patientToken,
   });
   assert.equal(hiddenFeed.status, 200);
+  const welcomeStory = hiddenFeed.data.posts.find((post) => post.id === "welcome");
+  assert.ok(welcomeStory);
+  assert.equal(welcomeStory.title, "Welcome to OCS Care, Care.");
+  assert.equal(welcomeStory.is_system_message, true);
+  assert.equal(welcomeStory.can_save, false);
+  assert.equal(welcomeStory.is_read, false);
+  assert.equal(welcomeStory.is_featured, true);
   assert.equal(hiddenFeed.data.posts.some((post) => post.id === story.id), false);
+
+  const welcomeRead = await api("POST", "/api/patient-portal/care-feed/welcome/read", {
+    token: patientToken,
+  });
+  assert.equal(welcomeRead.status, 200);
+
+  const feedAfterWelcome = await api("GET", "/api/patient-portal/care-feed", {
+    token: patientToken,
+  });
+  const readWelcomeStory = feedAfterWelcome.data.posts.find((post) => post.id === "welcome");
+  assert.equal(readWelcomeStory.is_read, true);
+  assert.equal(readWelcomeStory.is_featured, false);
 
   const published = await api("PUT", `/api/patient-care-content/${story.id}`, {
     token: adminToken,

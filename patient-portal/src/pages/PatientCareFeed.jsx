@@ -119,7 +119,7 @@ function FeaturedStory({ post, onOpen, onToggleSave }) {
           <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] ${theme.chip}`}>
             <Sparkles className="size-3.5" /> Featured for you
           </span>
-          <SaveButton post={post} onToggle={onToggleSave} />
+          {post.can_save === false ? null : <SaveButton post={post} onToggle={onToggleSave} />}
         </div>
         <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
           {post.eyebrow || CATEGORY_META[post.category]?.label}
@@ -158,7 +158,7 @@ function StoryCard({ post, onOpen, onToggleSave }) {
             <CategoryIcon post={post} className="size-3.5" />
             {CATEGORY_META[post.category]?.label}
           </span>
-          <SaveButton post={post} onToggle={onToggleSave} />
+          {post.can_save === false ? null : <SaveButton post={post} onToggle={onToggleSave} />}
         </div>
         <h3 className="mt-5 font-display text-xl font-bold leading-tight tracking-tight text-[#304d50] transition group-hover:text-[#1f7777]">{post.title}</h3>
         <p className="mt-3 line-clamp-3 text-[13px] leading-6 text-slate-500">{post.summary}</p>
@@ -184,7 +184,7 @@ function ArticleReader({ post, onClose, onToggleSave }) {
           <button type="button" onClick={onClose} className="inline-flex min-h-11 items-center gap-2 rounded-full px-3 text-sm font-bold text-[#3b595c] hover:bg-slate-100">
             <ArrowLeft className="size-5" /> Back
           </button>
-          <SaveButton post={post} onToggle={onToggleSave} />
+          {post.can_save === false ? <span className="size-10" aria-hidden="true" /> : <SaveButton post={post} onToggle={onToggleSave} />}
           <button type="button" onClick={onClose} aria-label="Close story" className="hidden size-11 place-items-center rounded-full text-slate-500 hover:bg-slate-100 sm:grid">
             <X className="size-5" />
           </button>
@@ -212,8 +212,8 @@ function ArticleReader({ post, onClose, onToggleSave }) {
             <div className="flex items-start gap-4">
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#d9f6f3] text-[#1d7777]"><HeartPulse className="size-5" /></span>
               <div>
-                <h2 className="font-display text-base font-bold text-[#3b595c]">A note from your care team</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">This article is for general education and does not replace advice from your doctor. Contact OCS if something about your health is worrying you.</p>
+                <h2 className="font-display text-base font-bold text-[#3b595c]">{post.is_system_message ? "Here when you need us" : "A note from your care team"}</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">{post.is_system_message ? "If you need help with your patient space, contact the OCS clinic and our team will be happy to assist." : "This article is for general education and does not replace advice from your doctor. Contact OCS if something about your health is worrying you."}</p>
               </div>
             </div>
           </div>
@@ -262,8 +262,13 @@ export default function PatientCareFeed() {
   const remaining = visiblePosts.filter((post) => post.id !== featured?.id);
 
   async function openStory(post) {
-    setActivePost({ ...post, is_read: true });
-    setPosts((current) => current.map((item) => item.id === post.id ? { ...item, is_read: true } : item));
+    const openedPost = { ...post, is_read: true, is_featured: post.is_system_message ? false : post.is_featured };
+    setActivePost(openedPost);
+    setPosts((current) => {
+      const updated = current.map((item) => item.id === post.id ? openedPost : item);
+      if (!post.is_system_message) return updated;
+      return [...updated.filter((item) => item.id !== post.id), openedPost];
+    });
     document.body.style.overflow = "hidden";
     try { await api.post(`/patient-portal/care-feed/${post.id}/read`); } catch { /* Keep reading available offline. */ }
   }

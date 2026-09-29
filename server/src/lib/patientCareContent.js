@@ -59,7 +59,7 @@ function listStaffPosts() {
 }
 
 function listPatientPosts(patientUserId) {
-  return db.prepare(`
+  const posts = db.prepare(`
     SELECT
       post.*,
       CASE WHEN reads.post_id IS NULL THEN 0 ELSE 1 END AS is_read,
@@ -72,6 +72,46 @@ function listPatientPosts(patientUserId) {
     WHERE post.status = 'published'
     ORDER BY post.is_featured DESC, post.published_at DESC, post.id DESC
   `).all(patientUserId, patientUserId).map(serializePost);
+
+  const patientUser = db.prepare(`
+    SELECT id, full_name, welcome_story_created_at, welcome_story_read_at
+    FROM patient_users
+    WHERE id = ? AND is_active = 1
+  `).get(patientUserId);
+
+  if (!patientUser?.welcome_story_created_at) {
+    return posts;
+  }
+
+  const firstName = String(patientUser.full_name || "")
+    .trim()
+    .split(/\s+/)[0] || "there";
+  const welcomePost = serializePost({
+    id: "welcome",
+    title: `Welcome to OCS Care, ${firstName}.`,
+    eyebrow: "Your OCS care space",
+    summary:
+      "Your appointments, health records, billing and OCS updates now have one secure home.",
+    body: [
+      `Welcome, ${firstName}. We’re happy to have you with us.`,
+      "This is your secure space to request a home visit, follow appointments, view your health records and billing, and stay connected through Care Stories.",
+      "Here in Care Stories, you’ll find general health information, clinic news and thoughtful updates from OCS. For medical advice specific to you, please contact your doctor or the clinic.",
+      "Thank you for choosing OCS Médecins. We’re honoured to be part of your care journey.",
+    ].join("\n\n"),
+    category: "update",
+    visual_theme: "teal",
+    is_featured: patientUser.welcome_story_read_at ? 0 : 1,
+    status: "published",
+    published_at: patientUser.welcome_story_created_at,
+    created_at: patientUser.welcome_story_created_at,
+    updated_at: patientUser.welcome_story_created_at,
+    is_read: Boolean(patientUser.welcome_story_read_at),
+    is_saved: false,
+    is_system_message: true,
+    can_save: false,
+  });
+
+  return welcomePost.is_read ? [...posts, welcomePost] : [welcomePost, ...posts];
 }
 
 module.exports = {

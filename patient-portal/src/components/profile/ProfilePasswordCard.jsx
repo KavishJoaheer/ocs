@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { KeyRound } from "lucide-react";
 import toast from "react-hot-toast";
 import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import ProfileListCard from "./ProfileListCard.jsx";
@@ -9,6 +10,14 @@ function ProfilePasswordCard() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
+  const [changing, setChanging] = useState(false);
+
+  function closeForm() {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setChanging(false);
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -24,9 +33,7 @@ function ProfilePasswordCard() {
     setSaving(true);
     try {
       await changePassword({ current_password: currentPassword, new_password: newPassword });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      closeForm();
       toast.success("Password updated. Other devices will need to sign in again.");
     } catch (error) {
       toast.error(error.message || "Could not update password.");
@@ -36,8 +43,23 @@ function ProfilePasswordCard() {
   }
 
   return (
-    <ProfileListCard title="Account security">
-      <form className="space-y-3 px-5 py-4" onSubmit={handleSubmit}>
+    <ProfileListCard
+      title="Account security"
+      action={!changing ? (
+        <button type="button" onClick={() => setChanging(true)} className="inline-flex min-h-9 items-center rounded-full border border-[#2d8f98]/25 px-3 text-[12px] font-semibold text-[#2d8f98]">
+          Change password
+        </button>
+      ) : null}
+    >
+      {!changing ? (
+        <div className="flex items-center gap-3 px-5 pb-5 pt-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(26,160,140,0.08)] text-[#2d8f98]">
+            <KeyRound className="size-5" />
+          </span>
+          <p className="text-[13px] leading-relaxed text-[#6e8587]">Your password protects access to your private OCS care information.</p>
+        </div>
+      ) : (
+        <form className="space-y-3 px-5 py-4" onSubmit={handleSubmit}>
         <input
           type="password"
           autoComplete="current-password"
@@ -69,7 +91,11 @@ function ProfilePasswordCard() {
         >
           {saving ? "Updating..." : "Update password"}
         </button>
-      </form>
+        <button type="button" onClick={closeForm} disabled={saving} className="w-full py-2 text-center text-[13px] font-semibold text-[#8a9e9a] disabled:opacity-50">
+          Cancel
+        </button>
+        </form>
+      )}
     </ProfileListCard>
   );
 }

@@ -32,7 +32,7 @@ export const PATIENT_NAV_ITEMS = [
   {
     to: "/appointments",
     label: "Appointments",
-    mobileLabel: "Appointments",
+    mobileLabel: "Visits",
     icon: CalendarCheck,
     mobileIcon: Calendar,
     mobileIconActive: CalendarCheck,
@@ -62,3 +62,5 @@ export const PATIENT_NAV_ITEMS = [
     mobileIconActive: User,
   },
 ];
+
+export const MOBILE_PATIENT_NAV_ITEMS = PATIENT_NAV_ITEMS.filter((item) => item.to !== "/billing");

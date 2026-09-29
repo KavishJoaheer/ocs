@@ -1,8 +1,9 @@
 import { useState } from "react";
 import dayjs from "dayjs";
-import { CalendarPlus, Clock } from "lucide-react";
+import { CalendarPlus, Clock, Settings2 } from "lucide-react";
 import { downloadAppointmentIcs } from "../../lib/calendarExport.js";
 import AppointmentChangeSheet from "./AppointmentChangeSheet.jsx";
+import AppointmentManageSheet from "./AppointmentManageSheet.jsx";
 import DoctorAvatar from "./DoctorAvatar.jsx";
 
 function VisitStatusBadge({ children, tone = "teal" }) {
@@ -25,6 +26,7 @@ function VisitStatusBadge({ children, tone = "teal" }) {
 function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
   const date = dayjs(appointment.date);
   const [sheetType, setSheetType] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
   const pending = appointment.pending_change;
   const canRequestChange =
     appointment.kind !== "review" &&
@@ -68,37 +70,27 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 border-t border-teal-500/10 pt-4">
-          <button
-            type="button"
-            onClick={handleAddToCalendar}
-            className="flex min-h-[44px] items-center gap-2 text-[15px] font-semibold text-brand-gold transition-colors active:opacity-80"
-          >
-            <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-            Add to Calendar
-          </button>
+        <div className="mt-4 border-t border-teal-500/10 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={handleAddToCalendar}
+              className="flex min-h-[44px] items-center gap-2 text-[14px] font-semibold text-brand-gold transition-colors active:opacity-80"
+            >
+              <CalendarPlus className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+              Add to Calendar
+            </button>
+            {!pending && canRequestChange ? (
+              <button type="button" onClick={() => setManageOpen(true)} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[#2d8f98] px-4 text-[13px] font-semibold text-white">
+                <Settings2 className="size-4" /> Manage appointment
+              </button>
+            ) : null}
+          </div>
           {pending ? (
-            <p className="text-[13px] text-[#2d8f98]">
+            <p className="mt-2 text-[13px] text-[#2d8f98]">
               {pending.request_type === "cancel" ? "Cancel" : "Reschedule"} request is with the clinic.
               They will confirm before anything changes.
             </p>
-          ) : canRequestChange ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSheetType("reschedule")}
-                className="rounded-xl bg-[#2d8f98] px-4 py-2.5 text-[13px] font-semibold text-white"
-              >
-                Change the date
-              </button>
-              <button
-                type="button"
-                onClick={() => setSheetType("cancel")}
-                className="rounded-xl border border-[#c23a2f]/30 px-4 py-2.5 text-[13px] font-semibold text-[#c23a2f]"
-              >
-                Ask the clinic to cancel
-              </button>
-            </div>
           ) : null}
         </div>
       </div>
@@ -156,24 +148,21 @@ function UpcomingAppointmentCard({ appointment, isNextVisit = false }) {
             They will confirm before anything changes.
           </p>
         ) : canRequestChange ? (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setSheetType("reschedule")}
-              className="rounded-xl bg-[#2d8f98] px-4 py-2 text-[13px] font-semibold text-white"
-            >
-              Change the date
-            </button>
-            <button
-              type="button"
-              onClick={() => setSheetType("cancel")}
-              className="rounded-xl border border-[#c23a2f]/30 px-4 py-2 text-[13px] font-semibold text-[#c23a2f]"
-            >
-              Ask the clinic to cancel
-            </button>
-          </div>
+          <button type="button" onClick={() => setManageOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#2d8f98] px-4 py-2 text-[13px] font-semibold text-white">
+            <Settings2 className="size-4" /> Manage appointment
+          </button>
         ) : null}
       </div>
+
+      <AppointmentManageSheet
+        open={manageOpen}
+        appointment={appointment}
+        onClose={() => setManageOpen(false)}
+        onSelect={(type) => {
+          setManageOpen(false);
+          setSheetType(type);
+        }}
+      />
 
       <AppointmentChangeSheet
         open={Boolean(sheetType)}

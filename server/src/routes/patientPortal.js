@@ -49,6 +49,18 @@ router.get("/care-feed", (req, res) => {
 });
 
 router.post("/care-feed/:id/read", (req, res) => {
+  if (req.params.id === "welcome") {
+    const result = db.prepare(`
+      UPDATE patient_users
+      SET welcome_story_read_at = COALESCE(welcome_story_read_at, CURRENT_TIMESTAMP)
+      WHERE id = ? AND welcome_story_created_at IS NOT NULL
+    `).run(req.patientAuth.id);
+    if (!result.changes) {
+      return res.status(404).json({ error: "This welcome message is not available." });
+    }
+    return res.json({ ok: true });
+  }
+
   const postId = Number(req.params.id);
   const post = db.prepare("SELECT id FROM patient_care_posts WHERE id = ? AND status = 'published'").get(postId);
   if (!post) return res.status(404).json({ error: "This story is no longer available." });
@@ -61,6 +73,10 @@ router.post("/care-feed/:id/read", (req, res) => {
 });
 
 router.post("/care-feed/:id/save", (req, res) => {
+  if (req.params.id === "welcome") {
+    return res.status(400).json({ error: "The welcome message is always available in Care Stories." });
+  }
+
   const postId = Number(req.params.id);
   const post = db.prepare("SELECT id FROM patient_care_posts WHERE id = ? AND status = 'published'").get(postId);
   if (!post) return res.status(404).json({ error: "This story is no longer available." });

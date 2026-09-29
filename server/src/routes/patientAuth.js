@@ -190,8 +190,11 @@ router.post("/register", (req, res) => {
 
     const userResult = db
       .prepare(`
-        INSERT INTO patient_users (email, password_hash, patient_id, full_name, phone, date_of_birth, gender)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO patient_users (
+          email, password_hash, patient_id, full_name, phone, date_of_birth, gender,
+          welcome_story_created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       `)
       .run(email, passwordHash, patientId, fullName, phone, userDateOfBirth, userGender);
 

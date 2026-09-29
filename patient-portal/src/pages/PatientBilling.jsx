@@ -131,7 +131,7 @@ function PatientBilling() {
             ))}
           </div>
         </>
-      ) : !loadError ? (
+      ) : !loadError && bills.length > 0 ? (
         <>
           <BillingMobileStatsStrip summary={summary} formatCurrency={formatCurrency} />
           <div className="hidden gap-4 sm:grid-cols-3 lg:grid">
