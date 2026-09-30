@@ -10,9 +10,9 @@ export default function LegacyReconciliationNotice({ request, compact = false })
         : "rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"}
       role="status"
     >
-      <p className="font-bold">Legacy – reconciliation required</p>
+      <p className="font-bold">Stock information needs review</p>
       <p className={compact ? "mt-1" : "mt-1.5"}>
-        Collection and completion are blocked until an operator reconciles this request. Records are not invented automatically.
+        Some information needed to move this stock is missing. An operator must review it before collection.
       </p>
       {gaps.length ? (
         <ul className={`list-disc pl-4 ${compact ? "mt-1" : "mt-2"}`}>
@@ -21,7 +21,7 @@ export default function LegacyReconciliationNotice({ request, compact = false })
           ))}
         </ul>
       ) : (
-        <p className={compact ? "mt-1" : "mt-2"}>Fulfilment, reservation, picked-batch or timeline records are unavailable.</p>
+        <p className={compact ? "mt-1" : "mt-2"}>The item, reserved quantity, or batch details are unavailable.</p>
       )}
     </div>
   );

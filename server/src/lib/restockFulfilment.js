@@ -1491,6 +1491,9 @@ function fulfilmentDetail(requestId) {
     transfer_transaction_id: request.transfer_transaction_id || fulfilment?.transfer_transaction_id || null,
     items,
   };
+  detail.automatic_collection_repair_available = Boolean(
+    readyZeroFulfilledRepair(detail, String(request.status || "")),
+  );
   const collectionGaps = describeFulfilmentCollectionGaps(detail, String(request.status || ""));
   detail.collection_gaps = collectionGaps;
   detail.reconciliation_required = detail.reconciliation_required || collectionGaps.length > 0;
@@ -1530,7 +1533,13 @@ function describeFulfilmentCollectionGaps(fulfilment, status) {
       });
     const fulfilledTotal = items.reduce((sum, line) => sum + integerLineQty(line.fulfilled_quantity), 0);
     if (missingPicked && !fulfilment?.legacy) gaps.push("Picked-batch allocations");
-    if (requestedTotal > 0 && fulfilledTotal <= 0) gaps.push("Fulfilled quantities");
+    if (
+      requestedTotal > 0
+      && fulfilledTotal <= 0
+      && !fulfilment?.automatic_collection_repair_available
+    ) {
+      gaps.push("Fulfilled quantities");
+    }
     if (fulfilment?.fulfilment?.status && !["packed", "posted"].includes(String(fulfilment.fulfilment.status))) {
       gaps.push("Packed fulfilment");
     }
@@ -1810,12 +1819,11 @@ function upsertDoctorBagItem(source, doctorId, inboundQty) {
       SELECT * FROM inventory
       WHERE stock_scope = 'doctor'
         AND owner_doctor_id = ?
-        AND folder_id = ?
-        AND item_name = ?
+        AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
         AND archived_at IS NULL
       LIMIT 1
     `)
-    .get(doctorId, source.folder_id, source.item_name);
+    .get(doctorId, source.item_name);
   if (existing) {
     const adjusted = adjustInventoryQuantity(existing.id, inboundQty);
     if (!adjusted.ok) {
@@ -1949,6 +1957,35 @@ function lookupUserName(userId) {
   );
 }
 
+function restoreReadyFulfilledQuantitiesForCollection(request, actor) {
+  const detail = fulfilmentDetail(request.id);
+  const repair = readyZeroFulfilledRepair(detail, request.status);
+  if (!repair) return false;
+
+  const updateFulfilled = db.prepare(`
+    UPDATE restock_request_fulfillment_items
+    SET fulfilled_quantity = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  for (const [lineId, fulfilled] of repair.entries()) {
+    updateFulfilled.run(fulfilled, lineId);
+  }
+  recordInventoryRequestEvent({
+    requestId: request.id,
+    eventType: "automatic_fulfilment_repair",
+    previousStatus: request.status,
+    newStatus: request.status,
+    actor,
+    reason: "Restored fulfilled quantities from the locked picked quantities during collection",
+    metadata: {
+      automatic: true,
+      restored_fulfilled_quantities: true,
+      source: "locked_picked_quantities",
+    },
+  });
+  return true;
+}
+
 function postCollectionTransfer({ request, actor }) {
   const existingPosted = postedFulfilment(request.id);
   if (existingPosted?.transfer_transaction_id || request.transfer_transaction_id) {
@@ -1959,6 +1996,7 @@ function postCollectionTransfer({ request, actor }) {
     };
   }
 
+  restoreReadyFulfilledQuantitiesForCollection(request, actor);
   const detail = assertRequestCollectable(request);
   assertFulfilmentQuantityInvariants(detail, { requirePickedForReady: true });
   const totals = (detail.items || []).reduce(
@@ -2186,7 +2224,7 @@ function workQueues() {
       ORDER BY datetime(r.collection_date) ASC, datetime(r.created_at) ASC
     `)
     .all();
-  const linkage = db
+  const linkageRows = db
     .prepare(`
       SELECT r.*, d.full_name AS doctor_name
       FROM restock_requests r
@@ -2213,27 +2251,21 @@ function workQueues() {
                 OR json_extract(e.metadata_json, '$.insufficient_data') = 1
               )
           )
-          OR (
-            r.status = 'ready'
-            AND EXISTS (
-              SELECT 1
-              FROM restock_request_fulfillment_items fi2
-              JOIN restock_request_fulfillments f3 ON f3.id = fi2.fulfilment_id
-              WHERE f3.request_id = r.id
-                AND fi2.requested_quantity > 0
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM restock_request_fulfillment_items fi3
-              JOIN restock_request_fulfillments f4 ON f4.id = fi3.fulfilment_id
-              WHERE f4.request_id = r.id
-                AND fi3.fulfilled_quantity > 0
-            )
-          )
         )
       ORDER BY datetime(r.created_at) ASC
     `)
     .all();
+  const linkageById = new Map(linkageRows.map((row) => [Number(row.id), row]));
+  for (const row of [...pickToday, ...awaiting]) {
+    if (linkageById.has(Number(row.id))) continue;
+    const detail = fulfilmentDetail(row.id);
+    if (detail?.reconciliation_required || detail?.linkage_required) {
+      linkageById.set(Number(row.id), row);
+    }
+  }
+  const linkage = [...linkageById.values()].sort((a, b) =>
+    String(a.created_at || "").localeCompare(String(b.created_at || "")),
+  );
   const incomingRows = db
     .prepare(`
       SELECT * FROM inventory_shipments WHERE status = 'pending' ORDER BY imported_at ASC, id ASC
@@ -2291,8 +2323,8 @@ function workQueues() {
     shortages: decorate(shortages, "Resolve shortage"),
     pick_today: decorate(pickTodayOpen, "Pick pack"),
     awaiting_collection: decorate(awaitingOpen, "Mark collected"),
-    fulfilment_linkage_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
-    reconciliation_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
+    fulfilment_linkage_required: decorate(linkage, "Review request", { reconciliation_required: true }),
+    reconciliation_required: decorate(linkage, "Review request", { reconciliation_required: true }),
     incoming_shipments: incomingRows,
     count_variances: varianceRows,
     counts: {

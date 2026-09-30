@@ -1104,6 +1104,55 @@ test("unreconciled legacy ready requests cannot be collected", async () => {
   assert.equal(detail.data.request.status, "ready");
 });
 
+test("collection automatically restores quantities when picked batches are complete", async () => {
+  const created = await api("POST", "/api/restock-requests", {
+    token: doctorToken,
+    body: requestPayload({ note: "automatic collection repair" }),
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const requestId = Number(created.data.request.id);
+  const accepted = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "accepted" },
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
+  const ready = await pickReservedThenReady(requestId, operatorToken);
+  assert.equal(ready.status, 200, JSON.stringify(ready.data));
+
+  db.prepare(`
+    UPDATE restock_request_fulfillment_items
+    SET fulfilled_quantity = 0
+    WHERE fulfilment_id = (
+      SELECT id FROM restock_request_fulfillments WHERE request_id = ? ORDER BY id DESC LIMIT 1
+    )
+  `).run(requestId);
+
+  const before = await api("GET", `/api/restock-requests/${requestId}`, { token: operatorToken });
+  assert.equal(before.status, 200, JSON.stringify(before.data));
+  assert.equal(before.data.request.reconciliation_required, false);
+  assert.equal(before.data.request.fulfilment.automatic_collection_repair_available, true);
+
+  const queues = await api("GET", "/api/restock-requests/queues", { token: operatorToken });
+  assert.ok(queues.data.awaiting_collection.some((row) => Number(row.id) === requestId));
+  assert.ok(!queues.data.reconciliation_required.some((row) => Number(row.id) === requestId));
+
+  const collected = await api("PATCH", `/api/restock-requests/${requestId}`, {
+    token: operatorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(collected.status, 200, JSON.stringify(collected.data));
+  assert.equal(collected.data.request.status, "completed");
+  assert.equal(collected.data.request.fulfilment.items[0].fulfilled_quantity, 2);
+  assert.ok(collected.data.request.transfer_transaction_id);
+  assert.equal(
+    Number(db.prepare(`
+      SELECT COUNT(*) AS count FROM restock_request_events
+      WHERE request_id = ? AND event_type = 'automatic_fulfilment_repair'
+    `).get(requestId).count),
+    1,
+  );
+});
+
 test("admin exceptional cancellation of accepted requests requires a 10-character reason", async () => {
   const created = await api("POST", "/api/restock-requests", {
     token: doctorToken,

@@ -1359,8 +1359,8 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, doctor.token);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/supply-requests`);
-    await expect(page.getByText("Legacy – reconciliation required").first()).toBeVisible({ timeout: 20_000 });
-    const legacyCard = page.locator("article").filter({ hasText: "Legacy – reconciliation required" }).first();
+    await expect(page.getByText("Stock information needs review").first()).toBeVisible({ timeout: 20_000 });
+    const legacyCard = page.locator("article").filter({ hasText: "Stock information needs review" }).first();
     await expect(legacyCard.getByRole("button", { name: /Confirm collection|Supply Collected/i })).toHaveCount(0);
     const blocked = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
       headers: { Authorization: `Bearer ${operator.token}` },
@@ -1609,16 +1609,16 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Tasks" }).click();
-    await page.getByRole("button", { name: /Reconciliation required/i }).click();
+    await page.getByRole("button", { name: /Needs review/i }).click();
     const detailsButton = page.getByRole("button", { name: `Open request ${requestId} details` });
     await expect(detailsButton).toBeVisible({ timeout: 20_000 });
     await detailsButton.click();
     await expect(page.getByRole("heading", { name: `Request #${requestId}` })).toBeVisible();
-    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Open reconciliation" }).click();
-    await expect(page.getByRole("button", { name: "Review reconciliation" })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Review reconciliation" }).click();
-    await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Confirm reconciliation" })).toBeVisible();
+    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Review request" }).click();
+    await expect(page.getByRole("button", { name: "Review stock information" })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Review stock information" }).click();
+    await expect(page.getByRole("heading", { name: /Review stock information/i })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Apply review" })).toBeVisible();
     const dbAfter = openE2eDb();
     const afterEvents = dbAfter.prepare("SELECT COUNT(*) AS count FROM restock_request_events WHERE request_id = ?").get(requestId).count;
     const fulfilments = dbAfter.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments WHERE request_id = ?").get(requestId).count;
@@ -1626,10 +1626,10 @@ test.describe("Inventory workflow", () => {
     expect(afterEvents).toBe(beforeEvents);
     expect(fulfilments).toBe(0);
     await page.getByRole("button", { name: "Cancel" }).click();
-    await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /Review stock information/i })).toHaveCount(0);
   });
 
-  test("ready request can restore missing fulfilled quantities through reconciliation", async ({ request, page }) => {
+  test("ready request with complete picked batches collects without a reconciliation step", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     const admin = await login(request, "shravan.joaheer");
     const doctor = await login(request, "arun.dharee");
@@ -1673,17 +1673,13 @@ test.describe("Inventory workflow", () => {
 
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory?tab=queues&queue=reconciliation_required`);
+    await page.goto(`${STAFF_BASE}/inventory?tab=queues&queue=awaiting_collection`);
     await page.getByRole("button", { name: `Open request ${requestId} details` }).click();
-    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Open reconciliation" }).click();
-    await expect(page.getByRole("button", { name: "Review reconciliation" })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: "Review reconciliation" }).click();
-    await expect(page.getByRole("heading", { name: `Review reconciliation #${requestId}` })).toBeVisible();
-    await page.getByPlaceholder("Why this reconciliation is being applied (at least 10 characters)").fill(
-      "Restore quantities from the recorded picked batches",
-    );
-    await page.getByRole("button", { name: "Confirm reconciliation" }).click();
-    await expect(page.getByRole("heading", { name: `Review reconciliation #${requestId}` })).toHaveCount(0);
+    await expect(page.getByLabel(`Request #${requestId}`).getByText("Stock information needs review")).toHaveCount(0);
+    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Mark collected" }).click();
+    await expect(page.getByRole("heading", { name: "Mark supply collected" })).toBeVisible();
+    await page.getByRole("button", { name: "Mark collected" }).last().click();
+    await expect(page.getByRole("heading", { name: "Mark supply collected" })).toBeHidden();
 
     const detail = await request.get(`${API_BASE}/restock-requests/${requestId}`, {
       headers: { Authorization: `Bearer ${operator.token}` },
@@ -1691,11 +1687,8 @@ test.describe("Inventory workflow", () => {
     expect(detail.ok(), await detail.text()).toBeTruthy();
     const detailBody = await apiJson(detail);
     expect(detailBody.request.fulfilment.items[0].fulfilled_quantity).toBe(2);
-    const completed = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
-      headers: { Authorization: `Bearer ${operator.token}` },
-      data: { status: "completed" },
-    });
-    expect(completed.ok(), await completed.text()).toBeTruthy();
+    expect(detailBody.request.status).toBe("completed");
+    expect(detailBody.request.transfer_transaction_id).toBeTruthy();
   });
 
   test("ready requests hide Claim and editable fulfilment", async ({ request, page }) => {

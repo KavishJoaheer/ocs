@@ -19,6 +19,7 @@ const EVENT_TYPES = {
   completed: "supply_collected",
   transferPosted: "inventory_transfer_posted",
   reconciled: "fulfilment_reconciled",
+  automaticCollectionRepair: "automatic_fulfilment_repair",
 };
 
 const OPERATOR_TRANSITIONS = {
@@ -116,6 +117,7 @@ const EVENT_LABELS = {
   supply_collected: "Collection confirmed",
   inventory_transfer_posted: "Warehouse transfer posted",
   fulfilment_reconciled: "Fulfilment reconciled",
+  automatic_fulfilment_repair: "Collection details restored",
 };
 
 function supplyRequestEventLabel(eventType) {

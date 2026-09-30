@@ -296,7 +296,7 @@ export default function SupplyRequestDetailDrawer({
                 ) : (
                   <p className="text-sm text-slate-600">
                     {request.reconciliation_required || request.linkage_required
-                      ? "Fulfilment, reservation, picked-batch or movement records are unavailable until this legacy request is reconciled."
+                      ? "Some item, reservation, batch, or movement details need review before this request can be collected."
                       : "Fulfilment details were not recorded for this legacy request."}
                   </p>
                 )}

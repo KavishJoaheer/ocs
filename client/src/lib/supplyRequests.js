@@ -261,7 +261,7 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
   if (isOperator && (status === "accepted" || status === "ready") && (request?.reconciliation_required || request?.linkage_required)) {
     actions.push({
       id: "fulfil",
-      label: "Open reconciliation",
+      label: "Review request",
       kind: "primary",
       disabled,
     });

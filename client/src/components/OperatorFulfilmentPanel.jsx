@@ -135,7 +135,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
       setReconReason("");
       setPreviewOpen(true);
     } catch (error) {
-      toast.error(error.message || "Could not load the reconciliation preview.");
+      toast.error(error.message || "Could not load the request review.");
     } finally {
       setPreviewLoading(false);
     }
@@ -144,7 +144,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   async function confirmReconciliation() {
     if (!request?.id || saving) return;
     if (String(reconReason || "").trim().length < 10) {
-      toast.error("Enter a reconciliation reason of at least 10 characters.");
+      toast.error("Enter a review note of at least 10 characters.");
       return;
     }
     setSaving(true);
@@ -171,7 +171,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
       toast.success(payload.explanation || "Fulfilment linked.");
       await onUpdated?.(payload);
     } catch (error) {
-      toast.error(error.message || "Could not reconcile this request.");
+      toast.error(error.message || "Could not apply this review.");
     } finally {
       setSaving(false);
     }
@@ -211,9 +211,9 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
       ) : null}
       {linkageRequired ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-semibold">Fulfilment linkage required</p>
+          <p className="font-semibold">Stock information needs review</p>
           <p className="mt-1 text-xs">
-            Review the proposed reservations and batches before confirming. The first click does not change inventory.
+            Check the proposed quantities and batches before applying them. Opening the review does not change stock.
           </p>
           <button
             type="button"
@@ -221,7 +221,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
             onClick={reconcile}
             className="mt-3 min-h-11 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
           >
-            {previewLoading ? "Loading preview…" : "Review reconciliation"}
+            {previewLoading ? "Loading review…" : "Review stock information"}
           </button>
         </div>
       ) : (
@@ -382,7 +382,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         if (saving) return;
         setPreviewOpen(false);
       }}
-      title={`Review reconciliation #${preview?.request_number || request?.id || ""}`}
+      title={`Review stock information #${preview?.request_number || request?.id || ""}`}
       description="This preview does not change inventory until you confirm."
       size="xl"
     >
@@ -441,13 +441,13 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
             </p>
           ) : null}
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Reconciliation reason
+            Review note
             <textarea
               value={reconReason}
               onChange={(event) => setReconReason(event.target.value.slice(0, 500))}
               rows={3}
               minLength={10}
-              placeholder="Why this reconciliation is being applied (at least 10 characters)"
+              placeholder="Explain what was checked (at least 10 characters)"
               className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm font-normal normal-case text-slate-800"
             />
           </label>
@@ -466,7 +466,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
               onClick={confirmReconciliation}
               className="min-h-11 rounded-xl bg-[#2d8f98] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-600"
             >
-              {saving ? "Applying…" : "Confirm reconciliation"}
+              {saving ? "Applying…" : "Apply review"}
             </button>
           </div>
         </div>

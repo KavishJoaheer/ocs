@@ -21,7 +21,7 @@ import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequ
 
 const QUEUE_DEFS = [
   { id: "changes", label: "Changes", key: "changes" },
-  { id: "reconciliation_required", label: "Reconciliation required", key: "reconciliation_required" },
+  { id: "reconciliation_required", label: "Needs review", key: "reconciliation_required" },
   { id: "shortages", label: "Shortages", key: "shortages" },
   { id: "new_requests", label: "New requests", key: "new_requests" },
   { id: "pick_today", label: "Pick today", key: "pick_today" },
@@ -284,7 +284,7 @@ export default function OperatorWorkQueuesPanel({
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {counts.reconciliation_required || counts.fulfilment_linkage_required} request
             {(counts.reconciliation_required || counts.fulfilment_linkage_required) === 1 ? "" : "s"} need
-            operator confirmation of actual quantities before collection.
+            operator review because some stock information is missing.
           </div>
         ) : null}
 
@@ -496,7 +496,7 @@ export default function OperatorWorkQueuesPanel({
                     </span>
                     {row.reconciliation_required || row.linkage_required ? (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
-                        Legacy – reconciliation required
+                        Needs review
                       </span>
                     ) : null}
                   </div>
