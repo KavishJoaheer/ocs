@@ -207,17 +207,17 @@ test.describe("Inventory workflow", () => {
 
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: /OCS depot|OCS Stock|Supply Requests/i })).toBeVisible({
+    await page.goto(`${STAFF_BASE}/inventory?tab=queues&queue=awaiting_collection`);
+    await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible({
       timeout: 25_000,
     });
-    const requestRow = page.locator("tr").filter({ hasText: itemName });
-    await expect(requestRow.getByText("Supply Ready")).toBeVisible({ timeout: 25_000 });
-    await requestRow.getByRole("button", { name: "Mark collected" }).click();
+    await expect(page.getByRole("button", { name: "Mark collected" }).first()).toBeVisible({ timeout: 25_000 });
+    await page.getByRole("button", { name: "Mark collected" }).first().click();
     await expect(page.getByRole("heading", { name: "Mark supply collected" })).toBeVisible();
     await page.getByRole("button", { name: "Mark collected" }).last().click();
+    await expect(page.getByRole("heading", { name: "Mark supply collected" })).toBeHidden();
     await page.getByRole("button", { name: "History" }).click();
-    await expect(page.getByText("Supply Dispatched").first()).toBeVisible();
+    await expect(page.locator("span").filter({ hasText: /^Supply Dispatched$/ }).first()).toBeVisible();
 
     const detail = await request.get(`${API_BASE}/restock-requests/${requestId}`, {
       headers: { Authorization: `Bearer ${operator.token}` },
@@ -1057,10 +1057,11 @@ test.describe("Inventory workflow", () => {
       headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "ready" },
     });
-    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
-      headers: { Authorization: `Bearer ${doctor.token}` },
+    const completed = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "completed" },
     });
+    expect(completed.ok(), await completed.text()).toBeTruthy();
 
     await injectStaffSession(page, doctor.token);
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -1108,10 +1109,11 @@ test.describe("Inventory workflow", () => {
       headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "ready" },
     });
-    await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
-      headers: { Authorization: `Bearer ${doctor.token}` },
+    const completed = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "completed" },
     });
+    expect(completed.ok(), await completed.text()).toBeTruthy();
 
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
