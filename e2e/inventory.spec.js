@@ -1766,7 +1766,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("tab", { name: "Tasks" }).click();
     const priority = [
       "Changes",
-      "Reconciliation required",
+      "Needs review",
       "Shortages",
       "New requests",
       "Pick today",
@@ -1785,8 +1785,12 @@ test.describe("Inventory workflow", () => {
       "incoming_shipments",
       "count_variances",
     ];
-    const expected = priority[keys.findIndex((key) => Number(counts[key] || 0) > 0)] || "New requests";
-    await expect(page.getByRole("button", { name: new RegExp(expected, "i") }).first()).toHaveAttribute("aria-pressed", "true");
+    const firstNonEmpty = keys.findIndex((key) => Number(counts[key] || 0) > 0);
+    if (firstNonEmpty < 0) {
+      await expect(page.getByText("Nothing is waiting.")).toBeVisible();
+    } else {
+      await expect(page.getByRole("button", { name: new RegExp(priority[firstNonEmpty], "i") }).first()).toHaveAttribute("aria-pressed", "true");
+    }
   });
 
   test("shipment import has an accessible label and disabled import control", async ({ request, page }) => {
