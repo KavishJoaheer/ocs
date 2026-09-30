@@ -191,10 +191,10 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
     assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count, 0, table);
   }
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM operation_receipts WHERE scope LIKE 'billing:%'").get().count, 0);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 10);
-  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE id = ?").get(batchId).quantity_remaining, 10);
-  assert.equal(db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(itemId).cost_price, 10);
-  assert.equal(db.prepare("SELECT unit_cost FROM inventory_batches WHERE id = ?").get(batchId).unit_cost, 10);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_batches WHERE id = ?").get(batchId).count, 0);
+  assert.equal(db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(itemId).cost_price, 0);
+  assert.equal(db.prepare("SELECT selling_price FROM inventory WHERE id = ?").get(itemId).selling_price, 25);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(movementId).count, 0);
   assert.equal(db.prepare("SELECT doctor_notes FROM consultations WHERE id = ?").get(visit.consultationId).doctor_notes, "Preserved consultation note");
   assert.equal(getBillingCutoverDate(db), "2026-10-01");

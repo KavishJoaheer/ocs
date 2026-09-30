@@ -1070,7 +1070,7 @@ function ensureFinancialIntegritySchema(db) {
     if (process.env.NODE_ENV !== "test") {
       db.prepare(`
         INSERT INTO billing_system_settings (id, cutover_date, reset_reason)
-        VALUES (1, '2026-05-14', 'Opened for billing trials before the 1 October 2026 go-live')
+        VALUES (1, '2026-10-01', 'Live billing opened on 1 October 2026')
         ON CONFLICT(id) DO UPDATE SET
           cutover_date = CASE
             WHEN trim(COALESCE(billing_system_settings.cutover_date, '')) = '' THEN excluded.cutover_date
@@ -1080,21 +1080,6 @@ function ensureFinancialIntegritySchema(db) {
             WHEN trim(COALESCE(billing_system_settings.cutover_date, '')) = '' THEN excluded.reset_reason
             ELSE billing_system_settings.reset_reason
           END
-      `).run();
-      db.prepare(`
-        UPDATE billing_system_settings
-        SET
-          cutover_date = '2026-05-14',
-          reset_at = CURRENT_TIMESTAMP,
-          reset_reason = 'Opened for billing trials before the 1 October 2026 go-live'
-        WHERE id = 1
-          AND (
-            trim(COALESCE(cutover_date, '')) LIKE '2026-10-01%'
-            OR (
-              trim(COALESCE(cutover_date, '')) = '2026-05-01'
-              AND reset_reason = 'Opened for billing trials before the 1 October 2026 go-live'
-            )
-          )
       `).run();
     }
 

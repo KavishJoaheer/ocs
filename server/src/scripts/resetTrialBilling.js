@@ -19,7 +19,10 @@ function assertExecutionAllowed() {
 function printResult(result) {
   console.log(result.dryRun ? "Billing reset dry run:" : "Billing reset completed:");
   console.log(`  Cutover date: ${result.cutoverDate}`);
-  console.log(`  Trial stock movements: ${result.inventoryMovementsRemoved}`);
+  console.log(`  Stock movements cleared: ${result.inventoryMovementsRemoved}`);
+  console.log(`  Items with quantity set to zero: ${result.openingStock?.itemsWithQuantity || 0}`);
+  console.log(`  Lots cleared: ${result.openingStock?.batches || 0}`);
+  console.log(`  Open supply requests cancelled: ${result.openingStock?.openSupplyRequests || 0}`);
   console.log(`  Billing idempotency receipts: ${result.billingReceiptCount}`);
   for (const [table, count] of Object.entries(result.before)) {
     console.log(`  ${table}: ${count}`);

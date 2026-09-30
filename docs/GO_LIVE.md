@@ -104,7 +104,7 @@ docker exec \
   clinicflow-app node src/scripts/resetTrialBilling.js
 ```
 
-This removes trial invoices, receipts, reversals, refunds, supply corrections, quick-billing history, day closes, and billing idempotency receipts. It restores stock and batch quantities for billing-linked trial movements, preserves patients and consultations, resets document sequences, and excludes visits before `2026-10-01` from billing.
+This removes trial invoices, receipts, reversals, refunds, supply corrections, quick-billing history, day closes, supplier invoices, expenses, and the other financial history tied to those trials. It sets every OCS warehouse and doctor-bag quantity to zero, clears lots, expiry, stock cost, reservations, and stock history, and keeps the catalogue names, folders, and selling prices. Patients and consultations stay. Visits before `2026-10-01` cannot be billed.
 
 ---
 

@@ -283,11 +283,74 @@ function buildInventoryRestorationPlan(db, movementIds) {
   return { ids, itemChanges, batchChanges };
 }
 
+const STOCK_HISTORY_TABLES = [
+  "inventory_reservation_batches",
+  "inventory_reservations",
+  "inventory_activity_history",
+  "inventory_movement_allocations",
+  "inventory_batch_quarantine_events",
+  "inventory_movements",
+  "inventory_staging",
+  "inventory_shipments",
+  "inventory_stocktake_session_items",
+  "inventory_stocktakes",
+  "inventory_stocktake_sessions",
+  "inventory_audit_logs",
+  "inventory_batches",
+];
+
+function openingStockPlan(db) {
+  return {
+    itemsWithQuantity: tableExists(db, "inventory")
+      ? Number(db.prepare("SELECT COUNT(*) AS count FROM inventory WHERE COALESCE(quantity, 0) != 0").get()?.count || 0)
+      : 0,
+    batches: countRows(db, "inventory_batches"),
+    movements: countRows(db, "inventory_movements"),
+    openSupplyRequests: tableExists(db, "restock_requests")
+      ? Number(db.prepare("SELECT COUNT(*) AS count FROM restock_requests WHERE status IN ('pending', 'accepted', 'ready')").get()?.count || 0)
+      : 0,
+  };
+}
+
+function clearOpeningStock(db) {
+  const plan = openingStockPlan(db);
+  for (const table of STOCK_HISTORY_TABLES) {
+    if (tableExists(db, table)) db.prepare(`DELETE FROM ${table}`).run();
+  }
+  if (tableExists(db, "inventory")) {
+    db.prepare(`
+      UPDATE inventory
+      SET quantity = 0,
+          cost_price = CASE WHEN COALESCE(item_kind, 'stock') = 'service' THEN cost_price ELSE 0 END,
+          expiry_date = CASE WHEN COALESCE(item_kind, 'stock') = 'service' THEN expiry_date ELSE NULL END,
+          row_version = row_version + 1,
+          updated_at = CURRENT_TIMESTAMP
+    `).run();
+  }
+  if (tableExists(db, "restock_requests")) {
+    db.prepare(`
+      UPDATE restock_requests
+      SET status = 'cancelled',
+          cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP),
+          cancelled_reason = CASE
+            WHEN trim(COALESCE(cancelled_reason, '')) = '' THEN ?
+            ELSE cancelled_reason
+          END,
+          archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE status IN ('pending', 'accepted', 'ready')
+    `).run("Cleared before the 1 October 2026 go-live.");
+  }
+  if (tableExists(db, "operation_receipts")) {
+    db.prepare("DELETE FROM operation_receipts WHERE scope LIKE 'inventory:%'").run();
+  }
+  return plan;
+}
+
 function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset before go-live", dryRun = false } = {}) {
   const normalizedCutoverDate = String(cutoverDate || "").trim();
   const before = Object.fromEntries(RESETTABLE_TABLES.map((table) => [table, countRows(db, table)]));
-  const movementIds = collectTrialMovementIds(db, normalizedCutoverDate);
-  const inventoryPlan = buildInventoryRestorationPlan(db, movementIds);
+  const openingStock = openingStockPlan(db);
   const billingReceiptCount = tableExists(db, "operation_receipts")
     ? Number(db.prepare("SELECT COUNT(*) AS count FROM operation_receipts WHERE scope LIKE 'billing:%'").get()?.count || 0)
     : 0;
@@ -295,9 +358,10 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     cutoverDate: normalizedCutoverDate,
     before,
     billingReceiptCount,
-    inventoryMovementsRemoved: inventoryPlan.ids.length,
-    inventoryItemsRestored: inventoryPlan.itemChanges,
-    inventoryBatchesRestored: inventoryPlan.batchChanges,
+    inventoryMovementsRemoved: openingStock.movements,
+    openingStock,
+    inventoryItemsRestored: [],
+    inventoryBatchesRestored: [],
   };
   if (dryRun) return { dryRun: true, ...plan };
 
@@ -305,66 +369,6 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
   db.transaction(() => {
     for (const trigger of DELETE_GUARD_TRIGGERS) {
       db.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
-    }
-
-    for (const row of inventoryPlan.batchChanges) {
-      db.prepare("UPDATE inventory_batches SET quantity_remaining = ? WHERE id = ?")
-        .run(row.nextQuantity, row.batchId);
-    }
-    for (const row of inventoryPlan.itemChanges) {
-      db.prepare(`
-        UPDATE inventory
-        SET quantity = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(row.nextQuantity, row.itemId);
-    }
-
-    if (tableExists(db, "finance_supplier_invoice_lines")) {
-      const costingLines = db.prepare(`
-        SELECT line.*,
-          (SELECT event.id FROM finance_supplier_invoice_events event
-           WHERE event.supplier_invoice_id=line.supplier_invoice_id AND event.action='approved'
-           ORDER BY event.id DESC LIMIT 1) AS approval_event_id
-        FROM finance_supplier_invoice_lines line
-        WHERE EXISTS (
-          SELECT 1 FROM finance_supplier_invoice_events event
-          WHERE event.supplier_invoice_id=line.supplier_invoice_id AND event.action='approved'
-        )
-        ORDER BY approval_event_id DESC,line.id DESC
-      `).all();
-      for (const line of costingLines) {
-        if (line.batch_id && line.previous_batch_cost != null) {
-          db.prepare(`
-            WITH RECURSIVE lineage(id) AS (
-              SELECT id FROM inventory_batches WHERE id = ?
-              UNION
-              SELECT child.id
-              FROM inventory_batches child
-              JOIN lineage parent ON child.source_batch_id = parent.id
-            )
-            UPDATE inventory_batches
-            SET unit_cost = ?
-            WHERE id IN (SELECT id FROM lineage)
-          `).run(line.batch_id, line.previous_batch_cost);
-        }
-        if (line.inventory_item_id && line.previous_inventory_cost != null) {
-          db.prepare("UPDATE inventory SET cost_price=?,row_version=row_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-            .run(line.previous_inventory_cost, line.inventory_item_id);
-        }
-      }
-    }
-
-    if (inventoryPlan.ids.length) {
-      const placeholders = inventoryPlan.ids.map(() => "?").join(",");
-      if (tableExists(db, "inventory_activity_history")) {
-        db.prepare(`DELETE FROM inventory_activity_history WHERE movement_id IN (${placeholders})`)
-          .run(...inventoryPlan.ids);
-      }
-      if (tableExists(db, "inventory_movement_allocations")) {
-        db.prepare(`DELETE FROM inventory_movement_allocations WHERE movement_id IN (${placeholders})`)
-          .run(...inventoryPlan.ids);
-      }
-      db.prepare(`DELETE FROM inventory_movements WHERE id IN (${placeholders})`).run(...inventoryPlan.ids);
     }
 
     const orderedDeletes = [
@@ -409,6 +413,7 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     if (tableExists(db, "operation_receipts")) {
       db.prepare("DELETE FROM operation_receipts WHERE scope LIKE 'billing:%'").run();
     }
+    clearOpeningStock(db);
     if (tableExists(db, "sqlite_sequence")) {
       const sequenceTables = orderedDeletes.filter((table) => table !== "billing_events");
       const placeholders = sequenceTables.map(() => "?").join(",");
