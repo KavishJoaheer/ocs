@@ -1610,8 +1610,10 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Tasks" }).click();
     await page.getByRole("button", { name: /Reconciliation required/i }).click();
-    await expect(page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first()).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: /Open reconciliation|Review reconciliation/i }).first().click();
+    await expect(page.getByRole("button", { name: "View details" }).first()).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "View details" }).first().click();
+    await expect(page.getByRole("heading", { name: `Request #${requestId}` })).toBeVisible();
+    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Open reconciliation" }).click();
     await expect(page.getByRole("button", { name: "Review reconciliation" })).toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: "Review reconciliation" }).click();
     await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toBeVisible({ timeout: 20_000 });

@@ -609,6 +609,10 @@ export default function OperatorWorkQueuesPanel({
         requestId={detailRequestId}
         role={user?.role === "admin" ? "admin" : "operator"}
         onClose={() => setDetailRequestId(null)}
+        onFulfil={(request) => {
+          setDetailRequestId(null);
+          setFulfilmentRequest(request);
+        }}
         onCollect={(request) => {
           setDetailRequestId(null);
           setCollectTarget(request);
