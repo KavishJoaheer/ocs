@@ -1513,7 +1513,13 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("navigation").getByRole("link", { name: "Inventory" })).toHaveCount(1);
+    const bottomNav = page.locator("#ocs-bottom-nav");
+    await expect(bottomNav.getByRole("link")).toHaveCount(4);
+    await expect(bottomNav.getByRole("link", { name: "Patients", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Add patient", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Visits", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Reviews", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Inventory", exact: true })).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: "Navigation menu" })).toHaveCount(0);
     await page.getByRole("button", { name: "Open menu" }).click();
     await expect(page.getByRole("dialog", { name: "Navigation menu" })).toBeVisible();
