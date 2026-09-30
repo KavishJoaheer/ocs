@@ -434,6 +434,7 @@ export default function OperatorWorkQueuesPanel({
                 </div>
                 <button
                   type="button"
+                  aria-label={`Open request ${row.id} details`}
                   onClick={() => setDetailRequestId(row.id)}
                   className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
                 >
@@ -514,6 +515,7 @@ export default function OperatorWorkQueuesPanel({
                       <>
                         <button
                           type="button"
+                          aria-label={`Open request ${row.id} details`}
                           onClick={() => setDetailRequestId(row.id)}
                           className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-700"
                         >
