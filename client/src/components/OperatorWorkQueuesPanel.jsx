@@ -15,6 +15,7 @@ import {
   supplyRequestStatusLabel,
 } from "../lib/supplyRequests.js";
 import { cx } from "../lib/utils.js";
+import Modal from "./Modal.jsx";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
 
@@ -75,6 +76,7 @@ export default function OperatorWorkQueuesPanel({
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
   const [amendmentRequest, setAmendmentRequest] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
+  const [collectTarget, setCollectTarget] = useState(null);
   const [history, setHistory] = useState({ requests: [], total: 0, doctor_counts: [], item_counts: [] });
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyFilters, setHistoryFilters] = useState({ ...EMPTY_HISTORY_FILTERS });
@@ -171,6 +173,17 @@ export default function OperatorWorkQueuesPanel({
     if (!queues) return [];
     return queues[active] || [];
   }, [queues, active, history.requests, needsExpiryItems]);
+
+  async function markCollected(request) {
+    try {
+      await api.patch(`/restock-requests/${request.id}`, { status: "completed" });
+      toast.success("Supply collected. The request is now in History.");
+      setCollectTarget(null);
+      await load();
+    } catch (error) {
+      toast.error(error.message || "Could not mark this supply collected.");
+    }
+  }
 
   async function accept(request) {
     try {
@@ -496,6 +509,7 @@ export default function OperatorWorkQueuesPanel({
                       && !assignedToMe
                       && (row.status === "accepted" || (row.status === "ready" && (row.reconciliation_required || row.linkage_required)));
                     const fulfilAction = actions.find((action) => action.id === "fulfil" || action.id === "review_amendment");
+                    const collectAction = actions.find((action) => action.id === "collect");
                     return (
                       <>
                         <button
@@ -526,6 +540,15 @@ export default function OperatorWorkQueuesPanel({
                           <p className="max-w-[12rem] text-right text-[11px] text-slate-500">
                             An operator must accept and reserve this request.
                           </p>
+                        ) : collectAction ? (
+                          <button
+                            type="button"
+                            onClick={() => setCollectTarget(row)}
+                            className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl bg-[#2d8f98] px-3 text-xs font-bold text-white"
+                          >
+                            <Truck className="size-3.5" />
+                            Mark collected
+                          </button>
                         ) : fulfilAction ? (
                           <button
                             type="button"
@@ -557,11 +580,39 @@ export default function OperatorWorkQueuesPanel({
         onClose={() => setAmendmentRequest(null)}
         onReviewed={load}
       />
+      <Modal
+        open={Boolean(collectTarget)}
+        onClose={() => setCollectTarget(null)}
+        title="Mark supply collected"
+        description="This records that the supply was dispatched, moves the stock into the doctor's bag, and archives the request."
+        size="sm"
+      >
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setCollectTarget(null)}
+            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+          >
+            Keep open
+          </button>
+          <button
+            type="button"
+            onClick={() => collectTarget && markCollected(collectTarget)}
+            className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Mark collected
+          </button>
+        </div>
+      </Modal>
       <SupplyRequestDetailDrawer
         open={Boolean(detailRequestId)}
         requestId={detailRequestId}
         role={user?.role === "admin" ? "admin" : "operator"}
         onClose={() => setDetailRequestId(null)}
+        onCollect={(request) => {
+          setDetailRequestId(null);
+          setCollectTarget(request);
+        }}
       />
     </>
   );

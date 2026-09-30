@@ -224,7 +224,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         <div className="space-y-4">
           {fulfilmentLocked ? (
             <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-              Fulfilment quantities and batch allocations are locked. Only the owning doctor can confirm collection.
+              Fulfilment quantities and batch allocations are locked. Mark the supply collected when it is dispatched.
             </p>
           ) : null}
           {hasShortage ? (

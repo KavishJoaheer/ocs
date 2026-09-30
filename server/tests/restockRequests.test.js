@@ -469,7 +469,20 @@ test("operator marks an accepted request ready and doctor observes it", async ()
   assert.equal(movementsAfter, movementsBefore);
 });
 
-test("only the owning doctor can confirm collection", async () => {
+test("only an operator can mark a ready supply collected", async () => {
+  const doctorAttempt = await api("PATCH", `/api/restock-requests/${readyId}`, {
+    token: doctorToken,
+    body: { status: "completed" },
+  });
+  assert.equal(doctorAttempt.status, 400, JSON.stringify(doctorAttempt.data));
+  assert.match(doctorAttempt.data.error, /only an operator/i);
+
+  const adminAttempt = await api("PATCH", `/api/restock-requests/${readyId}`, {
+    token: adminToken,
+    body: { status: "completed" },
+  });
+  assert.equal(adminAttempt.status, 400, JSON.stringify(adminAttempt.data));
+
   const other = await api("PATCH", `/api/restock-requests/${readyId}`, {
     token: doctorTwoToken,
     body: { status: "completed" },
@@ -498,12 +511,15 @@ test("only the owning doctor can confirm collection", async () => {
     body: { status: "completed" },
   });
   assert.equal(crossComplete.status, 403, JSON.stringify(crossComplete.data));
+
+  const stillReady = db.prepare("SELECT status FROM restock_requests WHERE id = ?").get(readyId);
+  assert.equal(stillReady.status, "ready");
 });
 
 test("collection changes the request to completed with role-specific labels", async () => {
   const qtyBefore = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(inventoryId).quantity;
   const completed = await api("PATCH", `/api/restock-requests/${readyId}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -933,7 +949,7 @@ test("history operator and folder filters change both records and aggregate stat
     body: { status: "ready" },
   });
   await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
 
@@ -1073,7 +1089,7 @@ test("unreconciled legacy ready requests cannot be collected", async () => {
   assert.equal(row.reconciliation_required, true);
   assert.ok((row.reconciliation_gaps || []).length > 0);
   const collect = await api("PATCH", `/api/restock-requests/${requestId}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(collect.status, 409, JSON.stringify(collect.data));

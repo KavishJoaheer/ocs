@@ -192,12 +192,8 @@ export function legacyReconciliationGaps(request) {
   return fallback;
 }
 
-export function canDoctorConfirmCollection(request) {
-  if (normaliseSupplyRequestStatus(request?.status) !== "ready") return false;
-  if (request?.reconciliation_required || request?.linkage_required || request?.legacy_reconciliation_required) {
-    return false;
-  }
-  return true;
+export function canDoctorConfirmCollection() {
+  return false;
 }
 
 export function isStaffSupplyRole(role) {
@@ -287,10 +283,17 @@ export function getSupplyRequestActions({ request, role, busy = false } = {}) {
     });
   }
 
-  if (staff && status === "ready" && !(request?.reconciliation_required || request?.linkage_required)) {
+  if (isOperator && status === "ready" && !(request?.reconciliation_required || request?.linkage_required)) {
+    actions.push({
+      id: "collect",
+      label: "Mark collected",
+      kind: "primary",
+      disabled,
+    });
+  } else if (isAdmin && status === "ready" && !(request?.reconciliation_required || request?.linkage_required)) {
     actions.push({
       id: "awaiting_collection",
-      label: "Waiting for the doctor to confirm collection",
+      label: "An operator marks this collected when the supply is dispatched.",
       kind: "info",
       disabled: true,
     });

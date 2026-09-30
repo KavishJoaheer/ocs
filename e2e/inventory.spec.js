@@ -205,21 +205,19 @@ test.describe("Inventory workflow", () => {
     });
     expect(ready.ok(), await ready.text()).toBeTruthy();
 
-    await injectStaffSession(page, doctor.token);
+    await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { name: /My bag|OCS depot|OCS Stock/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /OCS depot|OCS Stock|Supply Requests/i })).toBeVisible({
       timeout: 25_000,
     });
-    await page.getByRole("link", { name: /request supply/i }).first().click();
-    await expect(page).toHaveURL(/\/supply-requests/);
-    await expect(page.getByRole("button", { name: "New supply request" })).toBeVisible({ timeout: 25_000 });
-    await expect(page.getByText("Supply Ready").first()).toBeVisible();
-    await page.getByRole("button", { name: "Confirm collection" }).click();
-    await expect(page.getByRole("heading", { name: "Confirm supplies collected" })).toBeVisible();
-    await page.getByRole("button", { name: "Confirm collection" }).last().click();
+    const requestRow = page.locator("tr").filter({ hasText: itemName });
+    await expect(requestRow.getByText("Supply Ready")).toBeVisible({ timeout: 25_000 });
+    await requestRow.getByRole("button", { name: "Mark collected" }).click();
+    await expect(page.getByRole("heading", { name: "Mark supply collected" })).toBeVisible();
+    await page.getByRole("button", { name: "Mark collected" }).last().click();
     await page.getByRole("button", { name: "History" }).click();
-    await expect(page.getByText("Supply Collected").first()).toBeVisible();
+    await expect(page.getByText("Supply Dispatched").first()).toBeVisible();
 
     const detail = await request.get(`${API_BASE}/restock-requests/${requestId}`, {
       headers: { Authorization: `Bearer ${operator.token}` },
@@ -1341,6 +1339,7 @@ test.describe("Inventory workflow", () => {
 
   test("unreconciled legacy ready request cannot be collected", async ({ request, page }) => {
     const doctor = await login(request, "arun.dharee");
+    const operator = await login(request, "operator01");
     const db = openE2eDb();
     const user = db.prepare("SELECT id, doctor_id FROM users WHERE username = 'arun.dharee'").get();
     const requestId = Number(
@@ -1362,7 +1361,7 @@ test.describe("Inventory workflow", () => {
     const legacyCard = page.locator("article").filter({ hasText: "Legacy – reconciliation required" }).first();
     await expect(legacyCard.getByRole("button", { name: /Confirm collection|Supply Collected/i })).toHaveCount(0);
     const blocked = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
-      headers: { Authorization: `Bearer ${doctor.token}` },
+      headers: { Authorization: `Bearer ${operator.token}` },
       data: { status: "completed" },
     });
     expect(blocked.status()).toBe(409);

@@ -13,7 +13,6 @@ import { api, ApiError } from "../lib/api.js";
 import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
 import {
   canDoctorCancelRequest,
-  canDoctorConfirmCollection,
   canDoctorEditRequest,
   canDoctorRequestChanges,
   isLegacyReconciliationRequired,
@@ -96,7 +95,6 @@ export default function SupplyRequestsPage() {
   const [catalogTick, setCatalogTick] = useState(0);
   const catalogRequestId = useRef(0);
   const [catalogItems, setCatalogItems] = useState([]);
-  const [bagItems, setBagItems] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
@@ -163,7 +161,6 @@ export default function SupplyRequestsPage() {
         );
         if (!ignore && requestId === catalogRequestId.current) {
           setCatalogItems(Array.isArray(payload?.ocs_stock) ? payload.ocs_stock : []);
-          setBagItems(Array.isArray(payload?.my_stock) ? payload.my_stock : []);
         }
       } catch (err) {
         if (!ignore) {
@@ -500,22 +497,10 @@ export default function SupplyRequestsPage() {
                       </div>
                     ) : null}
 
-                    {canDoctorConfirmCollection(request) ? (
-                      <div className="border-t border-gray-50 pt-3">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            setConfirmAction({
-                              type: "collect",
-                              request,
-                            })
-                          }
-                          className="w-full min-h-11 rounded-xl bg-ocs-teal py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-60"
-                        >
-                          {busy ? "Confirming…" : "Confirm collection"}
-                        </button>
-                      </div>
+                    {request.status === "ready" && !isLegacyReconciliationRequired(request) ? (
+                      <p className="border-t border-gray-50 pt-3 text-xs text-slate-500">
+                        The operator marks this collected when the supply is dispatched.
+                      </p>
                     ) : null}
                     <button
                       type="button"
@@ -801,66 +786,6 @@ export default function SupplyRequestsPage() {
             : null
         }
       />
-
-      <ConfirmDialog
-        open={confirmAction?.type === "collect"}
-        onClose={() => setConfirmAction(null)}
-        tone="default"
-        title="Confirm supplies collected"
-        description="This records collection, posts the inventory transfer into your bag, and moves the request into History."
-        confirmLabel="Confirm collection"
-        busy={Boolean(confirmAction?.request && updatingId === confirmAction.request.id)}
-        onConfirm={() =>
-          confirmAction?.request
-            ? runRequestAction(
-                confirmAction.request,
-                { status: "completed" },
-                "Supply collected. The request is now in History.",
-                { archive: true },
-              )
-            : null
-        }
-      >
-        {confirmAction?.request ? (
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            <p><span className="font-semibold">Request</span> #{confirmAction.request.id}</p>
-            <p>
-              <span className="font-semibold">Collection date:</span>{" "}
-              {formatSupplyRequestCollectionDay(confirmAction.request.collection_date)}
-            </p>
-            <p>
-              <span className="font-semibold">Prepared by:</span>{" "}
-              {confirmAction.request.prepared_by_name || confirmAction.request.ready_by_name || "Operator"}
-            </p>
-            {confirmAction.request.transfer_transaction_id ? (
-              <p>
-                <span className="font-semibold">Receipt:</span> {confirmAction.request.transfer_transaction_id}
-              </p>
-            ) : (
-              <p className="text-xs text-slate-500">A transfer receipt will be created when collection is confirmed.</p>
-            )}
-            {confirmAction.request.partial_fulfilment_approved ? (
-              <p className="font-semibold text-amber-800">Partial fulfilment — some requested quantities were not packed.</p>
-            ) : null}
-            <ul className="space-y-1">
-              {(confirmAction.request.fulfilment?.items || confirmAction.request.items || []).map((item) => {
-                const fulfilled = Number(item.fulfilled_quantity ?? item.quantity ?? 0);
-                const bag = bagItems.find(
-                  (row) =>
-                    String(row.item_name || "").toLowerCase() === String(item.item_name || "").toLowerCase(),
-                );
-                const current = Number(bag?.on_hand_quantity ?? bag?.quantity ?? 0);
-                return (
-                  <li key={item.id || item.item_name} className="break-words">
-                    {item.item_name}: fulfilled {fulfilled}
-                    {bag ? ` · resulting bag on hand ${current + fulfilled}` : ""}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ) : null}
-      </ConfirmDialog>
 
       <SupplyRequestDetailDrawer
         open={Boolean(detailRequestId)}

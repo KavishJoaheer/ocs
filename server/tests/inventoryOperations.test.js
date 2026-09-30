@@ -518,7 +518,7 @@ test("collection posts a linked receipt, is idempotent, and failed transfer stay
   await pickAndReady(request.id);
   const qtyBefore = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -553,7 +553,7 @@ test("collection posts a linked receipt, is idempotent, and failed transfer stay
   });
   assert.equal(receipt.status, 200);
   const again = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(again.status, 200);
@@ -571,7 +571,7 @@ test("collection posts a linked receipt, is idempotent, and failed transfer stay
   await pickAndReady(other.id);
   db.prepare("UPDATE inventory SET quantity = 0 WHERE id = ?").run(itemId);
   const failed = await api("PATCH", `/api/restock-requests/${other.id}`, {
-    token: doctorTwoToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.ok(failed.status >= 400);
@@ -940,7 +940,7 @@ test("doctor history and receipts are scoped to their own bag", async () => {
   const request = await createAcceptedRequest({ itemId, itemName: "Hist", quantity: 1 });
   await pickAndReady(request.id);
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   const history = await api("GET", "/api/inventory/activity-history", { token: doctorToken });
@@ -1047,7 +1047,7 @@ test("stocktake surplus keeps the old lot and records a new expiry for extra cou
   const request = await createAcceptedRequest({ itemId, itemName: "Alcohol pads", quantity: 20 });
   await pickAndReady(request.id);
   const collected = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(collected.status, 200, JSON.stringify(collected.data));
@@ -1684,7 +1684,7 @@ test("partial fulfilment consumes only the fulfilled quantity and returns unused
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, 10);
   await pickAndReady(request.id, { fulfilledQuantity: 5 });
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -1822,7 +1822,7 @@ test("approved partial fulfilment can collect when one line is intentionally zer
   });
   assert.equal(ready.status, 200, JSON.stringify(ready.data));
   const completed = await api("PATCH", `/api/restock-requests/${requestId}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -1852,7 +1852,7 @@ test("partial fulfilment across batches consumes fulfilled quantity in locked FE
   const request = await createAcceptedRequest({ itemId, itemName, quantity: 10 });
   await pickAndReady(request.id, { fulfilledQuantity: 5 });
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -1869,7 +1869,7 @@ test("failed partial collection rolls back batches, bag, movements and status", 
   const batchBefore = db.prepare("SELECT id, quantity_remaining FROM inventory_batches WHERE item_id = ?").all(itemId);
   db.prepare("UPDATE inventory SET quantity = 0 WHERE id = ?").run(itemId);
   const failed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.ok(failed.status >= 400, JSON.stringify(failed.data));
@@ -1896,13 +1896,13 @@ test("repeated collection after partial fulfilment stays idempotent", async () =
   const request = await createAcceptedRequest({ itemId, itemName, quantity: 10 });
   await pickAndReady(request.id, { fulfilledQuantity: 5 });
   const first = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(first.status, 200);
   const qty = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const second = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(second.status, 200);
@@ -2276,7 +2276,7 @@ test("request detail is role-scoped and includes events, fulfilment, and receipt
   const request = await createAcceptedRequest({ itemId, itemName: "Det", quantity: 1 });
   await pickAndReady(request.id);
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
@@ -2853,7 +2853,7 @@ test("stocktake apply rejects intervening write-off, collection and batch adjust
   const request = await createAcceptedRequest({ itemId: collectId, itemName: "ST Col", quantity: 1 });
   await pickAndReady(request.id);
   const collected = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(collected.status, 200, JSON.stringify(collected.data));
@@ -2899,7 +2899,7 @@ test("receipt lookup remains available beyond the latest 500 movements", async (
   const request = await createAcceptedRequest({ itemId, itemName: "OldTx", quantity: 1 });
   await pickAndReady(request.id);
   const completed = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   const tx = completed.data.request.transfer_transaction_id;
@@ -3138,7 +3138,7 @@ test("multi-item collection receipt keeps line-specific identities", async () =>
   assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
   await pickAndReady(created.data.request.id);
   const collected = await api("PATCH", `/api/restock-requests/${created.data.request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(collected.status, 200, JSON.stringify(collected.data));
@@ -4651,7 +4651,7 @@ test("reserved batches are revalidated for quarantine expiry and optimistic vers
     WHERE id = ?
   `).run(batchId);
   const quarantined = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(quarantined.status, 409, JSON.stringify(quarantined.data));
@@ -4664,7 +4664,7 @@ test("reserved batches are revalidated for quarantine expiry and optimistic vers
     WHERE id = ?
   `).run(batchId);
   const expired = await api("PATCH", `/api/restock-requests/${request.id}`, {
-    token: doctorToken,
+    token: operatorToken,
     body: { status: "completed" },
   });
   assert.equal(expired.status, 409, JSON.stringify(expired.data));

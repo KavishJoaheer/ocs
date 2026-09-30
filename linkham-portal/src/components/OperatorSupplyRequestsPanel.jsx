@@ -331,10 +331,16 @@ export default function OperatorSupplyRequestsPanel() {
                               </button>
                             ) : null}
                             {request.status === "ready" ? (
-                              <span className="text-[11px] text-slate-400">
-                                Waiting for doctor to confirm collection
-                                {request.ready_by_name ? ` · prepared by ${request.ready_by_name}` : ""}
-                              </span>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  patchRequest(request, { status: "completed" }, "Supply collected. The request is now in History.")
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#2d8f98] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#26717c] disabled:opacity-60"
+                              >
+                                {busy ? "Saving…" : "Mark collected"}
+                              </button>
                             ) : null}
                             {request.status !== "completed" && request.status !== "cancelled" ? (
                               <button

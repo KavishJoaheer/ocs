@@ -1699,21 +1699,26 @@ router.patch("/:id", (req, res) => {
       return res.status(403).json({ error: "You can only change your own supply requests." });
     }
     if (!canTransition("doctor", existing.status, nextStatus)) {
+      if (nextStatus === "completed") {
+        return res.status(400).json({
+          error: "Only an operator can mark a ready supply as collected.",
+        });
+      }
       if (nextStatus === "cancelled") {
         return res.status(400).json({
           error: "You can only cancel a request while it is still requested.",
         });
       }
-      if (nextStatus === "completed") {
-        return res.status(400).json({
-          error: "You can confirm collection only after the supply is marked ready.",
-        });
-      }
       return res.status(400).json({
-        error: "Doctors can cancel a pending request or confirm collection of a ready request.",
+        error: "Doctors can cancel a request only while it is still requested.",
       });
     }
   } else if (role === "operator" || role === "admin") {
+    if (nextStatus === "completed" && role !== "operator") {
+      return res.status(400).json({
+        error: "Only an operator can mark a ready supply as collected.",
+      });
+    }
     if (
       nextStatus === "cancelled"
       && existing.status === "ready"
@@ -1939,17 +1944,20 @@ router.patch("/:id", (req, res) => {
   }
 
   if (nextStatus === "completed") {
-    notifyBestEffort(
-      () =>
-        sendPushToRole("operator", {
-          title: "Supply Dispatched",
-          body: `Dr. ${updated.doctor_name} confirmed collection for ${updated.collection_date}.`,
-          url: "/inventory",
-          icon: "/icon-192.png",
-          tag: `restock-request-${requestId}-completed`,
-        }),
-      "restock request completed operator notify failed",
-    );
+    const doctorUserId = getDoctorUserId(updated.doctor_id);
+    if (doctorUserId) {
+      notifyBestEffort(
+        () =>
+          sendPushToUser(doctorUserId, {
+            title: "Supply Collected",
+            body: `Your supply for ${updated.collection_date} has been dispatched.`,
+            url: "/supply-requests",
+            icon: "/icon-192.png",
+            tag: `restock-request-${requestId}-completed`,
+          }),
+        "restock request collected doctor notify failed",
+      );
+    }
   }
 
   if (operationalOverride.override) {
@@ -1989,7 +1997,7 @@ router.patch("/:id/fulfilment", (req, res) => {
     const detail = fulfilmentDetail(requestId);
     if (!detail?.reconciliation_required && !detail?.linkage_required) {
       return res.status(400).json({
-        error: "Fulfilment is locked after the supply is marked ready. Only the owning doctor can confirm collection.",
+        error: "Fulfilment is locked after the supply is marked ready. An operator marks it collected when the supply is dispatched.",
       });
     }
   }

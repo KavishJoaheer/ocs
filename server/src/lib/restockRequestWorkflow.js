@@ -24,6 +24,7 @@ const EVENT_TYPES = {
 const OPERATOR_TRANSITIONS = {
   pending: ["accepted", "cancelled"],
   accepted: ["ready", "cancelled"],
+  ready: ["completed"],
 };
 
 const ADMIN_TRANSITIONS = {
@@ -34,7 +35,6 @@ const ADMIN_TRANSITIONS = {
 
 const DOCTOR_TRANSITIONS = {
   pending: ["cancelled"],
-  ready: ["completed"],
 };
 
 function normaliseStatus(value) {

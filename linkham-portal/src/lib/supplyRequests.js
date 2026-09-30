@@ -129,6 +129,6 @@ export function canDoctorRequestChanges(request) {
   );
 }
 
-export function canDoctorConfirmCollection(request) {
-  return normaliseSupplyRequestStatus(request?.status) === "ready";
+export function canDoctorConfirmCollection() {
+  return false;
 }

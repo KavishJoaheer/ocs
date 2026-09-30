@@ -2189,7 +2189,7 @@ function workQueues() {
     changes: decorate(changes, "Review change request"),
     shortages: decorate(shortages, "Resolve shortage"),
     pick_today: decorate(pickTodayOpen, "Pick pack"),
-    awaiting_collection: decorate(awaitingOpen, "Waiting for doctor"),
+    awaiting_collection: decorate(awaitingOpen, "Mark collected"),
     fulfilment_linkage_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
     reconciliation_required: decorate(linkage, "Review reconciliation", { reconciliation_required: true }),
     incoming_shipments: incomingRows,

@@ -90,6 +90,7 @@ function runSupplyRequestAction(action, request, handlers) {
   if (action.id === "emergency_override_fulfil") handlers.onEmergencyFulfil?.(request);
   if (action.id === "review_amendment") handlers.onReviewAmendment(request);
   if (action.id === "cancel") handlers.onCancel(request);
+  if (action.id === "collect") handlers.onCollect?.(request);
   if (action.id === "details") handlers.onDetails(request);
   if (action.id === "receipt") handlers.onReceipt?.(request);
 }
@@ -187,6 +188,7 @@ export default function OperatorSupplyRequestsPanel() {
   const [filters, setFilters] = useState({ ...EMPTY_HISTORY_FILTERS });
   const [historyOffset, setHistoryOffset] = useState(0);
   const [cancelTarget, setCancelTarget] = useState(null);
+  const [collectTarget, setCollectTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [amendmentTarget, setAmendmentTarget] = useState(null);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
@@ -340,6 +342,7 @@ export default function OperatorSupplyRequestsPanel() {
       setCancelTarget(request);
       setCancelReason("");
     },
+    onCollect: (request) => setCollectTarget(request),
     onDetails: (request) => setDetailRequestId(request.id),
     onReceipt: (request) => setDetailRequestId(request.id),
   };
@@ -739,6 +742,41 @@ export default function OperatorSupplyRequestsPanel() {
       />
 
       <Modal
+        open={Boolean(collectTarget)}
+        onClose={() => setCollectTarget(null)}
+        title="Mark supply collected"
+        description="This records that the supply was dispatched, moves the stock into the doctor's bag, and archives the request."
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-700">
+            Dr. {collectTarget?.doctor_name} · {formatSupplyRequestCollectionDay(collectTarget?.collection_date)}
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setCollectTarget(null)}
+              className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600"
+            >
+              Keep open
+            </button>
+            <button
+              type="button"
+              disabled={updatingId === collectTarget?.id}
+              onClick={() => {
+                const request = collectTarget;
+                setCollectTarget(null);
+                patchRequest(request, { status: "completed" }, "Supply collected. The request is now in History.");
+              }}
+              className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Mark collected
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         open={Boolean(cancelTarget)}
         onClose={() => {
           setCancelTarget(null);
@@ -868,6 +906,10 @@ export default function OperatorSupplyRequestsPanel() {
           requestHandlers.onReviewAmendment(request);
         }}
         onCancel={(request) => requestHandlers.onCancel(request)}
+        onCollect={(request) => {
+          setDetailRequestId(null);
+          requestHandlers.onCollect(request);
+        }}
       />
     </>
   );

@@ -11,7 +11,6 @@ import { api, ApiError } from "../lib/api.js";
 import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
 import {
   canDoctorCancelRequest,
-  canDoctorConfirmCollection,
   canDoctorEditRequest,
   canDoctorRequestChanges,
   describeSupplyRequestItems,
@@ -409,22 +408,10 @@ export default function SupplyRequestsPage() {
                       </div>
                     ) : null}
 
-                    {canDoctorConfirmCollection(request) ? (
-                      <div className="border-t border-gray-50 pt-3">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            setConfirmAction({
-                              type: "collect",
-                              request,
-                            })
-                          }
-                          className="w-full rounded-xl bg-ocs-teal py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-60"
-                        >
-                          {busy ? "Confirming…" : "Supply Collected"}
-                        </button>
-                      </div>
+                    {request.status === "ready" ? (
+                      <p className="border-t border-gray-50 pt-3 text-xs text-slate-500">
+                        The operator marks this collected when the supply is dispatched.
+                      </p>
                     ) : null}
                   </article>
                 );
@@ -531,24 +518,6 @@ export default function SupplyRequestsPage() {
         }
       />
 
-      <ConfirmDialog
-        open={confirmAction?.type === "collect"}
-        onClose={() => setConfirmAction(null)}
-        tone="default"
-        title="Confirm supply collected?"
-        description="This records collection and dispatch, then moves the request into History."
-        confirmLabel="Supply Collected"
-        onConfirm={() =>
-          confirmAction?.request
-            ? runRequestAction(
-                confirmAction.request,
-                { status: "completed" },
-                "Supply collected. The request is now in History.",
-                { archive: true },
-              )
-            : null
-        }
-      />
     </>
   );
 }

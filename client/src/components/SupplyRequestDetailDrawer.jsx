@@ -69,6 +69,7 @@ export default function SupplyRequestDetailDrawer({
   onFulfil,
   onReviewAmendment,
   onCancel,
+  onCollect,
   onPrintReceipt,
 }) {
   const [request, setRequest] = useState(null);
@@ -167,6 +168,7 @@ export default function SupplyRequestDetailDrawer({
     if (action.id === "fulfil" || action.id === "emergency_override_fulfil") onFulfil?.(request);
     if (action.id === "review_amendment") onReviewAmendment?.(request);
     if (action.id === "cancel") onCancel?.(request);
+    if (action.id === "collect") onCollect?.(request);
     if (action.id === "receipt") openReceipt();
   }
 
@@ -238,7 +240,9 @@ export default function SupplyRequestDetailDrawer({
 
             {status === "ready" && !request.reconciliation_required && !request.linkage_required ? (
               <p className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                The doctor must confirm collection. Staff cannot mark this request collected.
+                {role === "operator"
+                  ? "Mark this collected when you dispatch the supply. Stock then moves into the doctor's bag."
+                  : "An operator marks this collected when the supply is dispatched."}
               </p>
             ) : null}
 
