@@ -893,6 +893,40 @@ function reconciliationPreviewToken(plan) {
   return crypto.createHash("sha256").update(JSON.stringify(canonicalReconciliationPlan(plan))).digest("hex");
 }
 
+function readyZeroFulfilledRepair(detail, status) {
+  const items = detail?.items || [];
+  if (String(status) !== "ready" || !items.length || String(detail?.fulfilment?.status) !== "packed") return null;
+  const fulfilledTotal = items.reduce((sum, line) => sum + integerLineQty(line.fulfilled_quantity), 0);
+  if (fulfilledTotal > 0) return null;
+  const repairable = items.every((line) => {
+    const requested = integerLineQty(line.requested_quantity);
+    if (requested <= 0) return true;
+    const reserved = integerLineQty(line.reserved_quantity);
+    const picked = integerLineQty(line.picked_quantity);
+    const allocated = (line.allocations || []).reduce(
+      (sum, allocation) => sum + integerLineQty(allocation.quantity),
+      0,
+    );
+    return Boolean(line.inventory_id)
+      && Boolean(line.reservation_id)
+      && integerLineQty(line.shortage_quantity) === 0
+      && reserved >= requested
+      && picked >= requested
+      && allocated >= requested;
+  });
+  if (!repairable) return null;
+  return new Map(
+    items.map((line) => [
+      Number(line.id),
+      Math.min(
+        integerLineQty(line.requested_quantity),
+        integerLineQty(line.reserved_quantity),
+        integerLineQty(line.picked_quantity),
+      ),
+    ]),
+  );
+}
+
 function previewLegacyReconciliation(requestId) {
   const request = db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId));
   if (!request) throw HttpError(404, "Supply request not found.");
@@ -909,6 +943,7 @@ function previewLegacyReconciliation(requestId) {
       (line) => !line.inventory_id && integerLineQty(line.requested_quantity) > 0,
     );
     if (!hasUnlinked) {
+      const fulfilledRepair = readyZeroFulfilledRepair(existingDetail, request.status);
       const lines = linkedItems.map((line) => ({
         request_item_id: Number(line.request_item_id || line.id),
         item_name: line.item_name,
@@ -917,7 +952,7 @@ function previewLegacyReconciliation(requestId) {
         currently_reserved: integerLineQty(line.reserved_quantity),
         proposed_reserved: integerLineQty(line.reserved_quantity),
         proposed_picked: integerLineQty(line.picked_quantity),
-        proposed_fulfilled: integerLineQty(line.fulfilled_quantity),
+        proposed_fulfilled: fulfilledRepair?.get(Number(line.id)) ?? integerLineQty(line.fulfilled_quantity),
         shortage_quantity: integerLineQty(line.shortage_quantity),
         available_to_promise: integerLineQty(line.available_to_promise),
         allocations: line.allocations || [],
@@ -938,10 +973,14 @@ function previewLegacyReconciliation(requestId) {
         has_shortage: Boolean(existingDetail.has_shortage),
         partial_fulfilment: Boolean(existingDetail.partial_approved),
         insufficient_data: false,
-        outcome: "already_linked",
-        explanation: "Fulfilment records already exist for this request. Confirming will not change quantities or batches.",
-        warning: "This confirmation is idempotent. No inventory records will be rewritten.",
-        mutates: false,
+        outcome: fulfilledRepair ? "full_ready" : "already_linked",
+        explanation: fulfilledRepair
+          ? "Picked quantities and batch allocations are complete. Confirmation will restore the missing fulfilled quantities and keep the request ready."
+          : "Fulfilment records already exist for this request. Confirming will not change quantities or batches.",
+        warning: fulfilledRepair
+          ? "Only the missing fulfilled quantities will be restored from the recorded picked quantities. Stock is not transferred until collection is confirmed."
+          : "This confirmation is idempotent. No inventory records will be rewritten.",
+        mutates: Boolean(fulfilledRepair),
       };
       return {
         ...plan,
@@ -1170,7 +1209,48 @@ function reconcileLegacyFulfilment(requestId, { actor = {}, reason = "" } = {}) 
   }
   const existing = activeFulfilment(requestId) || postedFulfilment(requestId);
   if (existing) {
-    const detail = fulfilmentDetail(requestId);
+    let detail = fulfilmentDetail(requestId);
+    const fulfilledRepair = readyZeroFulfilledRepair(detail, request.status);
+    if (fulfilledRepair) {
+      const updateFulfilled = db.prepare(`
+        UPDATE restock_request_fulfillment_items
+        SET fulfilled_quantity = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `);
+      for (const [lineId, fulfilled] of fulfilledRepair.entries()) {
+        updateFulfilled.run(fulfilled, lineId);
+      }
+      recordInventoryRequestEvent({
+        requestId,
+        eventType: "legacy_reconciliation",
+        previousStatus: request.status,
+        newStatus: request.status,
+        actor,
+        reason: String(reason || "").trim() || "Restore missing fulfilled quantities",
+        metadata: { outcome: "full_ready", legacy: true, restored_fulfilled_quantities: true },
+      });
+      detail = fulfilmentDetail(requestId);
+      return {
+        request: db.prepare("SELECT * FROM restock_requests WHERE id = ?").get(Number(requestId)),
+        fulfilment: detail,
+        previous_status: String(request.status),
+        status: String(request.status),
+        demoted: false,
+        notify_doctor: false,
+        outcome: "full_ready",
+        reason: String(reason || "").trim() || "Restore missing fulfilled quantities",
+        explanation: "Missing fulfilled quantities were restored from the locked picked quantities and batches.",
+        requested_quantity: (detail?.items || []).reduce(
+          (sum, line) => sum + integerLineQty(line.requested_quantity),
+          0,
+        ),
+        reserved_quantity: (detail?.items || []).reduce(
+          (sum, line) => sum + integerLineQty(line.reserved_quantity),
+          0,
+        ),
+        actor,
+      };
+    }
     return {
       request,
       fulfilment: detail,
@@ -1399,8 +1479,7 @@ function fulfilmentDetail(requestId) {
     Boolean(linkageRequired) ||
     String(legacyMeta.outcome || "") === "insufficient_data" ||
     Boolean(legacyMeta.insufficient_data);
-
-  return {
+  const detail = {
     request_id: Number(requestId),
     fulfilment,
     linkage_required: Boolean(linkageRequired),
@@ -1412,6 +1491,11 @@ function fulfilmentDetail(requestId) {
     transfer_transaction_id: request.transfer_transaction_id || fulfilment?.transfer_transaction_id || null,
     items,
   };
+  const collectionGaps = describeFulfilmentCollectionGaps(detail, String(request.status || ""));
+  detail.collection_gaps = collectionGaps;
+  detail.reconciliation_required = detail.reconciliation_required || collectionGaps.length > 0;
+  detail.legacy = detail.legacy || detail.reconciliation_required;
+  return detail;
 }
 
 function integerLineQty(value) {
@@ -2128,6 +2212,23 @@ function workQueues() {
                 json_extract(e.metadata_json, '$.outcome') = 'insufficient_data'
                 OR json_extract(e.metadata_json, '$.insufficient_data') = 1
               )
+          )
+          OR (
+            r.status = 'ready'
+            AND EXISTS (
+              SELECT 1
+              FROM restock_request_fulfillment_items fi2
+              JOIN restock_request_fulfillments f3 ON f3.id = fi2.fulfilment_id
+              WHERE f3.request_id = r.id
+                AND fi2.requested_quantity > 0
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM restock_request_fulfillment_items fi3
+              JOIN restock_request_fulfillments f4 ON f4.id = fi3.fulfilment_id
+              WHERE f4.request_id = r.id
+                AND fi3.fulfilled_quantity > 0
+            )
           )
         )
       ORDER BY datetime(r.created_at) ASC

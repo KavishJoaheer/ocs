@@ -66,7 +66,11 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   }
 
   const hasShortage = Boolean(detail?.has_shortage);
-  const linkageRequired = Boolean(detail?.linkage_required) || Boolean(detail?.reconciliation_required);
+  const linkageRequired =
+    Boolean(request?.linkage_required)
+    || Boolean(request?.reconciliation_required)
+    || Boolean(detail?.linkage_required)
+    || Boolean(detail?.reconciliation_required);
   const fulfilmentLocked = String(request?.status) === "ready" && !linkageRequired;
   const overrideBlocked = requireOverride && String(overrideReason || "").trim().length < 10;
 

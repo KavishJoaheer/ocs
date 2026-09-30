@@ -1629,6 +1629,75 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByRole("heading", { name: /Review reconciliation/i })).toHaveCount(0);
   });
 
+  test("ready request can restore missing fulfilled quantities through reconciliation", async ({ request, page }) => {
+    const operator = await login(request, "operator01");
+    const admin = await login(request, "shravan.joaheer");
+    const doctor = await login(request, "arun.dharee");
+    const item = await createStockedItem(request, {
+      adminToken: admin.token,
+      operatorToken: operator.token,
+      name: `E2E Ready Reconcile ${Date.now()}`,
+      quantity: 6,
+    });
+    const created = await request.post(`${API_BASE}/restock-requests`, {
+      headers: { Authorization: `Bearer ${doctor.token}` },
+      data: {
+        collection_date: nextCollectionIso(),
+        note: "ready reconciliation",
+        items: [{ inventory_id: item.id, item_name: item.item_name, quantity: 2 }],
+      },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const requestId = (await apiJson(created)).request.id;
+    const accepted = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "accepted" },
+    });
+    expect(accepted.ok(), await accepted.text()).toBeTruthy();
+    await pickRequest(request, operator.token, requestId);
+    const ready = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "ready" },
+    });
+    expect(ready.ok(), await ready.text()).toBeTruthy();
+
+    const db = openE2eDb();
+    db.prepare(`
+      UPDATE restock_request_fulfillment_items
+      SET fulfilled_quantity = 0
+      WHERE fulfilment_id = (
+        SELECT id FROM restock_request_fulfillments WHERE request_id = ? ORDER BY id DESC LIMIT 1
+      )
+    `).run(requestId);
+    db.close();
+
+    await injectStaffSession(page, operator.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory?tab=queues&queue=reconciliation_required`);
+    await page.getByRole("button", { name: `Open request ${requestId} details` }).click();
+    await page.getByLabel(`Request #${requestId}`).getByRole("button", { name: "Open reconciliation" }).click();
+    await expect(page.getByRole("button", { name: "Review reconciliation" })).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Review reconciliation" }).click();
+    await expect(page.getByRole("heading", { name: `Review reconciliation #${requestId}` })).toBeVisible();
+    await page.getByPlaceholder("Why this reconciliation is being applied (at least 10 characters)").fill(
+      "Restore quantities from the recorded picked batches",
+    );
+    await page.getByRole("button", { name: "Confirm reconciliation" }).click();
+    await expect(page.getByRole("heading", { name: `Review reconciliation #${requestId}` })).toHaveCount(0);
+
+    const detail = await request.get(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+    });
+    expect(detail.ok(), await detail.text()).toBeTruthy();
+    const detailBody = await apiJson(detail);
+    expect(detailBody.request.fulfilment.items[0].fulfilled_quantity).toBe(2);
+    const completed = await request.patch(`${API_BASE}/restock-requests/${requestId}`, {
+      headers: { Authorization: `Bearer ${operator.token}` },
+      data: { status: "completed" },
+    });
+    expect(completed.ok(), await completed.text()).toBeTruthy();
+  });
+
   test("ready requests hide Claim and editable fulfilment", async ({ request, page }) => {
     const admin = await login(request, "shravan.joaheer");
     const operator = await login(request, "operator01");
