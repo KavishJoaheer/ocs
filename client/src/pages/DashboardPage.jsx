@@ -220,32 +220,12 @@ function getOperatorBoardCounts(metrics) {
 
 function OperatorMobileLauncher({
   user,
-  dashboard,
   operatorMetrics,
-  latestHcmPost = null,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "there";
   const counts = getOperatorBoardCounts(operatorMetrics);
-  const ocsLowStock = dashboard?.ocs_low_stock_alert;
-  const ocsLowCount = Number(ocsLowStock?.total_items || 0);
-  const monthLabel = dayjs().format("MMMM");
 
   const listCards = [
-    {
-      label: "This week's coverage",
-      description:
-        counts.doctorsThisWeek === 1
-          ? "1 doctor on this week"
-          : `${counts.doctorsThisWeek} doctors on this week`,
-      icon: CalendarClock,
-      to: "/operator/current-week-roster",
-    },
-    {
-      label: `${monthLabel} roster`,
-      description: "Open the full monthly doctor schedule.",
-      icon: ClipboardList,
-      to: "/operator/monthly-roster",
-    },
     {
       label: "Patient Directory",
       description: "Search and open existing patient records.",
@@ -258,14 +238,6 @@ function OperatorMobileLauncher({
       icon: UserPlus,
       to: "/patients/add",
     },
-    {
-      label: "Inventory",
-      description: ocsLowStock?.triggered
-        ? `${ocsLowCount} below min`
-        : "Warehouse stock is at or above min.",
-      icon: Package,
-      to: "/inventory",
-    },
   ];
 
   return (
@@ -274,18 +246,6 @@ function OperatorMobileLauncher({
         Hello, {firstName}
       </h1>
       <p className="mt-1 text-sm text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
-
-      {latestHcmPost ? (
-        <div className="mt-4">
-          <HcmBulletinBanner post={latestHcmPost} />
-        </div>
-      ) : null}
-
-      {ocsLowStock?.triggered ? (
-        <div className="mt-4">
-          <LowStockBanner alert={ocsLowStock} compact variant="ocs" />
-        </div>
-      ) : null}
 
       <div className="mt-5 grid grid-cols-2 gap-4">
         <DoctorMobileSplitCard
@@ -296,15 +256,9 @@ function OperatorMobileLauncher({
         />
         <DoctorMobileSplitCard
           to="/operator/long-term-review"
-          label="Reviews due"
+          label="Review appointment"
           icon={Activity}
           count={counts.reviews}
-        />
-        <DoctorMobileSplitCard
-          to="/operator/current-week-roster"
-          label="Completed this week"
-          icon={CalendarClock}
-          count={counts.completedVisitsThisWeek}
         />
       </div>
 
@@ -354,9 +308,7 @@ function MobileLauncher({
     return (
       <OperatorMobileLauncher
         user={user}
-        dashboard={dashboard}
         operatorMetrics={operatorMetrics}
-        latestHcmPost={latestHcmPost}
       />
     );
   }

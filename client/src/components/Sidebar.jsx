@@ -23,7 +23,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
-import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
+import { getBottomNavItemsForRole } from "../lib/bottomNavItems.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
@@ -260,7 +260,7 @@ function Sidebar() {
   );
 
   const bottomPaths = useMemo(() => {
-    const items = user.role === "linkham_admin" ? linkhamBottomNavItems : bottomNavItems;
+    const items = getBottomNavItemsForRole(user.role);
     const paths = items
       .filter((item) => item.roles.includes(user.role))
       .map((item) => item.to);
@@ -278,15 +278,24 @@ function Sidebar() {
     [visibleNavItems],
   );
 
+  const tabletNavItems = useMemo(
+    () =>
+      user.role === "operator"
+        ? getBottomNavItemsForRole(user.role)
+        : persistentNavItems,
+    [persistentNavItems, user.role],
+  );
+
   const drawerNavItems = useMemo(
     () =>
       visibleNavItems.filter(
         (item) =>
+          user.role !== "operator" &&
           !bottomPaths.has(item.to) &&
           !DESKTOP_ONLY_PATHS.has(item.to) &&
           !item.hideInMobileDrawer,
       ),
-    [visibleNavItems, bottomPaths],
+    [visibleNavItems, bottomPaths, user.role],
   );
 
   useEffect(() => {
@@ -506,7 +515,7 @@ function Sidebar() {
 
         <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
           <nav ref={tabletNavRef} className="flex w-full min-w-0 gap-3 overflow-x-auto pb-2">
-          {persistentNavItems.map((item) => (
+          {tabletNavItems.map((item) => (
             <SidebarLink
               key={item.to}
               item={item}

@@ -1,13 +1,14 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { cx } from "../lib/utils.js";
-import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
+import { getBottomNavItemsForRole } from "../lib/bottomNavItems.js";
 
 function BottomNav() {
   const { user } = useAuth();
+  const location = useLocation();
   const items = useMemo(() => {
-    const source = user.role === "linkham_admin" ? linkhamBottomNavItems : bottomNavItems;
+    const source = getBottomNavItemsForRole(user.role);
     return source.filter((item) => item.roles.includes(user.role));
   }, [user.role]);
 
@@ -26,14 +27,19 @@ function BottomNav() {
               key={item.to}
               end={item.end}
               to={item.to}
-              className={({ isActive }) =>
-                cx(
+              className={({ isActive: routerActive }) => {
+                const isActive =
+                  typeof item.isActiveWhen === "function"
+                    ? item.isActiveWhen(location)
+                    : routerActive;
+
+                return cx(
                   "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[20px] px-1.5 py-2 text-[10px] font-semibold transition-all duration-200",
                   isActive
                     ? "bg-ocs-slate text-white shadow-[0_8px_18px_rgba(59,89,92,0.2)]"
                     : "text-ocs-grey hover:bg-ocs-teal/8 hover:text-ocs-slate",
-                )
-              }
+                );
+              }}
             >
               {({ isActive }) => (
                 <>
