@@ -68,8 +68,8 @@ function shipmentHoldCopy(line) {
     .filter(Boolean)
     .join(", ");
   const lead = shipments.length === 1
-    ? `Receive Delivery #${first.shipment_id} has ${waiting} of this item waiting${detail ? ` (${detail})` : ""}.`
-    : `${shipments.length} Receive Delivery records have ${waiting} of this item waiting.`;
+    ? `Bulk Delivery #${first.shipment_id} has ${waiting} of this item waiting${detail ? ` (${detail})` : ""}.`
+    : `${shipments.length} Bulk Delivery records have ${waiting} of this item waiting.`;
   const follow = extra > waiting
     ? " This count adds that delivery. What is still extra is a new lot on this line."
     : " This count adds that delivery. Stay on this count.";

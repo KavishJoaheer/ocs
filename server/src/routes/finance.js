@@ -188,14 +188,14 @@ function batchCostLineage(batchId) {
 function validateSupplierReceiptLines(invoice, lines, { checkApproved = false } = {}) {
   const shipmentId = Number(invoice.shipment_id || 0);
   if (!shipmentId) {
-    throw Object.assign(new Error("Choose a Receive Delivery with stock already added before submitting a stock invoice."), { status: 400 });
+    throw Object.assign(new Error("Choose a Bulk Delivery with stock already added before submitting a stock invoice."), { status: 400 });
   }
   const shipment = db.prepare("SELECT id, supplier, status FROM inventory_shipments WHERE id=?").get(shipmentId);
   if (!shipment || shipment.status === "cancelled") {
-    throw Object.assign(new Error("The selected Receive Delivery is unavailable."), { status: 400 });
+    throw Object.assign(new Error("The selected Bulk Delivery is unavailable."), { status: 400 });
   }
   if (String(shipment.supplier || "").trim().toLowerCase() !== String(invoice.supplier_name || "").trim().toLowerCase()) {
-    throw Object.assign(new Error("The invoice supplier must match the Receive Delivery supplier."), { status: 400 });
+    throw Object.assign(new Error("The invoice supplier must match the Bulk Delivery supplier."), { status: 400 });
   }
   const received = db.prepare(`
     SELECT released_batch_id AS batch_id, released_inventory_id AS item_id, quantity
@@ -621,7 +621,7 @@ router.get("/supplier-shipments/:id", (req, res) => {
     SELECT id, supplier, delivery_note, received_date, status
     FROM inventory_shipments WHERE id = ?
   `).get(Number(req.params.id));
-  if (!shipment) return res.status(404).json({ error: "Receive Delivery record not found." });
+  if (!shipment) return res.status(404).json({ error: "Bulk Delivery record not found." });
   const lines = db.prepare(`
     SELECT item_name, quantity, cost_price, status, released_inventory_id, released_batch_id
     FROM inventory_staging staging

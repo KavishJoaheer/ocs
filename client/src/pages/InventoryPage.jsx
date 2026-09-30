@@ -3159,7 +3159,7 @@ export default function InventoryPage() {
   const inventorySections = [
     ...(isOperator ? [{ id: "queues", label: "Tasks" }] : []),
     { id: "stock", label: "Stock" },
-    { id: "shipments", label: "Receive Delivery", badge: pendingStagingCount },
+    { id: "shipments", label: "Bulk Delivery", badge: pendingStagingCount },
     { id: "count", label: "Stock Count" },
     ...(isAdmin ? [{ id: "bags", label: "Bags" }] : []),
   ];
@@ -4717,7 +4717,7 @@ export default function InventoryPage() {
               ? "OCS depot"
               : "My bag"
             : logisticsTab === "shipments"
-              ? "Receive a delivery"
+              ? "Bulk delivery"
               : logisticsTab === "count"
                 ? "Stock count"
                   : logisticsTab === "bags"
@@ -4975,7 +4975,7 @@ export default function InventoryPage() {
       ) : null}
 
       {canManageOcs && logisticsTab === "shipments" ? (
-        <Suspense fallback={<LoadingState label="Loading Receive Delivery" />}>
+        <Suspense fallback={<LoadingState label="Loading Bulk Delivery" />}>
           <InventoryCsvImport onImported={() => load(undefined, undefined, { silent: true })} />
           {renderMenuSummaries("lg:hidden")}
           <InventoryStagingQueue

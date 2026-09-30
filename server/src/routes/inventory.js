@@ -2811,7 +2811,7 @@ router.post("/items/:id/ocs-actions", (req, res) => {
       LIMIT 1
     `).get(supplierName, deliveryNote);
     if (existingDelivery) {
-      return res.status(409).json({ error: `This supplier delivery note is already recorded as Receive Delivery #${existingDelivery.id}.` });
+      return res.status(409).json({ error: `This supplier delivery note is already recorded as Bulk Delivery #${existingDelivery.id}.` });
     }
     try {
       const receipt = db.transaction(() => {
@@ -4404,7 +4404,7 @@ router.post("/restock/my-inventory", (req, res) => {
 router.get("/staging/csv-template", (req, res) => {
   ensureInfrastructure();
   if (!isWarehouseViewer(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can download the Receive Delivery template." });
+    return res.status(403).json({ error: "Only admin/operator can download the Bulk Delivery template." });
   }
   const csv = csvShipmentTemplate();
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -4415,7 +4415,7 @@ router.get("/staging/csv-template", (req, res) => {
 router.post("/staging/preview-csv", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Preview Receive Delivery");
+    assertRoutineOperatorAction(req.auth, req.body, "Preview Bulk Delivery");
   } catch (error) {
     if (req.auth.role !== "admin" && req.auth.role !== "operator") {
       return res.status(error.status || 403).json({ error: error.message });
@@ -4437,7 +4437,7 @@ router.post("/staging/preview-csv", (req, res) => {
 router.post("/staging/import-csv", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Save a Receive Delivery");
+    assertRoutineOperatorAction(req.auth, req.body, "Save a Bulk Delivery");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4446,7 +4446,7 @@ router.post("/staging/import-csv", (req, res) => {
   const importOperationId = String(req.body.operation_id || req.get("Idempotency-Key") || "").trim();
   if (supplier.length < 2 || deliveryNote.length < 2) {
     return res.status(400).json({
-      error: "Supplier and delivery-note reference are required for Receive Delivery.",
+      error: "Supplier and delivery-note reference are required for Bulk Delivery.",
       code: "SHIPMENT_REFERENCE_REQUIRED",
     });
   }
@@ -4458,7 +4458,7 @@ router.post("/staging/import-csv", (req, res) => {
   }
   if (!importOperationId) {
     return res.status(400).json({
-      error: "A stable Receive Delivery reference is required.",
+      error: "A stable Bulk Delivery reference is required.",
       code: "SHIPMENT_OPERATION_ID_REQUIRED",
     });
   }
@@ -4587,7 +4587,7 @@ router.post("/staging/import-csv", (req, res) => {
 router.post("/staging/:id/release", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Add Receive Delivery to stock");
+    assertRoutineOperatorAction(req.auth, req.body, "Add Bulk Delivery to stock");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4623,7 +4623,7 @@ router.post("/staging/:id/release", (req, res) => {
 router.get("/shipments", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view Receive Delivery." });
+    return res.status(403).json({ error: "Only admin/operator can view Bulk Delivery." });
   }
   return res.json({ shipments: listShipments() });
 });
@@ -4631,17 +4631,17 @@ router.get("/shipments", (req, res) => {
 router.get("/shipments/:id", (req, res) => {
   ensureInfrastructure();
   if (!["admin", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "Only admin/operator can view Receive Delivery." });
+    return res.status(403).json({ error: "Only admin/operator can view Bulk Delivery." });
   }
   const shipment = getShipment(req.params.id);
-  if (!shipment) return res.status(404).json({ error: "Receive Delivery record not found." });
+  if (!shipment) return res.status(404).json({ error: "Bulk Delivery record not found." });
   return res.json({ shipment });
 });
 
 router.post("/shipments/:id/exclude", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Leave Receive Delivery lines out");
+    assertRoutineOperatorAction(req.auth, req.body, "Leave Bulk Delivery lines out");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4664,7 +4664,7 @@ router.post("/shipments/:id/exclude", (req, res) => {
 router.post("/shipments/:id/release", (req, res) => {
   ensureInfrastructure();
   try {
-    assertRoutineOperatorAction(req.auth, req.body, "Add Receive Delivery to stock");
+    assertRoutineOperatorAction(req.auth, req.body, "Add Bulk Delivery to stock");
   } catch (error) {
     return res.status(error.status || 403).json({ error: error.message });
   }
@@ -4672,7 +4672,7 @@ router.post("/shipments/:id/release", (req, res) => {
   const mode = String(req.body?.mode || "all_valid");
   if (mode === "selected") {
     if (!Array.isArray(req.body?.row_ids) || !req.body.row_ids.length) {
-      return res.status(400).json({ error: "row_ids is required and must contain at least one Receive Delivery line." });
+      return res.status(400).json({ error: "row_ids is required and must contain at least one Bulk Delivery line." });
     }
   }
   const rowIds = mode === "selected" ? req.body.row_ids.map(Number) : [];
@@ -4710,7 +4710,7 @@ router.post("/shipments/:id/release", (req, res) => {
     });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
-    return res.status(400).json({ error: error.message || "Unable to add this Receive Delivery to stock." });
+    return res.status(400).json({ error: error.message || "Unable to add this Bulk Delivery to stock." });
   }
 });
 

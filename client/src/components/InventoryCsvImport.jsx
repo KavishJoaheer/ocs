@@ -175,8 +175,8 @@ function InventoryCsvImport({ onImported }) {
 
   return (
     <SectionCard
-      title="Receive a delivery"
-      subtitle="Check delivery, then save delivery. Stock changes when you add it to stock."
+      title="Import a supplier delivery"
+      subtitle="Use this for a delivery with several products. Check the file, save the delivery, then add the goods to stock."
     >
       <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm font-semibold text-slate-700">

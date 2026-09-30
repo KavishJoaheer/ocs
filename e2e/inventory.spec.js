@@ -588,12 +588,12 @@ test.describe("Inventory workflow", () => {
       if (size.width < 640) {
         const section = page.getByRole("combobox", { name: "Inventory section" });
         await expect(section).toBeVisible({ timeout: 20_000 });
-        await expect(section.locator('option[value="shipments"]')).toContainText("Receive Delivery");
+        await expect(section.locator('option[value="shipments"]')).toContainText("Bulk Delivery");
         await expect(section.locator('option[value="count"]')).toContainText("Stock Count");
         const box = await section.boundingBox();
         expect(box?.height || 0).toBeGreaterThanOrEqual(44);
       } else {
-        await expect(page.getByRole("tab", { name: "Receive Delivery" })).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByRole("tab", { name: "Bulk Delivery" })).toBeVisible({ timeout: 20_000 });
         await expect(page.getByRole("tab", { name: "Stock Count" })).toBeVisible();
       }
     }
@@ -1698,7 +1698,7 @@ test.describe("Inventory workflow", () => {
       "New requests",
       "Pick today",
       "Awaiting collection",
-      "Receive Delivery",
+      "Bulk deliveries",
       "Stock count variances",
     ];
     const counts = body.counts;
@@ -1725,7 +1725,7 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByText(/usually 2–3 times per month, with no fixed dates/i).filter({ visible: true })).toBeVisible();
     await expect(page.getByText(/Received this month/i).filter({ visible: true })).toBeVisible();
     await expect(page.getByLabel("Delivery file")).toBeAttached({ timeout: 20_000 });
-    await expect(page.getByText("Check delivery, then save delivery. Stock changes when you add it to stock.")).toBeVisible();
+    await expect(page.getByText("Use this for a delivery with several products. Check the file, save the delivery, then add the goods to stock.")).toBeVisible();
     const importButton = page.getByRole("button", { name: "Save delivery" });
     await expect(importButton).toBeDisabled();
   });

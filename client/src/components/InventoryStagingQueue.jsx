@@ -176,7 +176,7 @@ function InventoryStagingQueue({ rows = [], shipments = [], incomingShipments, o
     >
       {requestedShipmentId && !grouped.some((row) => String(row.id) === String(requestedShipmentId)) ? (
         <p className="mb-3 text-sm text-slate-600">
-          Receive Delivery #{requestedShipmentId} is not waiting to be added.
+          Bulk Delivery #{requestedShipmentId} is not waiting to be added.
           {user?.role === "admin" ? (
             <>
               {" "}

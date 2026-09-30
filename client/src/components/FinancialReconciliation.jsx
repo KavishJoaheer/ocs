@@ -86,7 +86,7 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
         ) : null}
         {Number(result.stock_readiness.deliveries_without_invoice_count || 0) > 0 ? (
           <div className="mt-3">
-            <p>{result.stock_readiness.deliveries_without_invoice_count} Receive Delivery record{result.stock_readiness.deliveries_without_invoice_count === 1 ? "" : "s"} still need an approved supplier invoice.</p>
+            <p>{result.stock_readiness.deliveries_without_invoice_count} Bulk Delivery record{result.stock_readiness.deliveries_without_invoice_count === 1 ? "" : "s"} still need an approved supplier invoice.</p>
             <div className="mt-1 flex flex-col">
               {(result.stock_readiness.deliveries_without_invoice || []).map((delivery) => (
                 <a key={delivery.id} className="inline-flex min-h-11 items-center font-semibold text-teal-800" href={`/billing?section=suppliers&shipment=${delivery.id}`}>
@@ -94,7 +94,7 @@ export default function FinancialReconciliation({ report = null, refreshToken = 
                     ? "Approve invoice for"
                     : delivery.invoice_status === "rejected"
                       ? "Replace rejected invoice for"
-                      : "Record invoice for"} Receive Delivery #{delivery.id}{delivery.supplier ? ` · ${delivery.supplier}` : ""}{delivery.delivery_note ? ` · ${delivery.delivery_note}` : ""}
+                      : "Record invoice for"} Bulk Delivery #{delivery.id}{delivery.supplier ? ` · ${delivery.supplier}` : ""}{delivery.delivery_note ? ` · ${delivery.delivery_note}` : ""}
                 </a>
               ))}
             </div>
