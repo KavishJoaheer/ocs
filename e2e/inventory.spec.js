@@ -1662,7 +1662,7 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Tasks" }).click();
     await page.getByRole("button", { name: /Awaiting collection/i }).click();
-    await expect(page.getByRole("button", { name: "View details" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: `Open request ${requestId} details` })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "Claim" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open fulfilment" })).toHaveCount(0);
   });
