@@ -251,6 +251,59 @@ test("go-live removals leave the warehouse and every doctor bag", () => {
   assert.equal(Number(active.count), 0);
 });
 
+test("retiring BIB Roll preserves an open stock count and its other lines", () => {
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const bibId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES ('BIB Roll', ?, 'ocs', NULL, 1, 10, 'roll', 5, 0)
+  `).run(folderId).lastInsertRowid);
+  const keptId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES ('Counted item kept active', ?, 'ocs', NULL, 4, 0, 'unit', 2, 0)
+  `).run(folderId).lastInsertRowid);
+  const sessionId = Number(db.prepare(`
+    INSERT INTO inventory_stocktake_sessions (scope, folder_id, status, notes, started_at)
+    VALUES ('ocs', ?, 'in_progress', '', CURRENT_TIMESTAMP)
+  `).run(folderId).lastInsertRowid);
+  const insertLine = db.prepare(`
+    INSERT INTO inventory_stocktake_session_items (
+      session_id, inventory_id, system_quantity, physical_quantity, variance,
+      expected_row_version, expected_quantity, left_unchanged
+    ) VALUES (?, ?, ?, ?, ?, 1, ?, 0)
+  `);
+  const bibLineId = Number(insertLine.run(sessionId, bibId, 0, 1, 1, 0).lastInsertRowid);
+  const keptLineId = Number(insertLine.run(sessionId, keptId, 0, 4, 4, 0).lastInsertRowid);
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= 1);
+  assert.ok(result.written_off >= 1);
+
+  const bib = db.prepare("SELECT quantity, archived_at FROM inventory WHERE id = ?").get(bibId);
+  assert.equal(Number(bib.quantity), 0);
+  assert.ok(bib.archived_at);
+  const bibLine = db.prepare(`
+    SELECT physical_quantity, variance, left_unchanged, reason
+    FROM inventory_stocktake_session_items WHERE id = ?
+  `).get(bibLineId);
+  assert.equal(bibLine.physical_quantity, null);
+  assert.equal(Number(bibLine.variance), 0);
+  assert.equal(Number(bibLine.left_unchanged), 1);
+  assert.match(bibLine.reason, /retired from the catalogue/i);
+
+  const keptLine = db.prepare(`
+    SELECT physical_quantity, variance, left_unchanged
+    FROM inventory_stocktake_session_items WHERE id = ?
+  `).get(keptLineId);
+  assert.equal(Number(keptLine.physical_quantity), 4);
+  assert.equal(Number(keptLine.variance), 4);
+  assert.equal(Number(keptLine.left_unchanged), 0);
+  assert.equal(db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(sessionId).status, "in_progress");
+});
+
 function oxygenFolderId() {
   const existing = db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(O2_FOLDER);
   if (existing) return Number(existing.id);

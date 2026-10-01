@@ -93,6 +93,7 @@ const RETIRED_OCS_DISCONTINUED_DRUG_SKUS = [
   "IV Ocid 40mg",
 ];
 const RETIRED_OCS_GO_LIVE_SKUS = [
+  "BIB Roll",
   "Ceftriaxone 2g (IM/IV)",
   "Diprostene IA/IM",
   "Emetino 8mg (IM/IV)",
@@ -186,6 +187,55 @@ function writeOffRetiredSkuRow(row, writeOffQty) {
   );
 }
 
+function leaveRetiredItemOutOfOpenStocktakes(row) {
+  const openSessions = db.prepare(`
+    SELECT DISTINCT session_id
+    FROM inventory_stocktake_session_items
+    WHERE inventory_id = ?
+      AND session_id IN (
+        SELECT id
+        FROM inventory_stocktake_sessions
+        WHERE status IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+      )
+  `).all(row.id);
+  if (!openSessions.length) return 0;
+
+  const reason = `Left unchanged because ${row.item_name} was retired from the catalogue.`;
+  const result = db.prepare(`
+    UPDATE inventory_stocktake_session_items
+    SET physical_quantity = NULL,
+        variance = 0,
+        left_unchanged = 1,
+        reason = ?,
+        conflict_status = '',
+        conflict_reason = '',
+        conflict_live_quantity = NULL,
+        conflict_detected_at = NULL,
+        surplus_expiry_date = NULL,
+        surplus_is_non_expiring = 0,
+        surplus_unit_cost = NULL,
+        surplus_supplier_name = '',
+        surplus_received_date = NULL,
+        shortage_reason = '',
+        shortage_unit_cost = NULL,
+        shortage_doctor_id = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE inventory_id = ?
+      AND session_id IN (${openSessions.map(() => "?").join(", ")})
+  `).run(reason, row.id, ...openSessions.map((session) => session.session_id));
+
+  const updateSession = db.prepare(`
+    UPDATE inventory_stocktake_sessions
+    SET notes = TRIM(COALESCE(notes, '') || CASE WHEN TRIM(COALESCE(notes, '')) = '' THEN '' ELSE ' ' END || ?),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  for (const session of openSessions) {
+    updateSession.run(reason, session.session_id);
+  }
+  return Number(result.changes || 0);
+}
+
 function legacyOxygenStockNames(db) {
   return db.prepare(`
     SELECT DISTINCT item_name
@@ -243,6 +293,7 @@ function retireRemovedOcsCatalogItems() {
           blocked += 1;
           continue;
         }
+        leaveRetiredItemOutOfOpenStocktakes(row);
         const writeOffQty = Math.max(Number(row.quantity || 0), Number(row.live_batch_quantity || 0));
         if (writeOffQty > 0) {
           writeOffRetiredSkuRow(row, writeOffQty);
