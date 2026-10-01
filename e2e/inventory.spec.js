@@ -615,6 +615,7 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("tab", { name: "Stock", exact: true }).click();
     await page.getByLabel("Search stock items").fill(item.item_name);
     await page.getByRole("button", { name: `Show details for ${item.item_name}` }).click();
+    await expect(page.getByText(/^Attributes:/)).toHaveCount(0);
     await page.getByRole("button", { name: "Edit expiry / cost" }).click();
     const dialog = page.getByRole("dialog", { name: "Edit expiry / cost" });
     await expect(dialog).toBeVisible();

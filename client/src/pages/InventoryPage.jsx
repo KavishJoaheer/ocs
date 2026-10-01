@@ -5350,8 +5350,7 @@ export default function InventoryPage() {
                                 <div className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
-                                    <p className="mt-2 text-sm text-slate-700">Attributes: {item.attributes || "N/A"}</p>
-                                    <p className="mt-1 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
+                                    <p className="mt-2 text-sm text-slate-700">MOA Notes: {item.moa_notes || "N/A"}</p>
                                     <p className="mt-1 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
                                     <div className="mt-2"><InventoryQuantityLines item={item} firstAtp /></div>
                                   </div>
