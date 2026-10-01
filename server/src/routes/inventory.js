@@ -799,6 +799,38 @@ function findItemForRequest(req, itemId, { includeServices = false } = {}) {
   return null;
 }
 
+function findEditableCatalogueItemForRequest(req, itemId) {
+  const item = db.prepare(`
+    SELECT *
+    FROM inventory
+    WHERE id = ?
+      AND archived_at IS NULL
+  `).get(itemId);
+  if (!item) return null;
+
+  const role = req.auth.role;
+  const { selectedDoctorId, doctorContext } = getInventoryQueryContext(req);
+  if (role === "doctor") {
+    const doctorId = Number(req.auth.doctor_id || 0);
+    if (!doctorId) return null;
+    if (doctorContext === "ocs") {
+      return item.stock_scope === "ocs" && item.owner_doctor_id == null ? item : null;
+    }
+    return item.stock_scope === "doctor" && Number(item.owner_doctor_id) === doctorId ? item : null;
+  }
+
+  if (["admin", "operator"].includes(role)) {
+    if (selectedDoctorId) {
+      return item.stock_scope === "doctor" && Number(item.owner_doctor_id) === Number(selectedDoctorId)
+        ? item
+        : null;
+    }
+    return item.stock_scope === "ocs" && item.owner_doctor_id == null ? item : null;
+  }
+
+  return null;
+}
+
 function getPayloadFromRequest(req) {
   const { selectedDoctorId, doctorContext } = getInventoryQueryContext(req);
   return getPayload(req, selectedDoctorId, doctorContext);
@@ -2530,7 +2562,7 @@ router.put("/items/:id", (req, res) => {
   }
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
   const itemId = Number(req.params.id);
-  const existing = findItemForRequest(req, itemId, { includeServices: true });
+  const existing = findEditableCatalogueItemForRequest(req, itemId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
   const expectedVersion = Number(req.body?.expected_version ?? req.body?.row_version ?? 0);
 

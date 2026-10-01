@@ -796,21 +796,25 @@ test("admin can change a service price and the price copies onto every doctor ba
   const firstBagId = Number(insertBagService.run(name, folderId, doctorId).lastInsertRowid);
   const secondBagId = Number(insertBagService.run(name, folderId, doctorTwoId).lastInsertRowid);
 
-  const updated = await api("PUT", `/api/inventory/items/${serviceId}`, {
-    token: adminToken,
-    body: {
-      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(serviceId).row_version),
-      item_name: name,
-      folder_id: folderId,
-      minimum_quantity: 0,
-      unit: "service",
-      attributes: "",
-      moa_notes: "",
-      cost_price: 300,
-      selling_price: 1200,
-      adjustment_note: "Updated service price after management review",
+  const updated = await api(
+    "PUT",
+    `/api/inventory/items/${serviceId}?view=stock&dateFrom=2026-10-01&dateTo=2026-10-01`,
+    {
+      token: adminToken,
+      body: {
+        expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(serviceId).row_version),
+        item_name: name,
+        folder_id: folderId,
+        minimum_quantity: 0,
+        unit: "service",
+        attributes: "",
+        moa_notes: "",
+        cost_price: 300,
+        selling_price: 1200,
+        adjustment_note: "Updated service price after management review",
+      },
     },
-  });
+  );
   assert.equal(updated.status, 200, JSON.stringify(updated.data));
 
   for (const id of [serviceId, firstBagId, secondBagId]) {
