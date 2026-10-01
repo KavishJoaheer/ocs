@@ -63,7 +63,6 @@ export const ROUTE_ACCESS = {
   "/team-operations": ["admin"],
   "/doctors": ["admin"],
   "/admin/long-term-review": ["admin"],
-  "/admin/go-live": ["admin"],
   "/linkham/dashboard": ["linkham_admin"],
   "/linkham/patients": ["linkham_admin"],
   "/linkham/claims-clearance": ["linkham_admin"],

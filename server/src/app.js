@@ -27,7 +27,6 @@ const appointmentChangeRequestsRouter = require("./routes/appointmentChangeReque
 const patientAuthRouter = require("./routes/patientAuth");
 const patientPortalRouter = require("./routes/patientPortal");
 const patientCareContentRouter = require("./routes/patientCareContent");
-const goLiveResetRouter = require("./routes/goLiveReset");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
 const {
   requireConfirmedChartAccess,
@@ -283,18 +282,6 @@ function createApp() {
 
   app.use("/api/auth", authRouter);
   app.use("/api/push", pushRouter);
-  app.use(
-    "/api/go-live-reset",
-    requireAuth,
-    authorizeRoles("admin"),
-    goLiveResetRouter,
-  );
-  app.use(
-    "/go-live-reset",
-    requireAuth,
-    authorizeRoles("admin"),
-    goLiveResetRouter,
-  );
   app.use(
     "/api/dashboard",
     requireAuth,

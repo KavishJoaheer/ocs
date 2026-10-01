@@ -141,10 +141,6 @@ const pageMeta = {
     label: "Team operations",
     helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
   },
-  "/admin/go-live": {
-    label: "Go-live preparation",
-    helper: "Review and create the clean opening position for billing and inventory.",
-  },
   "/doctors": {
     label: "Team operations",
     helper: "Maintain doctor, operator, accountant, and Linkham Admin accounts from one admin workspace.",
