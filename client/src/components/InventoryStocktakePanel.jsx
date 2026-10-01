@@ -83,6 +83,22 @@ function surplusLotReady(line) {
   return expiryOk && supplierOk && deliveredOk;
 }
 
+function missingSurplusLotFields(line) {
+  const missing = [];
+  if (!line?.surplus_is_non_expiring && !String(line?.surplus_expiry_date || "").trim()) {
+    missing.push("expiry date or Does not expire");
+  }
+  if (String(line?.surplus_supplier_name || "").trim().length < 2) missing.push("supplier");
+  if (!String(line?.surplus_received_date || "").trim()) missing.push("delivery date");
+  return missing;
+}
+
+function readableList(items) {
+  if (items.length < 2) return items[0] || "required details";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
 function ShipmentHold({ line }) {
   return <p className="text-sm text-slate-700">{shipmentHoldCopy(line)}</p>;
 }
@@ -504,10 +520,25 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
   function explanationGap(session) {
     const missingLot = (session?.items || []).find((line) => line.needs_new_lot && !surplusLotReady(line));
     const missingReason = (session?.items || []).find((line) => line.needs_shortage && !["wasted", "expired"].includes(line.shortage_reason));
-    if (!missingLot && !missingReason) return "";
-    return missingReason
-      ? "Mark the missing supply as wasted or expired."
-      : "Enter the expiry, supplier, and delivery date for the extra on this count.";
+    if (!missingLot && !missingReason) return null;
+    if (missingReason) {
+      return {
+        itemName: missingReason.item_name,
+        message: `${missingReason.item_name}: mark the missing supply as wasted or expired.`,
+      };
+    }
+    return {
+      itemName: missingLot.item_name,
+      message: `${missingLot.item_name}: enter ${readableList(missingSurplusLotFields(missingLot))} for the extra counted stock.`,
+    };
+  }
+
+  function showExplanationGap(gap) {
+    if (!gap) return false;
+    setSheetQuery(gap.itemName || "");
+    setMobileIndex(0);
+    toast.error(gap.message);
+    return true;
   }
 
   async function persistExplanations() {
@@ -538,10 +569,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     try {
       const session = await persistExplanations();
       const gap = explanationGap(session);
-      if (gap) {
-        toast.error(gap);
-        return;
-      }
+      if (showExplanationGap(gap)) return;
       const payload = await api.post(`/inventory/stocktake/sessions/${active.id}/submit`);
       setActive(payload.session);
       setEditedIds({});
@@ -569,8 +597,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     try {
       const session = await persistExplanations();
       const gap = explanationGap(session);
-      if (gap) {
-        toast.error(gap);
+      if (showExplanationGap(gap)) {
         setFinishOpen(false);
         return;
       }
