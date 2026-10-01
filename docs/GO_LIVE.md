@@ -87,7 +87,7 @@ Expected:
 
 ---
 
-### One-time trial billing reset for 1 October 2026
+### One-time trial billing reset for 2 October 2026
 
 After the image containing `resetTrialBilling.js` is running, inspect the reset plan first. The dry run does not change the database:
 
@@ -100,11 +100,11 @@ Run the destructive reset only after the dry-run inventory restoration plan is v
 ```bash
 docker exec \
   -e ALLOW_DB_PURGE=true \
-  -e BILLING_RESET_CONFIRM=RESET_TRIAL_BILLING_2026_10_01 \
+  -e BILLING_RESET_CONFIRM=RESET_TRIAL_BILLING_2026_10_02 \
   clinicflow-app node src/scripts/resetTrialBilling.js
 ```
 
-This removes trial invoices, receipts, reversals, refunds, supply corrections, quick-billing history, day closes, supplier invoices, expenses, and the other financial history tied to those trials. It sets every OCS warehouse and doctor-bag quantity to zero, clears lots, expiry, stock cost, reservations, and stock history, and keeps the catalogue names, folders, and selling prices. Patients and consultations stay. Visits before `2026-10-01` cannot be billed.
+This removes trial invoices, receipts, reversals, refunds, supply corrections, quick-billing history, day closes, supplier invoices, expenses, trial supply requests, and the other financial and stock history tied to those trials. It sets every OCS warehouse and doctor-bag quantity to zero, clears lots, expiry, stock cost, reservations, and stock history, and keeps the catalogue names, folders, and selling prices. Patients and consultations stay. Visits before `2026-10-02` cannot be billed.
 
 ---
 

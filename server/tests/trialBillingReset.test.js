@@ -39,7 +39,7 @@ function createVisit(date, suffix) {
   return { doctorId, patientId, appointmentId, consultationId };
 }
 
-test("trial billing reset clears the ledger, restores billed stock, preserves visits and establishes the cutover", () => {
+test("trial billing reset clears the ledger and supply trials, zeros stock, preserves visits and establishes the cutover", () => {
   resetTrialBilling(db, { cutoverDate: "2026-10-01", reason: "Test baseline" });
   db.prepare("DELETE FROM billing_system_settings").run();
   const visit = createVisit("2026-09-16", "OLD");
@@ -58,6 +58,29 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
       item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status
     ) VALUES (?, 8, '2030-12-31', 10, 0, 'usable')
   `).run(itemId).lastInsertRowid);
+  const requestId = Number(db.prepare(`
+    INSERT INTO restock_requests (
+      doctor_id, requested_by_user_id, collection_date, collection_day, status, note
+    ) VALUES (?, ?, '2026-10-02', 5, 'pending', 'Trial request')
+  `).run(visit.doctorId, userId).lastInsertRowid);
+  const requestItemId = Number(db.prepare(`
+    INSERT INTO restock_request_items (request_id, inventory_id, item_name, quantity)
+    VALUES (?, ?, 'Reset medicine', 2)
+  `).run(requestId, itemId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO restock_request_events (
+      request_id, event_type, new_status, actor_user_id, actor_role, actor_display_name
+    ) VALUES (?, 'created', 'pending', ?, 'doctor', 'Trial User')
+  `).run(requestId, userId);
+  const fulfilmentId = Number(db.prepare(`
+    INSERT INTO restock_request_fulfillments (request_id, status)
+    VALUES (?, 'open')
+  `).run(requestId).lastInsertRowid);
+  db.prepare(`
+    INSERT INTO restock_request_fulfillment_items (
+      fulfilment_id, request_item_id, inventory_id, item_name, requested_quantity
+    ) VALUES (?, ?, ?, 'Reset medicine', 2)
+  `).run(fulfilmentId, requestItemId, itemId);
   const movementId = Number(db.prepare(`
     INSERT INTO inventory_movements (
       item_id, movement_type, quantity, previous_quantity, next_quantity, doctor_id,
@@ -196,6 +219,11 @@ test("trial billing reset clears the ledger, restores billed stock, preserves vi
   assert.equal(db.prepare("SELECT cost_price FROM inventory WHERE id = ?").get(itemId).cost_price, 0);
   assert.equal(db.prepare("SELECT selling_price FROM inventory WHERE id = ?").get(itemId).selling_price, 25);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE id = ?").get(movementId).count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_requests").get().count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_items").get().count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_events").get().count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillments").get().count, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM restock_request_fulfillment_items").get().count, 0);
   assert.equal(db.prepare("SELECT doctor_notes FROM consultations WHERE id = ?").get(visit.consultationId).doctor_notes, "Preserved consultation note");
   assert.equal(getBillingCutoverDate(db), "2026-10-01");
   for (const trigger of [

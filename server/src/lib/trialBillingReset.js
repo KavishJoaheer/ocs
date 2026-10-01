@@ -286,6 +286,13 @@ function buildInventoryRestorationPlan(db, movementIds) {
 const STOCK_HISTORY_TABLES = [
   "inventory_reservation_batches",
   "inventory_reservations",
+  "restock_request_fulfillment_items",
+  "restock_request_fulfillments",
+  "restock_request_amendment_items",
+  "restock_request_amendments",
+  "restock_request_events",
+  "restock_request_items",
+  "restock_requests",
   "inventory_activity_history",
   "inventory_movement_allocations",
   "inventory_batch_quarantine_events",
@@ -306,8 +313,8 @@ function openingStockPlan(db) {
       : 0,
     batches: countRows(db, "inventory_batches"),
     movements: countRows(db, "inventory_movements"),
-    openSupplyRequests: tableExists(db, "restock_requests")
-      ? Number(db.prepare("SELECT COUNT(*) AS count FROM restock_requests WHERE status IN ('pending', 'accepted', 'ready')").get()?.count || 0)
+    supplyRequests: tableExists(db, "restock_requests")
+      ? Number(db.prepare("SELECT COUNT(*) AS count FROM restock_requests").get()?.count || 0)
       : 0,
   };
 }
@@ -326,20 +333,6 @@ function clearOpeningStock(db) {
           row_version = row_version + 1,
           updated_at = CURRENT_TIMESTAMP
     `).run();
-  }
-  if (tableExists(db, "restock_requests")) {
-    db.prepare(`
-      UPDATE restock_requests
-      SET status = 'cancelled',
-          cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP),
-          cancelled_reason = CASE
-            WHEN trim(COALESCE(cancelled_reason, '')) = '' THEN ?
-            ELSE cancelled_reason
-          END,
-          archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE status IN ('pending', 'accepted', 'ready')
-    `).run("Cleared before the 1 October 2026 go-live.");
   }
   if (tableExists(db, "operation_receipts")) {
     db.prepare("DELETE FROM operation_receipts WHERE scope LIKE 'inventory:%'").run();
@@ -415,7 +408,10 @@ function resetTrialBilling(db, { cutoverDate, reason = "Trial billing reset befo
     }
     clearOpeningStock(db);
     if (tableExists(db, "sqlite_sequence")) {
-      const sequenceTables = orderedDeletes.filter((table) => table !== "billing_events");
+      const sequenceTables = [
+        ...orderedDeletes.filter((table) => table !== "billing_events"),
+        ...STOCK_HISTORY_TABLES,
+      ];
       const placeholders = sequenceTables.map(() => "?").join(",");
       db.prepare(`DELETE FROM sqlite_sequence WHERE name IN (${placeholders})`).run(...sequenceTables);
     }

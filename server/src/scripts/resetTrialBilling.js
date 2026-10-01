@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-const CUTOVER_DATE = "2026-10-01";
-const CONFIRMATION = "RESET_TRIAL_BILLING_2026_10_01";
+const CUTOVER_DATE = "2026-10-02";
+const CONFIRMATION = "RESET_TRIAL_BILLING_2026_10_02";
 
 const { db, initializeDatabase } = require("../db");
 const { resetTrialBilling } = require("../lib/trialBillingReset");
@@ -22,7 +22,7 @@ function printResult(result) {
   console.log(`  Stock movements cleared: ${result.inventoryMovementsRemoved}`);
   console.log(`  Items with quantity set to zero: ${result.openingStock?.itemsWithQuantity || 0}`);
   console.log(`  Lots cleared: ${result.openingStock?.batches || 0}`);
-  console.log(`  Open supply requests cancelled: ${result.openingStock?.openSupplyRequests || 0}`);
+  console.log(`  Trial supply requests cleared: ${result.openingStock?.supplyRequests || 0}`);
   console.log(`  Billing idempotency receipts: ${result.billingReceiptCount}`);
   for (const [table, count] of Object.entries(result.before)) {
     console.log(`  ${table}: ${count}`);
@@ -38,7 +38,7 @@ function run() {
   if (!dryRun) assertExecutionAllowed();
   const result = resetTrialBilling(db, {
     cutoverDate: CUTOVER_DATE,
-    reason: "Approved removal of trial billing before 1 October 2026 go-live",
+    reason: "Approved removal of trial billing before 2 October 2026 go-live",
     dryRun,
   });
   printResult(result);

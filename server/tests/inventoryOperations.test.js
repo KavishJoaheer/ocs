@@ -4708,6 +4708,9 @@ test("negative stocktake reconciles unusable batches at their exact recorded cos
 });
 
 test("inventory summaries are location-scoped and activity filters use Mauritius dates", async () => {
+  const utcDate = offsetLocalDate(-1);
+  const businessDate = getTodayLocal();
+  const movementTimestamp = `${utcDate} 21:30:00`;
   const warehouseBefore = await api("GET", "/api/inventory", { token: adminToken });
   const doctorBefore = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: adminToken });
   const warehouseItemId = insertOcsItem({ name: `Scoped warehouse ${Date.now()}`, qty: 1 });
@@ -4721,14 +4724,14 @@ test("inventory summaries are location-scoped and activity filters use Mauritius
     INSERT INTO inventory_movements (
       item_id, movement_type, quantity, previous_quantity, next_quantity,
       action_type, unit_cost_snapshot, created_at
-    ) VALUES (?, 'in', 1, 0, 1, 'add', 111, '2026-09-17 21:30:00')
-  `).run(warehouseItemId);
+    ) VALUES (?, 'in', 1, 0, 1, 'add', 111, ?)
+  `).run(warehouseItemId, movementTimestamp);
   db.prepare(`
     INSERT INTO inventory_movements (
       item_id, movement_type, quantity, previous_quantity, next_quantity,
       action_type, unit_cost_snapshot, created_at
-    ) VALUES (?, 'in', 1, 0, 1, 'restock_in', 222, '2026-09-17 21:30:00')
-  `).run(doctorItemId);
+    ) VALUES (?, 'in', 1, 0, 1, 'restock_in', 222, ?)
+  `).run(doctorItemId, movementTimestamp);
   const warehouseAfter = await api("GET", "/api/inventory", { token: adminToken });
   const doctorAfter = await api("GET", `/api/inventory?doctorId=${doctorId}`, { token: adminToken });
   assert.equal(
@@ -4739,7 +4742,7 @@ test("inventory summaries are location-scoped and activity filters use Mauritius
     Number(doctorAfter.data.summary.total_monthly_replenishments_rs) - Number(doctorBefore.data.summary.total_monthly_replenishments_rs),
     222,
   );
-  const localDay = await api("GET", "/api/inventory?dateFrom=2026-09-18&dateTo=2026-09-18", {
+  const localDay = await api("GET", `/api/inventory?dateFrom=${businessDate}&dateTo=${businessDate}`, {
     token: adminToken,
   });
   assert.equal(localDay.status, 200, JSON.stringify(localDay.data));
