@@ -50,6 +50,25 @@ function totalRows(counts) {
   return Object.values(counts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
 }
 
+function previewPayload(plan, backupReady, completed, result) {
+  const billingRows = Number(plan?.before?.billing || 0);
+  return {
+    cutover_date: CUTOVER_DATE,
+    backup_name: BACKUP_NAME,
+    backup_ready: backupReady,
+    completed,
+    result,
+    counts: {
+      bills: billingRows,
+      billing_and_finance_rows: totalRows(plan?.before),
+      supply_requests: Number(plan?.openingStock?.supplyRequests || 0),
+      stock_movements: Number(plan?.openingStock?.movements || 0),
+      batches: Number(plan?.openingStock?.batches || 0),
+      stock_items_with_quantity: Number(plan?.openingStock?.itemsWithQuantity || 0),
+    },
+  };
+}
+
 function renderPage({ plan, backupReady, completed, result }) {
   const billingRows = Number(plan?.before?.billing || 0);
   const financialRows = totalRows(plan?.before) - billingRows;
@@ -85,6 +104,9 @@ router.get("/", (req, res, next) => {
     const plan = resetTrialBilling(db, { cutoverDate: CUTOVER_DATE, dryRun: true });
     const backupReady = Boolean(verifiedExistingBackup(paths));
     res.setHeader("Cache-Control", "no-store");
+    if (String(req.query.format || "") === "json") {
+      return res.json(previewPayload(plan, backupReady, completed, result));
+    }
     res.type("html").send(renderPage({ plan, backupReady, completed, result }));
   } catch (error) {
     next(error);
@@ -134,6 +156,9 @@ router.post("/execute", async (req, res, next) => {
     };
     fs.writeFileSync(paths.result, `${JSON.stringify(result, null, 2)}\n`, { flag: "wx", mode: 0o600 });
     res.setHeader("Cache-Control", "no-store");
+    if (String(req.query.format || "") === "json") {
+      return res.json({ ok: true, ...result });
+    }
     return res.type("html").send(renderPage({
       plan: resetTrialBilling(db, { cutoverDate: CUTOVER_DATE, dryRun: true }),
       backupReady: true,

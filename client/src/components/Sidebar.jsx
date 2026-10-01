@@ -18,6 +18,7 @@ import {
   UsersRound,
   X,
   Newspaper,
+  DatabaseBackup,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -180,6 +181,12 @@ const navItems = [
     to: "/team-operations",
     label: "Team operations",
     icon: ShieldCheck,
+    roles: ["admin"],
+  },
+  {
+    to: "/admin/go-live",
+    label: "Go-live preparation",
+    icon: DatabaseBackup,
     roles: ["admin"],
   },
 ];
