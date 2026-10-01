@@ -4,18 +4,6 @@ const { recordOcsCatalogExclusion } = require("./ocsCatalogExclusions");
 // Catalogue categories are global. Keep existing warehouse and doctor-bag rows
 // aligned without changing their quantities, batches, prices, or par levels.
 const CATEGORY_RULES = [
-  {
-    itemName: "DNS/Dextrose 50%",
-    aliases: [
-      "Sodium Chloride&Dextrose(500ml)",
-      "Sodium Chloride & Dextrose (500ml)",
-      "Sodium Chloride & Dextrose(500ml)",
-      "Sodium Chloride&Dextrose (500ml)",
-    ],
-    folderName: "IV Drugs",
-    ensureEverywhere: true,
-    unit: "bag",
-  },
   { itemName: "N/S 100ml", folderName: "IV Drugs" },
   { itemName: "N/S 500ml", folderName: "IV Drugs" },
   { itemName: "2 Way Foley Catheter (Ch/Fr 14)", folderName: "Catherisation & NGT" },
@@ -39,6 +27,47 @@ const CATEGORY_RULES = [
     folderName: "Consumable",
   },
   { itemName: "Sachet Monuril", folderName: "Oral Drugs", keepItemKind: true },
+  {
+    itemName: "IM Lasilix 20mg",
+    aliases: ["Lasilix 20mg (IM/IV)"],
+    folderName: "IM Drugs",
+  },
+  {
+    itemName: "IM Ceftriaxone 1g + lidocaine",
+    folderName: "Services",
+    itemKind: "service",
+    ensureEverywhere: true,
+    unit: "service",
+    costPrice: 300,
+    sellingPrice: 1200,
+  },
+  {
+    itemName: "IV Solu-cortef 100MG (Hisone) (including cannulation)",
+    folderName: "Services",
+    itemKind: "service",
+    ensureEverywhere: true,
+    unit: "service",
+    costPrice: 300,
+    sellingPrice: 2000,
+  },
+  {
+    itemName: "Each next N/S 500ml",
+    folderName: "Services",
+    itemKind: "service",
+    ensureEverywhere: true,
+    unit: "service",
+    costPrice: 100,
+    sellingPrice: 500,
+  },
+  {
+    itemName: "IV Lasilix 20mg",
+    folderName: "Services",
+    itemKind: "service",
+    ensureEverywhere: true,
+    unit: "service",
+    costPrice: 200,
+    sellingPrice: 800,
+  },
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [
@@ -63,6 +92,25 @@ const RETIRED_OCS_DISCONTINUED_DRUG_SKUS = [
   "Spasfon (IM/IV)",
   "IV Ocid 40mg",
 ];
+const RETIRED_OCS_GO_LIVE_SKUS = [
+  "Ceftriaxone 2g (IM/IV)",
+  "Diprostene IA/IM",
+  "Emetino 8mg (IM/IV)",
+  "IM Ceftriaxone 2g + lidocaine",
+  "Iodine Tulle dressing",
+  "DNS/Dextrose 50%",
+  "IV Nexium",
+  "Micropore 5cm",
+  "Instafene syrup",
+  "Stoma care-colostomy bag",
+  'Sterile Gauze 3"x3"',
+  "Bactrim sulfaméthoxazole+triméthoprime",
+  "Diprosone cream",
+  "Morphine 10mg",
+  "Nasal Oxygen Cannula",
+  "On Call Extra Strips",
+  "On call Plus Strips",
+];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
   "O2 second 30 mins",
@@ -81,6 +129,7 @@ const RETIRED_OCS_CATALOG_ITEMS = [
   ...RETIRED_OCS_CONSUMABLE_SKUS,
   ...RETIRED_OCS_IV_COMBINATION_SKUS,
   ...RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
+  ...RETIRED_OCS_GO_LIVE_SKUS,
   ...RETIRED_OCS_SERVICE_ITEMS,
 ];
 
@@ -245,13 +294,14 @@ function alignInventoryCategories() {
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
       unit, cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, 0, ?, '', '', NULL, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, '', '', NULL, CURRENT_TIMESTAMP)
   `);
   const updateRows = db.prepare(`
     UPDATE inventory
     SET folder_id = ?, item_kind = ?, row_version = row_version + 1, updated_at = CURRENT_TIMESTAMP
     WHERE LOWER(TRIM(item_name)) = LOWER(TRIM(?))
-      AND folder_id != ?
+      AND archived_at IS NULL
+      AND (folder_id != ? OR item_kind != ?)
   `);
   const updateFolderOnly = db.prepare(`
     UPDATE inventory
@@ -321,6 +371,8 @@ function alignInventoryCategories() {
               location.scope,
               location.ownerDoctorId,
               rule.unit || "unit",
+              Number(rule.costPrice || 0),
+              Number(rule.sellingPrice || 0),
               "Price must be configured before billing.",
             );
             inserted += 1;
@@ -331,17 +383,32 @@ function alignInventoryCategories() {
         updated += Number(updateFolderOnly.run(folderId, rule.itemName, folderId).changes || 0);
         continue;
       }
-      updated += Number(updateRows.run(folderId, itemKind, rule.itemName, folderId).changes || 0);
+      updated += Number(updateRows.run(folderId, itemKind, rule.itemName, folderId, itemKind).changes || 0);
       for (const alias of aliases) {
-        updated += Number(updateRows.run(folderId, itemKind, alias, folderId).changes || 0);
+        updated += Number(updateRows.run(folderId, itemKind, alias, folderId, itemKind).changes || 0);
       }
       if (itemKind === "service") {
         db.prepare(`
           UPDATE inventory
           SET quantity = 0, minimum_quantity = 0, expiry_date = NULL,
-              item_kind = 'service', updated_at = CURRENT_TIMESTAMP
+              item_kind = 'service', unit = 'service',
+              cost_price = ?, selling_price = ?,
+              row_version = COALESCE(row_version, 1) + 1,
+              updated_at = CURRENT_TIMESTAMP
           WHERE lower(trim(item_name)) = lower(trim(?))
-        `).run(rule.itemName);
+            AND archived_at IS NULL
+            AND (
+              quantity != 0 OR minimum_quantity != 0 OR expiry_date IS NOT NULL
+              OR item_kind != 'service' OR unit != 'service'
+              OR cost_price != ? OR selling_price != ?
+            )
+        `).run(
+          Number(rule.costPrice || 0),
+          Number(rule.sellingPrice || 0),
+          rule.itemName,
+          Number(rule.costPrice || 0),
+          Number(rule.sellingPrice || 0),
+        );
         db.prepare(`
           UPDATE inventory_batches
           SET quantity_remaining = 0
@@ -370,6 +437,7 @@ module.exports = {
   RETIRED_OCS_CONSUMABLE_SKUS,
   RETIRED_OCS_IV_COMBINATION_SKUS,
   RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
+  RETIRED_OCS_GO_LIVE_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
   RETIRED_OCS_WAREHOUSE_ONLY_SKUS,
   RETIRED_OCS_CATALOG_ITEMS,

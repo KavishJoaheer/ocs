@@ -19,6 +19,7 @@ const {
   RETIRED_OCS_CONSUMABLE_SKUS,
   RETIRED_OCS_IV_COMBINATION_SKUS,
   RETIRED_OCS_DISCONTINUED_DRUG_SKUS,
+  RETIRED_OCS_GO_LIVE_SKUS,
   RETIRED_OCS_SERVICE_ITEMS,
   RETIRED_OCS_WAREHOUSE_ONLY_SKUS,
 } = require("../src/lib/inventoryCategoryAlignment");
@@ -60,13 +61,13 @@ test("nebulizer masks are no longer catalogue supplies", () => {
   }
 });
 
-test("N/S 100ml and renamed DNS are canonical IV Drug entries", () => {
+test("N/S 100ml remains an IV Drug and DNS is retired", () => {
   assert.equal(ocsConsumablesPdfCatalog.some((item) => item.name === "N/S 100ml"), false);
-  for (const itemName of ["N/S 100ml", "DNS/Dextrose 50%"] ) {
-    const row = ocsIVDrugsPdfCatalog.find((item) => item.name === itemName);
-    assert.ok(row, itemName);
-    assert.equal(row.category, "IV Drugs");
-  }
+  const row = ocsIVDrugsPdfCatalog.find((item) => item.name === "N/S 100ml");
+  assert.ok(row);
+  assert.equal(row.category, "IV Drugs");
+  assert.equal(ocsIVDrugsPdfCatalog.some((item) => item.name === "DNS/Dextrose 50%"), false);
+  assert.equal(RETIRED_OCS_GO_LIVE_SKUS.includes("DNS/Dextrose 50%"), true);
 });
 
 test("category alignment moves warehouse and doctor rows without changing stock facts", () => {
@@ -107,10 +108,7 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   }
 
   const ivPreparedIds = [];
-  for (const [itemName, expectedName] of [
-    ["N/S 100ml", "N/S 100ml"],
-    ["Sodium Chloride&Dextrose(500ml)", "DNS/Dextrose 50%"],
-  ]) {
+  for (const [itemName, expectedName] of [["N/S 100ml", "N/S 100ml"]]) {
     for (const [scope, ownerDoctorId, quantity] of [
       ["ocs", null, 31],
       ["doctor", doctorIds[0], 7],
@@ -124,10 +122,21 @@ test("category alignment moves warehouse and doctor rows without changing stock 
     }
   }
 
+  const lasilixPreparedIds = [];
+  for (const [scope, ownerDoctorId, quantity] of [
+    ["ocs", null, 11],
+    ["doctor", doctorIds[0], 3],
+    ["doctor", doctorIds[1], 4],
+  ]) {
+    lasilixPreparedIds.push(Number(
+      insertRow.run("Lasilix 20mg (IM/IV)", consumableId, scope, ownerDoctorId, quantity).lastInsertRowid,
+    ));
+  }
+
   const first = alignInventoryCategories();
   assert.ok(first.updated >= TARGET_ITEMS.length * 3);
   const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
-  assert.equal(first.inserted, activeDoctorCount + 1 - 3);
+  assert.equal(first.inserted, 4 * (activeDoctorCount + 1));
   assert.equal(first.renamed, 3);
   assert.equal(first.conflicts, 0);
 
@@ -163,11 +172,83 @@ test("category alignment moves warehouse and doctor rows without changing stock 
     assert.equal(Number(row.selling_price), 25);
   }
 
+
+  for (const id of lasilixPreparedIds) {
+    const row = db.prepare("SELECT item_name, quantity, cost_price, selling_price FROM inventory WHERE id = ?").get(id);
+    assert.equal(row.item_name, "IM Lasilix 20mg");
+    assert.equal(Number(row.cost_price), 12.5);
+    assert.equal(Number(row.selling_price), 25);
+  }
+
+  const expectedServices = [
+    ["IM Ceftriaxone 1g + lidocaine", 300, 1200],
+    ["IV Solu-cortef 100MG (Hisone) (including cannulation)", 300, 2000],
+    ["Each next N/S 500ml", 100, 500],
+    ["IV Lasilix 20mg", 200, 800],
+  ];
+  for (const [itemName, costPrice, sellingPrice] of expectedServices) {
+    const serviceRows = db.prepare(`
+      SELECT i.item_kind, i.quantity, i.minimum_quantity, i.unit,
+        i.cost_price, i.selling_price, i.expiry_date, f.name AS folder_name
+      FROM inventory i
+      LEFT JOIN inventory_folders f ON f.id = i.folder_id
+      WHERE lower(trim(i.item_name)) = lower(trim(?)) AND i.archived_at IS NULL
+    `).all(itemName);
+    assert.equal(serviceRows.length, activeDoctorCount + 1, itemName);
+    for (const service of serviceRows) {
+      assert.equal(service.item_kind, "service", itemName);
+      assert.equal(service.folder_name, "Services", itemName);
+      assert.equal(service.unit, "service", itemName);
+      assert.equal(Number(service.quantity), 0, itemName);
+      assert.equal(Number(service.minimum_quantity), 0, itemName);
+      assert.equal(Number(service.cost_price), costPrice, itemName);
+      assert.equal(Number(service.selling_price), sellingPrice, itemName);
+      assert.equal(service.expiry_date, null, itemName);
+    }
+  }
+
   const retry = alignInventoryCategories();
   assert.equal(retry.updated, 0, "alignment must be idempotent");
   assert.equal(retry.inserted, 0);
   assert.equal(retry.renamed, 0);
   assert.equal(retry.conflicts, 0);
+});
+
+test("go-live removals leave the warehouse and every doctor bag", () => {
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all().map((row) => Number(row.id));
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, ?, ?, ?, 0, 0, 'unit', 0, 0)
+  `);
+  const ids = [];
+  for (const itemName of RETIRED_OCS_GO_LIVE_SKUS) {
+    ids.push(Number(insert.run(itemName, folderId, "ocs", null).lastInsertRowid));
+    for (const doctorId of doctorIds) {
+      ids.push(Number(insert.run(itemName, folderId, "doctor", doctorId).lastInsertRowid));
+    }
+  }
+
+  const result = alignInventoryCategories();
+  assert.equal(result.archived, ids.length);
+  assert.equal(result.blocked, 0);
+  assert.equal(result.written_off, 0);
+
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT archived_at FROM inventory WHERE id IN (${placeholders})
+  `).all(...ids);
+  assert.equal(rows.length, ids.length);
+  assert.equal(rows.every((row) => Boolean(row.archived_at)), true);
+
+  const active = db.prepare(`
+    SELECT COUNT(*) AS count FROM inventory
+    WHERE archived_at IS NULL
+      AND lower(trim(item_name)) IN (${RETIRED_OCS_GO_LIVE_SKUS.map(() => "lower(trim(?))").join(",")})
+  `).get(...RETIRED_OCS_GO_LIVE_SKUS);
+  assert.equal(Number(active.count), 0);
 });
 
 function oxygenFolderId() {

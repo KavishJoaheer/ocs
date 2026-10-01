@@ -65,7 +65,6 @@ const ocsConsumablesPdfCatalog = [
   catherisationAndNgt("NGT (14fg x105cm)"),
   catherisationAndNgt("NGT (16fg x105cm)"),
   catherisationAndNgt("NGT (18fg x105cm)"),
-  consumable("Nasal Oxygen Cannula"),
   consumable("Needle box of 100 (Black 22G)", 0, 50),
   consumable("Needle box of 100 (Blue 22G)", 0, 50),
   consumable("Needle box of 100 (Pink 22G)", 0, 50),

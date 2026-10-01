@@ -26,8 +26,6 @@ const ocsIVDrugsPdfCatalog = [
   ivDrug("IV Flagyl (Metrodinazole)"),
   ivDrug("IV Perfalgan 1g (Paracetamol)"),
   ivDrug("Levofloxacin 500mg/ Levobact/ Leflox"),
-  ivDrug("Nexium"),
-  ivDrug("DNS/Dextrose 50%", 0, 10),
   ivDrug("N/S 100ml", 0, 10),
   ivDrug("N/S 500ml", 0, 10),
   ivDrug("Pabrinex 5ml (box of 6)/ Previta"),

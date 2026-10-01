@@ -27,8 +27,6 @@ const ocsInvestigationsPdfCatalog = [
   investigation("Echo Gel"),
   investigation("Influenza Rapid Test"),
   investigation("Lancet"),
-  investigation("On Call Extra Strips"),
-  investigation("On call Plus Strips"),
   investigation("Pregnancy Test"),
   investigation("Sinocare strip"),
   investigation("Urine dip stick"),

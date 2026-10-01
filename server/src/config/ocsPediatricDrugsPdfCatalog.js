@@ -31,7 +31,6 @@ const ocsPediatricDrugsPdfCatalog = [
   pediatricDrug("Rehydratat"),
   pediatricDrug("Supp Diclowal 12.5mg"),
   pediatricDrug("Supp Diclowal 25mg"),
-  pediatricDrug("Bactrim sulfaméthoxazole+triméthoprime"),
 ];
 
 module.exports = { ocsPediatricDrugsPdfCatalog, pediatricDrug, inferParLevel };
