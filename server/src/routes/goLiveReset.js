@@ -58,7 +58,7 @@ function renderPage({ plan, backupReady, completed, result }) {
     ? `<h2>Reset completed</h2><p>The database is ready for 2 October 2026.</p><pre>${JSON.stringify(result, null, 2)}</pre>`
     : `<h2>Ready for final confirmation</h2>
        <p>A verified backup ${backupReady ? "is already available" : "will be created first"}. The reset will then permanently clear the trial records shown below.</p>
-       <form method="post" action="/api/go-live-reset/execute?confirmation=${CONFIRMATION}">
+       <form method="post" action="/go-live-reset/execute?confirmation=${CONFIRMATION}">
          <button type="submit">Permanently reset trial data</button>
        </form>`;
   return `<!doctype html>
