@@ -743,21 +743,21 @@ function getDoctors() {
     .all();
 }
 
-function findItem(itemId, stockScope, doctorId = null) {
+function findItem(itemId, stockScope, doctorId = null, { includeServices = false } = {}) {
   return db
     .prepare(`
       SELECT *
       FROM inventory
       WHERE id = ?
         AND stock_scope = ?
-        AND COALESCE(item_kind, 'stock') = 'stock'
+        AND (? = 1 OR COALESCE(item_kind, 'stock') = 'stock')
         AND (
           (? = 'doctor' AND inventory.owner_doctor_id = ?)
           OR (? = 'ocs' AND inventory.owner_doctor_id IS NULL)
         )
         AND inventory.archived_at IS NULL
     `)
-    .get(itemId, stockScope, stockScope, doctorId, stockScope);
+    .get(itemId, stockScope, includeServices ? 1 : 0, stockScope, doctorId, stockScope);
 }
 
 function getInventoryQueryContext(req) {
@@ -766,7 +766,7 @@ function getInventoryQueryContext(req) {
   return { selectedDoctorId, doctorContext };
 }
 
-function findItemForRequest(req, itemId) {
+function findItemForRequest(req, itemId, { includeServices = false } = {}) {
   const role = req.auth.role;
   const isDoctor = role === "doctor";
 
@@ -775,25 +775,25 @@ function findItemForRequest(req, itemId) {
     if (!doctorId) return null;
     const { doctorContext } = getInventoryQueryContext(req);
     const stockScope = doctorContext === "ocs" ? "ocs" : "doctor";
-    return findItem(itemId, stockScope, stockScope === "doctor" ? doctorId : null);
+    return findItem(itemId, stockScope, stockScope === "doctor" ? doctorId : null, { includeServices });
   }
 
   if (["admin", "operator"].includes(role)) {
     const { selectedDoctorId } = getInventoryQueryContext(req);
     if (selectedDoctorId) {
-      const doctorItem = findItem(itemId, "doctor", selectedDoctorId);
+      const doctorItem = findItem(itemId, "doctor", selectedDoctorId, { includeServices });
       if (doctorItem) return doctorItem;
     }
-    const warehouseItem = findItem(itemId, "ocs", null);
+    const warehouseItem = findItem(itemId, "ocs", null, { includeServices });
     if (warehouseItem) return warehouseItem;
     return db.prepare(`
       SELECT *
       FROM inventory
       WHERE id = ?
         AND stock_scope = 'doctor'
-        AND COALESCE(item_kind, 'stock') = 'stock'
+        AND (? = 1 OR COALESCE(item_kind, 'stock') = 'stock')
         AND archived_at IS NULL
-    `).get(itemId);
+    `).get(itemId, includeServices ? 1 : 0);
   }
 
   return null;
@@ -2530,7 +2530,7 @@ router.put("/items/:id", (req, res) => {
   }
   const doctorId = isDoctor ? Number(req.auth.doctor_id || 0) : null;
   const itemId = Number(req.params.id);
-  const existing = findItemForRequest(req, itemId);
+  const existing = findItemForRequest(req, itemId, { includeServices: true });
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
   const expectedVersion = Number(req.body?.expected_version ?? req.body?.row_version ?? 0);
 

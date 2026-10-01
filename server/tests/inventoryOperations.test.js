@@ -778,6 +778,55 @@ test("warehouse cost and selling price changes copy onto every doctor bag for th
   assert.equal(Number(warehouse.selling_price), 22);
 });
 
+test("admin can change a service price and the price copies onto every doctor bag", async () => {
+  const name = `Shared Service Price ${Date.now()}`;
+  const serviceId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'service', ?, 0, 0, 'service', 200, 800, 'ocs', NULL)
+  `).run(name, folderId).lastInsertRowid);
+  const doctorTwoId = db.prepare("SELECT doctor_id FROM users WHERE username = 'bhobun.muneshwarshing'").get().doctor_id;
+  const insertBagService = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope, owner_doctor_id
+    ) VALUES (?, 'service', ?, 0, 0, 'service', 200, 800, 'doctor', ?)
+  `);
+  const firstBagId = Number(insertBagService.run(name, folderId, doctorId).lastInsertRowid);
+  const secondBagId = Number(insertBagService.run(name, folderId, doctorTwoId).lastInsertRowid);
+
+  const updated = await api("PUT", `/api/inventory/items/${serviceId}`, {
+    token: adminToken,
+    body: {
+      expected_version: Number(db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(serviceId).row_version),
+      item_name: name,
+      folder_id: folderId,
+      minimum_quantity: 0,
+      unit: "service",
+      attributes: "",
+      moa_notes: "",
+      cost_price: 300,
+      selling_price: 1200,
+      adjustment_note: "Updated service price after management review",
+    },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+
+  for (const id of [serviceId, firstBagId, secondBagId]) {
+    const row = db.prepare(`
+      SELECT item_kind, quantity, minimum_quantity, unit, cost_price, selling_price
+      FROM inventory WHERE id = ?
+    `).get(id);
+    assert.equal(row.item_kind, "service", String(id));
+    assert.equal(Number(row.quantity), 0, String(id));
+    assert.equal(Number(row.minimum_quantity), 0, String(id));
+    assert.equal(row.unit, "service", String(id));
+    assert.equal(Number(row.cost_price), 300, String(id));
+    assert.equal(Number(row.selling_price), 1200, String(id));
+  }
+});
+
 test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {
   const itemId = insertOcsItem({ name: `Versioned catalogue ${Date.now()}`, qty: 0 });
   const original = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId);
