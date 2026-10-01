@@ -231,6 +231,7 @@ function formatCompareQty(qty) {
 
 function InventoryStatusChips({ item, hideCost = false }) {
   const isService = item.item_kind === "service";
+  if (isService) return null;
   const isLow = isAtOrBelowPar(item);
   const isOut = isOutOfStock(item);
   const missingExpiry = Boolean(item.missing_expiry);
@@ -240,19 +241,10 @@ function InventoryStatusChips({ item, hideCost = false }) {
   const quarantined = itemHasQuarantinedStock(item);
   const nonExpiring = Boolean(item.is_non_expiring_only || item.has_non_expiring) && !missingExpiry && !expired && !quarantined;
 
-  if (!isService && !isLow && !isOut && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
+  if (!isLow && !isOut && !missingExpiry && !(missingCost && !hideCost) && !nearExpiry && !expired && !quarantined && !nonExpiring) return null;
 
   return (
     <div className="mt-1 flex flex-wrap gap-1">
-      {isService ? (
-        <span
-          role="status"
-          aria-label="Item type: non-stock service"
-          className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800"
-        >
-          Non-stock service
-        </span>
-      ) : null}
       {expired ? (
         <span
           role="status"
