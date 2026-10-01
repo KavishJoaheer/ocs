@@ -188,7 +188,7 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   ];
   for (const [itemName, costPrice, sellingPrice] of expectedServices) {
     const serviceRows = db.prepare(`
-      SELECT i.item_kind, i.quantity, i.minimum_quantity, i.unit,
+      SELECT i.item_kind, i.quantity, i.minimum_quantity, i.unit, i.attributes, i.moa_notes,
         i.cost_price, i.selling_price, i.expiry_date, f.name AS folder_name
       FROM inventory i
       LEFT JOIN inventory_folders f ON f.id = i.folder_id
@@ -199,12 +199,37 @@ test("category alignment moves warehouse and doctor rows without changing stock 
       assert.equal(service.item_kind, "service", itemName);
       assert.equal(service.folder_name, "Services", itemName);
       assert.equal(service.unit, "service", itemName);
+      assert.equal(service.attributes, "", itemName);
+      assert.equal(service.moa_notes, "", itemName);
       assert.equal(Number(service.quantity), 0, itemName);
       assert.equal(Number(service.minimum_quantity), 0, itemName);
       assert.equal(Number(service.cost_price), costPrice, itemName);
       assert.equal(Number(service.selling_price), sellingPrice, itemName);
       assert.equal(service.expiry_date, null, itemName);
     }
+  }
+
+  db.prepare(`
+    UPDATE inventory
+    SET minimum_quantity = 8,
+        unit = 'session',
+        attributes = 'Legacy service attribute',
+        moa_notes = 'Legacy administration note'
+    WHERE item_kind = 'service' AND archived_at IS NULL
+  `).run();
+  const normalized = alignInventoryCategories();
+  assert.ok(normalized.updated >= activeDoctorCount + 1);
+  const normalizedServices = db.prepare(`
+    SELECT minimum_quantity, unit, attributes, moa_notes
+    FROM inventory
+    WHERE item_kind = 'service' AND archived_at IS NULL
+  `).all();
+  assert.ok(normalizedServices.length >= activeDoctorCount + 1);
+  for (const service of normalizedServices) {
+    assert.equal(Number(service.minimum_quantity), 0);
+    assert.equal(service.unit, "service");
+    assert.equal(service.attributes, "");
+    assert.equal(service.moa_notes, "");
   }
 
   const retry = alignInventoryCategories();

@@ -439,10 +439,10 @@ function alignInventoryCategories() {
         updated += Number(updateRows.run(folderId, itemKind, alias, folderId, itemKind).changes || 0);
       }
       if (itemKind === "service") {
-        db.prepare(`
+        updated += Number(db.prepare(`
           UPDATE inventory
           SET quantity = 0, minimum_quantity = 0, expiry_date = NULL,
-              item_kind = 'service', unit = 'service',
+              item_kind = 'service', unit = 'service', attributes = '', moa_notes = '',
               cost_price = ?, selling_price = ?,
               row_version = COALESCE(row_version, 1) + 1,
               updated_at = CURRENT_TIMESTAMP
@@ -451,6 +451,7 @@ function alignInventoryCategories() {
             AND (
               quantity != 0 OR minimum_quantity != 0 OR expiry_date IS NOT NULL
               OR item_kind != 'service' OR unit != 'service'
+              OR COALESCE(attributes, '') != '' OR COALESCE(moa_notes, '') != ''
               OR cost_price != ? OR selling_price != ?
             )
         `).run(
@@ -459,7 +460,7 @@ function alignInventoryCategories() {
           rule.itemName,
           Number(rule.costPrice || 0),
           Number(rule.sellingPrice || 0),
-        );
+        ).changes || 0);
         db.prepare(`
           UPDATE inventory_batches
           SET quantity_remaining = 0
@@ -469,6 +470,23 @@ function alignInventoryCategories() {
         `).run(rule.itemName);
       }
     }
+    updated += Number(db.prepare(`
+      UPDATE inventory
+      SET minimum_quantity = 0,
+          unit = 'service',
+          attributes = '',
+          moa_notes = '',
+          row_version = COALESCE(row_version, 1) + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE item_kind = 'service'
+        AND archived_at IS NULL
+        AND (
+          minimum_quantity != 0
+          OR unit != 'service'
+          OR COALESCE(attributes, '') != ''
+          OR COALESCE(moa_notes, '') != ''
+        )
+    `).run().changes || 0);
     return { updated, inserted, renamed, conflicts };
   });
 

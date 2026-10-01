@@ -1824,6 +1824,33 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   });
 
+  test("service items omit stock-only fields in the warehouse editor and details", async ({ request, page }) => {
+    const admin = await login(request, "shravan.joaheer");
+    await injectStaffSession(page, admin.token);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${STAFF_BASE}/inventory`);
+    await openStockTab(page);
+
+    await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
+    const detailsButton = page.getByRole("button", { name: "Show details for IV Lasilix 20mg" });
+    await expect(detailsButton).toBeVisible({ timeout: 20_000 });
+    await detailsButton.click();
+    await expect(page.getByText("Service pricing", { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Attributes:/)).toHaveCount(0);
+    await expect(page.getByText(/^MOA Notes:/)).toHaveCount(0);
+    await expect(page.getByText("Batch List (FEFO)", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Edit service price" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit service" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("tab", { name: "Definition" })).toBeVisible();
+    await expect(dialog.getByRole("tab", { name: "Pricing" })).toBeVisible();
+    await expect(dialog.getByRole("tab", { name: "Stock policy" })).toHaveCount(0);
+    await expect(dialog.getByText("Attributes", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Unit", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("MOA notes", { exact: true })).toHaveCount(0);
+  });
+
   test("mobile inventory picker keeps the page from scrolling sideways", async ({ request, page }) => {
     const operator = await login(request, "operator01");
     await injectStaffSession(page, operator.token);

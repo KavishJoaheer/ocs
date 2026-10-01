@@ -3906,7 +3906,9 @@ export default function InventoryPage() {
       : `Dr ${String(selectedDoctor?.full_name || selectedContextDoctorId).slice(0, 18)} · ${categoryDisplay}`;
     const mainSheetName = excelSafeSheetTitle(mainSheetLabel);
 
-    const stockRows = sortedItems.map((item) => ({
+    const stockRows = sortedItems.map((item) => {
+      const isService = item.item_kind === "service";
+      return {
       "Stock scope": scopeIsMaster ? "Master (OCS)" : "Doctor stock",
       "Doctor ID": scopeIsMaster ? "" : String(selectedContextDoctorId),
       Category: item.folder_name || "",
@@ -3917,14 +3919,15 @@ export default function InventoryPage() {
       Expired: Number(item.expired_quantity ?? 0),
       Quarantined: Number(item.quarantined_quantity ?? 0),
       Available: Number(item.available_to_promise ?? item.available_to_use ?? 0),
-      "Min qty": Number(item.minimum_quantity ?? 0),
-      Unit: item.unit ?? "",
-      "Nearest usable expiry": item.nearest_usable_expiry || formatInventoryExpiry(item),
+      "Min qty": isService ? "" : Number(item.minimum_quantity ?? 0),
+      Unit: isService ? "" : item.unit ?? "",
+      "Nearest usable expiry": isService ? "" : item.nearest_usable_expiry || formatInventoryExpiry(item),
       "Cost (Rs)": Number(item.cost_price ?? 0),
       "Selling price (Rs)": Number(item.selling_price ?? 0),
-      Attributes: item.attributes || "",
-      "MOA notes": item.moa_notes || "",
-    }));
+      Attributes: isService ? "" : item.attributes || "",
+      "MOA notes": isService ? "" : item.moa_notes || "",
+      };
+    });
 
     const filterMetaRows = [
       { Field: "Report", Value: "OCS Stock Report" },
@@ -5326,6 +5329,13 @@ export default function InventoryPage() {
                           {expanded ? (
                             <tr className="border-t border-slate-100 bg-slate-50/60">
                               <td colSpan={4} className="px-3 py-2">
+                                {isService ? (
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Service pricing</p>
+                                    <p className="mt-2 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
+                                    <p className="mt-1 text-sm text-slate-500">Billable service · no stock fields or batch tracking.</p>
+                                  </div>
+                                ) : (
                                 <div className="grid gap-3 md:grid-cols-2">
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Details</p>
@@ -5370,6 +5380,7 @@ export default function InventoryPage() {
                                     </div>
                                   </div>
                                 </div>
+                                )}
                               </td>
                             </tr>
                           ) : null}

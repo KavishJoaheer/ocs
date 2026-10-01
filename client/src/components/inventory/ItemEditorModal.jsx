@@ -54,6 +54,7 @@ export default function ItemEditorModal({
   }
 
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
+  const isService = item?.item_kind === "service";
   const priceChanged = Boolean(item) && (
     Number(form.cost_price || 0) !== Number(baseline.cost_price || 0)
     || Number(form.selling_price || 0) !== Number(baseline.selling_price || 0)
@@ -72,10 +73,12 @@ export default function ItemEditorModal({
     <Modal
       open={open}
       onClose={requestClose}
-      title={bagSettingsOnly ? "Bag settings" : item ? "Edit catalogue item" : "Add catalogue item"}
+      title={bagSettingsOnly ? "Bag settings" : isService ? "Edit service" : item ? "Edit catalogue item" : "Add catalogue item"}
       description={
         bagSettingsOnly
           ? "Update the minimum/par quantity for this bag item. Quantity changes through documented stock movements only."
+          : isService
+            ? "Edit the service name, folder and pricing. Services do not use stock fields."
           : "Edit definition, stock policy and pricing. On-hand quantity is not changed here."
       }
       size="lg"
@@ -92,10 +95,10 @@ export default function ItemEditorModal({
           onSubmit({
             item_name: form.item_name,
             folder_id: Number(form.folder_id || 0),
-            attributes: form.attributes,
-            moa_notes: form.moa_notes,
-            minimum_quantity: Number(form.minimum_quantity || 0),
-            unit: form.unit,
+            attributes: isService ? "" : form.attributes,
+            moa_notes: isService ? "" : form.moa_notes,
+            minimum_quantity: isService ? 0 : Number(form.minimum_quantity || 0),
+            unit: isService ? "service" : form.unit,
             cost_price: Number(form.cost_price || 0),
             selling_price: Number(form.selling_price || 0),
             adjustment_note: priceChanged ? form.adjustment_note.trim() : undefined,
@@ -122,7 +125,7 @@ export default function ItemEditorModal({
               <div className="flex gap-1 overflow-x-auto rounded-2xl bg-slate-50 p-1" role="tablist" aria-label="Catalogue sections">
                 {[
                   { id: "definition", label: "Definition" },
-                  { id: "policy", label: "Stock policy" },
+                  ...(!isService ? [{ id: "policy", label: "Stock policy" }] : []),
                   { id: "pricing", label: "Pricing" },
                 ].map((tab) => (
                   <button
@@ -175,36 +178,40 @@ export default function ItemEditorModal({
                       </select>
                     </label>
                   </div>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-700">Attributes</span>
-                    <input
-                      name="attributes"
-                      value={form.attributes}
-                      onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))}
-                      className={FIELD(false)}
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-700">Unit</span>
-                    <input
-                      required
-                      name="unit"
-                      value={form.unit}
-                      readOnly={masterReadOnly}
-                      onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))}
-                      className={FIELD(masterReadOnly)}
-                    />
-                  </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-semibold text-slate-700">MOA notes</span>
-                    <textarea
-                      rows="3"
-                      name="moa_notes"
-                      value={form.moa_notes}
-                      onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))}
-                      className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
-                    />
-                  </label>
+                  {!isService ? (
+                    <>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Attributes</span>
+                        <input
+                          name="attributes"
+                          value={form.attributes}
+                          onChange={(event) => setForm((prev) => ({ ...prev, attributes: event.target.value }))}
+                          className={FIELD(false)}
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Unit</span>
+                        <input
+                          required
+                          name="unit"
+                          value={form.unit}
+                          readOnly={masterReadOnly}
+                          onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))}
+                          className={FIELD(masterReadOnly)}
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">MOA notes</span>
+                        <textarea
+                          rows="3"
+                          name="moa_notes"
+                          value={form.moa_notes}
+                          onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))}
+                          className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+                        />
+                      </label>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 
