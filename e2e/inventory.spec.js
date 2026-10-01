@@ -1832,10 +1832,19 @@ test.describe("Inventory workflow", () => {
     await openStockTab(page);
 
     await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
+    const serviceBatchRequests = [];
+    page.on("request", (nextRequest) => {
+      if (/\/api\/inventory\/items\/\d+\/batches(?:\?|$)/.test(nextRequest.url())) {
+        serviceBatchRequests.push(nextRequest.url());
+      }
+    });
     const detailsButton = page.getByRole("button", { name: "Show details for IV Lasilix 20mg" });
     await expect(detailsButton).toBeVisible({ timeout: 20_000 });
     await detailsButton.click();
     await expect(page.getByText("Service pricing", { exact: true })).toBeVisible();
+    await page.waitForTimeout(250);
+    expect(serviceBatchRequests).toEqual([]);
+    await expect(page.getByText("Stock item not found.")).toHaveCount(0);
     await expect(page.getByText(/^Attributes:/)).toHaveCount(0);
     await expect(page.getByText(/^MOA Notes:/)).toHaveCount(0);
     await expect(page.getByText("Batch List (FEFO)", { exact: true })).toHaveCount(0);

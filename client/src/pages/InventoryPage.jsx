@@ -3692,10 +3692,19 @@ export default function InventoryPage() {
   }, [showMobileDoctorBag, commitInventoryData, selectedContextDoctorId, doctorContext, load]);
 
   useEffect(() => {
+    const serviceIds = new Set(
+      [
+        ...(data?.ocs_stock || []),
+        ...(data?.my_stock || []),
+        ...(data?.selected_doctor_stock || []),
+      ]
+        .filter((item) => item?.item_kind === "service")
+        .map((item) => Number(item.id)),
+    );
     const openIds = Object.entries(expandedRowsRef.current)
       .filter(([, open]) => open)
       .map(([id]) => Number(id))
-      .filter(Boolean);
+      .filter((id) => Boolean(id) && !serviceIds.has(id));
     if (!openIds.length) return undefined;
     let cancelled = false;
     void Promise.all(
@@ -4556,11 +4565,11 @@ export default function InventoryPage() {
     }
   }
 
-  function toggleExpanded(itemId) {
-    const key = Number(itemId);
+  function toggleExpanded(item) {
+    const key = Number(item?.id);
     const willExpand = !expandedRows[key];
     setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
-    if (willExpand) {
+    if (willExpand && item?.item_kind !== "service") {
       loadBatches(key, { fresh: true });
     }
   }
@@ -5257,7 +5266,7 @@ export default function InventoryPage() {
                         <Fragment key={item.id}>
                           <tr
                             className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${isLow || isOut ? "bg-red-50" : ""}`}
-                            onClick={() => toggleExpanded(item.id)}
+                            onClick={() => toggleExpanded(item)}
                           >
                             <td className="px-3 py-1.5 align-middle text-left">
                               <div className="flex min-w-0 items-center gap-2">
