@@ -36,6 +36,19 @@ function verifiedExistingBackup(paths) {
   return manifest;
 }
 
+async function ensureVerifiedBackup(paths) {
+  let manifest = verifiedExistingBackup(paths);
+  if (!manifest) {
+    const backup = await createVerifiedBackup({
+      backupRoot: paths.root,
+      backupName: BACKUP_NAME,
+      allowSameVolume: true,
+    });
+    manifest = backup.manifest;
+  }
+  return manifest;
+}
+
 function removeFinanceAttachments() {
   if (!fs.existsSync(financeAttachmentsDir)) return 0;
   let removed = 0;
@@ -113,6 +126,24 @@ router.get("/", (req, res, next) => {
   }
 });
 
+router.post("/backup", async (req, res, next) => {
+  try {
+    const paths = backupPaths();
+    const manifest = await ensureVerifiedBackup(paths);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      ok: true,
+      backup_name: BACKUP_NAME,
+      backup_directory: paths.dir,
+      files: manifest.files.length,
+      sqlite_quick_check: manifest.sqlite_quick_check,
+      foreign_key_violations: manifest.foreign_key_violations,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.post("/execute", async (req, res, next) => {
   try {
     if (String(req.query.confirmation || "") !== CONFIRMATION) {
@@ -124,15 +155,7 @@ router.post("/execute", async (req, res, next) => {
       return res.status(409).json({ error: "The go-live reset has already been completed." });
     }
 
-    let manifest = verifiedExistingBackup(paths);
-    if (!manifest) {
-      const backup = await createVerifiedBackup({
-        backupRoot: paths.root,
-        backupName: BACKUP_NAME,
-        allowSameVolume: true,
-      });
-      manifest = backup.manifest;
-    }
+    const manifest = await ensureVerifiedBackup(paths);
 
     const reset = resetTrialBilling(db, {
       cutoverDate: CUTOVER_DATE,

@@ -12,6 +12,7 @@ export default function GoLivePreparationPage() {
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   async function loadPreview() {
     setLoading(true);
@@ -41,6 +42,19 @@ export default function GoLivePreparationPage() {
       toast.error(error.message);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function createBackup() {
+    setBackingUp(true);
+    try {
+      await api.post("/go-live-reset/backup", {});
+      toast.success("The verified backup is ready.");
+      await loadPreview();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setBackingUp(false);
     }
   }
 
@@ -105,14 +119,28 @@ export default function GoLivePreparationPage() {
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              disabled={running}
-              onClick={runReset}
-              className="mt-5 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:opacity-60"
-            >
-              {running ? "Creating backup and resetting…" : "Create backup and reset trial data"}
-            </button>
+            {!preview.backup_ready ? (
+              <button
+                type="button"
+                disabled={backingUp}
+                onClick={createBackup}
+                className="mt-5 rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-60"
+              >
+                {backingUp ? "Creating and verifying backup…" : "Create and verify backup"}
+              </button>
+            ) : (
+              <>
+                <p className="mt-4 font-semibold text-emerald-800">Verified backup ready.</p>
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={runReset}
+                  className="mt-3 rounded-xl bg-red-700 px-5 py-3 font-semibold text-white disabled:opacity-60"
+                >
+                  {running ? "Resetting trial data…" : "Reset trial data"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
