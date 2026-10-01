@@ -284,6 +284,12 @@ function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/push", pushRouter);
   app.use(
+    "/api/go-live-reset",
+    requireAuth,
+    authorizeRoles("admin"),
+    goLiveResetRouter,
+  );
+  app.use(
     "/go-live-reset",
     requireAuth,
     authorizeRoles("admin"),
