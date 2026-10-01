@@ -1832,6 +1832,10 @@ test.describe("Inventory workflow", () => {
     await openStockTab(page);
 
     await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
+    await expect(page.getByRole("columnheader", { name: "Cost price" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Selling price" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Available" })).toHaveCount(0);
+    await expect(page.getByRole("columnheader", { name: "Expiry" })).toHaveCount(0);
     const serviceBatchRequests = [];
     page.on("request", (nextRequest) => {
       if (/\/api\/inventory\/items\/\d+\/batches(?:\?|$)/.test(nextRequest.url())) {

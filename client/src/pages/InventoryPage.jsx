@@ -2842,8 +2842,10 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
             </div>
           ) : null}
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
-            <span className={!item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
-              {isService ? "Billable service · no stock or expiry tracking" : formatInventoryExpiry(item)}
+            <span className={!isService && !item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
+              {isService
+                ? `Cost / Sell: ${formatRupees(item.cost_price)} / ${formatRupees(item.selling_price)}`
+                : formatInventoryExpiry(item)}
             </span>
           </p>
         </div>
@@ -3586,6 +3588,7 @@ export default function InventoryPage() {
     unpricedFromBags,
     unpricedProductKeys,
   ]);
+  const serviceOnlyView = filteredItems.length > 0 && filteredItems.every((item) => item.item_kind === "service");
 
   const sortedItems = useMemo(() => {
     const rows = [...filteredItems];
@@ -5247,8 +5250,15 @@ export default function InventoryPage() {
                   <thead className="sticky top-0 z-20 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-gray-500 lg:text-ocs-slate">
                     <tr>
                       <th className="px-3 py-2 text-left align-middle">Item Name</th>
-                      <th className="px-3 py-2 text-center align-middle" title="How many you can use or give out right now">Available</th>
-                      <th className="px-3 py-2 text-center align-middle">Expiry</th>
+                      <th
+                        className="px-3 py-2 text-center align-middle"
+                        title={serviceOnlyView ? undefined : "How many you can use or give out right now"}
+                      >
+                        {serviceOnlyView ? "Cost price" : "Available"}
+                      </th>
+                      <th className="px-3 py-2 text-center align-middle">
+                        {serviceOnlyView ? "Selling price" : "Expiry"}
+                      </th>
                       <th className={cx("bg-slate-50 px-3 py-2 text-right align-middle", stickyInventoryActions && "sticky right-0 z-30 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]")}>
                         Actions
                       </th>
@@ -5288,8 +5298,8 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && (isLow || isOut || itemHasExpiredStock(item)) ? "text-rose-700" : "text-slate-900")} title={isService ? "Non-stock service" : ATP_HELP_TEXT}>
-                                {isService ? "—" : quantities.atp}
+                              <strong className={cx("text-base tabular-nums", !isService && (isLow || isOut || itemHasExpiredStock(item)) ? "text-rose-700" : "text-slate-900")} title={isService ? "Service cost price" : ATP_HELP_TEXT}>
+                                {isService ? formatRupees(item.cost_price) : quantities.atp}
                               </strong>
                               {!isService && quantities.onHand > quantities.atp ? (
                                 <p className="text-[10px] font-medium text-slate-500">{quantities.onHand} in stock</p>
@@ -5303,9 +5313,9 @@ export default function InventoryPage() {
                                 item.is_near_expiry && "font-semibold text-amber-800",
                                 itemHasExpiredStock(item) && "font-semibold text-rose-700",
                               )}
-                              title={formatInventoryExpiry(item)}
+                              title={isService ? "Service selling price" : formatInventoryExpiry(item)}
                             >
-                              {formatInventoryExpiry(item)}
+                              {isService ? formatRupees(item.selling_price) : formatInventoryExpiry(item)}
                             </td>
                             <td
                               className={cx("bg-white px-3 py-2 align-middle", stickyInventoryActions && "sticky right-0 z-10 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]")}
