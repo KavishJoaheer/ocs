@@ -1521,10 +1521,11 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${STAFF_BASE}/inventory`);
     const bottomNav = page.locator("#ocs-bottom-nav");
-    await expect(bottomNav.getByRole("link")).toHaveCount(4);
+    await expect(bottomNav.getByRole("link")).toHaveCount(5);
     await expect(bottomNav.getByRole("link", { name: "Patients", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Add patient", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Visits", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Reviews", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Inventory", exact: true })).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: "Navigation menu" })).toHaveCount(0);
