@@ -2061,7 +2061,7 @@ function BillingLitePage() {
 
                 <div className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <label className="block">
-                    <span className="text-sm font-black text-slate-700">Manual invoice reference (optional)</span>
+                    <span className="text-sm font-black text-slate-700">Receipt reference (optional)</span>
                     <input
                       value={sourceReference}
                       onChange={(event) => setSourceReference(event.target.value)}
@@ -2420,7 +2420,7 @@ function BillingLitePage() {
               </p>
             </div>
             <label className="block text-sm font-black text-slate-800">
-              Manual invoice reference (optional)
+              Receipt reference (optional)
               <input
                 autoFocus
                 value={workflowDialog.sourceReference}
