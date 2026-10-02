@@ -474,7 +474,6 @@ function operatorItemFormState(folderId) {
     cost_price: "0",
     selling_price: "0",
     attributes: "",
-    moa_notes: "",
   };
 }
 
@@ -3929,7 +3928,6 @@ export default function InventoryPage() {
       "Cost (Rs)": Number(item.cost_price ?? 0),
       "Selling price (Rs)": Number(item.selling_price ?? 0),
       Attributes: isService ? "" : item.attributes || "",
-      "MOA notes": isService ? "" : item.moa_notes || "",
       };
     });
 

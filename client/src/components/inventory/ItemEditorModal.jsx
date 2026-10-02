@@ -15,7 +15,6 @@ function catalogueFormState(item, folders = []) {
     item_name: item?.item_name ?? "",
     folder_id: String(direct?.id || byName?.id || item?.folder_id || ""),
     attributes: item?.attributes ?? "",
-    moa_notes: item?.moa_notes ?? "",
     minimum_quantity: String(item?.minimum_quantity ?? 0),
     unit: item?.unit ?? "unit",
     cost_price: String(item?.cost_price ?? 0),
@@ -96,7 +95,6 @@ export default function ItemEditorModal({
             item_name: form.item_name,
             folder_id: Number(form.folder_id || 0),
             attributes: isService ? "" : form.attributes,
-            moa_notes: isService ? "" : form.moa_notes,
             minimum_quantity: isService ? 0 : Number(form.minimum_quantity || 0),
             unit: isService ? "service" : form.unit,
             cost_price: Number(form.cost_price || 0),
@@ -198,16 +196,6 @@ export default function ItemEditorModal({
                           readOnly={masterReadOnly}
                           onChange={(event) => setForm((prev) => ({ ...prev, unit: event.target.value }))}
                           className={FIELD(masterReadOnly)}
-                        />
-                      </label>
-                      <label className="space-y-2">
-                        <span className="text-sm font-semibold text-slate-700">MOA notes</span>
-                        <textarea
-                          rows="3"
-                          name="moa_notes"
-                          value={form.moa_notes}
-                          onChange={(event) => setForm((prev) => ({ ...prev, moa_notes: event.target.value }))}
-                          className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
                         />
                       </label>
                     </>

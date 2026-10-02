@@ -609,7 +609,7 @@ test.describe("Inventory workflow", () => {
       quantity: 4,
       expiryDate: "2027-03-21",
     });
-    await injectStaffSession(page, operator.token);
+    await injectStaffSession(page, admin.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
     await page.getByRole("tab", { name: "Stock", exact: true }).click();
@@ -617,6 +617,11 @@ test.describe("Inventory workflow", () => {
     await page.getByRole("button", { name: `Show details for ${item.item_name}` }).click();
     await expect(page.getByText(/^Attributes:/)).toBeVisible();
     await expect(page.getByText(/^MOA Notes:/)).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit catalogue item" }).click();
+    const catalogueDialog = page.getByRole("dialog", { name: "Edit catalogue item" });
+    await expect(catalogueDialog.getByText("Attributes", { exact: true })).toBeVisible();
+    await expect(catalogueDialog.getByText("MOA notes", { exact: true })).toHaveCount(0);
+    await catalogueDialog.getByRole("button", { name: "Close dialog" }).click();
     await page.getByRole("button", { name: "Edit expiry / cost" }).click();
     const dialog = page.getByRole("dialog", { name: "Edit expiry / cost" });
     await expect(dialog).toBeVisible();
