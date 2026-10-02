@@ -329,6 +329,56 @@ test("retiring BIB Roll preserves an open stock count and its other lines", () =
   assert.equal(db.prepare("SELECT status FROM inventory_stocktake_sessions WHERE id = ?").get(sessionId).status, "in_progress");
 });
 
+test("newly discontinued injections are retired from warehouse and doctor bags with an audit trail", () => {
+  const discontinuedNames = [
+    "IM Neurorubin forte-twice weekly for one month",
+    "Lasilix (IM/IV) - Each next 20mg",
+    "IM Tribeforte",
+  ];
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name='IM Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 2").all().map((row) => Number(row.id));
+  assert.equal(doctorIds.length, 2);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, ?, ?, ?, 1, 0, 'injection', 100, 500)
+  `);
+  const insertBatch = db.prepare(`
+    INSERT INTO inventory_batches (
+      item_id, quantity_remaining, unit_cost, expiry_date, received_date
+    ) VALUES (?, 1, 100, '2026-12-30', '2026-10-01')
+  `);
+  const ids = [];
+  for (const itemName of discontinuedNames) {
+    const warehouseId = Number(insert.run(itemName, folderId, "ocs", null).lastInsertRowid);
+    insertBatch.run(warehouseId);
+    ids.push(warehouseId);
+    for (const doctorId of doctorIds) {
+      const bagId = Number(insert.run(itemName, folderId, "doctor", doctorId).lastInsertRowid);
+      insertBatch.run(bagId);
+      ids.push(bagId);
+    }
+  }
+
+  const result = alignInventoryCategories();
+  assert.ok(result.archived >= ids.length);
+  assert.ok(result.written_off >= ids.length);
+  for (const id of ids) {
+    const row = db.prepare("SELECT quantity, archived_at FROM inventory WHERE id = ?").get(id);
+    assert.equal(Number(row.quantity), 0);
+    assert.ok(row.archived_at);
+    assert.equal(
+      Number(db.prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity FROM inventory_batches WHERE item_id = ?").get(id).quantity),
+      0,
+    );
+    assert.equal(
+      Number(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE item_id = ? AND action_type = 'retired_sku_write_off'").get(id).count),
+      1,
+    );
+  }
+});
+
 function oxygenFolderId() {
   const existing = db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(O2_FOLDER);
   if (existing) return Number(existing.id);

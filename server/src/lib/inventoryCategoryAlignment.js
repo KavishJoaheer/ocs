@@ -111,6 +111,9 @@ const RETIRED_OCS_GO_LIVE_SKUS = [
   "Nasal Oxygen Cannula",
   "On Call Extra Strips",
   "On call Plus Strips",
+  "IM Neurorubin forte-twice weekly for one month",
+  "Lasilix (IM/IV) - Each next 20mg",
+  "IM Tribeforte",
 ];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
