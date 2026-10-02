@@ -1042,13 +1042,17 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   const catalog = await api("GET", `/billing/quick/catalog/${catalogConsultationId}`);
   assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
   const nebulizer = catalog.data.items.find((item) => item.item_name === "Nebulizer ( incl mask and 1 Dulopro nebule)");
+  const pulmicortNebulizer = catalog.data.items.find((item) => item.item_name === "Nebulizer ( incl mask and 1 Pulmicort nebule)");
   const combinedNebulizer = catalog.data.items.find((item) => item.item_name === "Nebulizer ( incl mask and 1 Pulmicort + Dulopro)");
   const extraOxygen = catalog.data.items.find((item) => item.item_name === "Each additional 30 mins O2");
   assert.ok(nebulizer);
+  assert.ok(pulmicortNebulizer);
   assert.ok(combinedNebulizer);
   assert.equal(nebulizer.is_service_charge, true);
   assert.equal(nebulizer.requires_mask, true);
   assert.equal(nebulizer.included_label, "1 face mask and 1 Dulopro nebule");
+  assert.equal(pulmicortNebulizer.requires_mask, true);
+  assert.equal(pulmicortNebulizer.included_label, "1 face mask and 1 Pulmicort nebule");
   assert.equal(combinedNebulizer.requires_mask, true);
   assert.equal(combinedNebulizer.included_label, "1 face mask, 1 Pulmicort nebule, and 1 Dulopro nebule");
   assert.equal(nebulizer.category, "Services");
@@ -1107,6 +1111,7 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   const duloproId = stock("Dulopro nebule", 5);
   const pulmicortId = stock("Pulmicort nebule", 5);
   db.prepare("UPDATE inventory SET selling_price = 1800 WHERE id = ?").run(nebulizer.id);
+  db.prepare("UPDATE inventory SET selling_price = 2000 WHERE id = ?").run(pulmicortNebulizer.id);
   db.prepare("UPDATE inventory SET selling_price = 2200 WHERE id = ?").run(combinedNebulizer.id);
   db.prepare("UPDATE inventory SET selling_price = 600 WHERE id = ?").run(extraOxygen.id);
 
@@ -1138,6 +1143,33 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 3);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 5);
 
+  const pulmicortConsultationId = visit();
+  const pulmicort = await api("POST", `/billing/quick/visits/${pulmicortConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("NEB-PULMICORT"),
+    items: [{ inventory_item_id: pulmicortNebulizer.id, quantity: 1, unit_price: 2000, mask_size: "paediatric" }],
+  });
+  assert.equal(pulmicort.status, 201, JSON.stringify(pulmicort.data));
+  const pulmicortLines = JSON.parse(db.prepare("SELECT items FROM billing WHERE id = ?").get(pulmicort.data.submission.bill_id).items);
+  const pulmicortLine = pulmicortLines.find((line) => line.description === pulmicortNebulizer.item_name);
+  assert.ok(pulmicortLine);
+  assert.equal(pulmicortLine.amount, 2000);
+  assert.equal(pulmicortLine.mask_size, "paediatric");
+  assert.equal(pulmicortLine.inventory_movement_ids.length, 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(duloproId).quantity, 4);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 4);
+  assert.equal(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM inventory_movements
+      WHERE id IN (${pulmicortLine.inventory_movement_ids.map(() => "?").join(",")})
+        AND unit_cost_snapshot = 12
+    `).get(...pulmicortLine.inventory_movement_ids).count,
+    2,
+  );
+
   const combinedConsultationId = visit();
   const combined = await api("POST", `/billing/quick/visits/${combinedConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
@@ -1152,9 +1184,9 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   assert.equal(combinedLine.mask_size, "paediatric");
   assert.equal(combinedLine.inventory_movement_ids.length, 3);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 1);
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(duloproId).quantity, 3);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 4);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 3);
   assert.equal(
     db.prepare(`
       SELECT COUNT(*) AS count
@@ -1175,7 +1207,7 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   });
   assert.equal(blocked.status, 409, JSON.stringify(blocked.data));
   assert.equal(blocked.data.code, "INSUFFICIENT_ATP");
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 2);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(paediatricId).quantity, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing_lite_submissions WHERE consultation_id = ?").get(shortConsultationId).count, 0);
 
   const oxygenConsultationId = visit();
@@ -1186,7 +1218,7 @@ test("billed nebulizer services take the chosen mask and included nebules from t
   });
   assert.equal(oxygen.status, 201, JSON.stringify(oxygen.data));
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(maskId).quantity, 3);
-  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 4);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(pulmicortId).quantity, 3);
 });
 
 test("enema and staple-removal services deduct the chosen bag supply", async () => {
