@@ -704,6 +704,82 @@ test("completed doctor invoices bypass the obsolete operator acknowledgement wor
   assert.equal(issuedBill.status, "paid");
 });
 
+test("operator can issue a legacy pending submission as unpaid without repeating stock movements", async () => {
+  const today = getTodayLocal();
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (
+      full_name, first_name, last_name, patient_identifier, age,
+      contact_number, patient_contact_number, address, assigned_doctor_id
+    ) VALUES (?, 'Legacy', 'Pending', ?, 45, '57000003', '57000003', 'Test address', ?)
+  `).run(`Legacy pending ${suffix}`, `OCS-LEGACY-${suffix}`, doctorId).lastInsertRowid);
+  const appointmentId = Number(db.prepare(`
+    INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+    VALUES (?, ?, ?, '12:00', 'completed')
+  `).run(patientId, doctorId, today).lastInsertRowid);
+  const legacyConsultationId = Number(db.prepare(`
+    INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+    VALUES (?, ?, ?, ?, 'Legacy pending submission test')
+  `).run(appointmentId, patientId, doctorId, today).lastInsertRowid);
+  const baseInvoice = await api("POST", "/billing/test-support/create", doctorToken, {
+    consultation_id: legacyConsultationId,
+    patient_id: patientId,
+    items: [{ description: "Day Consultation", type: "Sale", amount: 2000, quantity: 1, is_consultation_fee: true }],
+    status: "unpaid",
+    operation_id: randomUUID(),
+  });
+  assert.equal(baseInvoice.status, 201, JSON.stringify(baseInvoice.data));
+  db.prepare(`
+    UPDATE billing
+    SET finalized_at = NULL, finalized_by_user_id = NULL, finalized_by_name = '',
+        finalized_by_role = '', source_reference = NULL
+    WHERE id = ?
+  `).run(baseInvoice.data.id);
+  const submissionId = Number(db.prepare(`
+    INSERT INTO billing_lite_submissions (
+      consultation_id, billing_id, doctor_id, submitted_by_user_id,
+      operation_id, item_count, items_json, amount_added, workflow_status
+    ) VALUES (?, ?, ?, ?, ?, 0, '[]', 0, 'awaiting_operator')
+  `).run(
+    legacyConsultationId,
+    baseInvoice.data.id,
+    doctorId,
+    db.prepare("SELECT id FROM users WHERE doctor_id = ? AND role = 'doctor'").get(doctorId).id,
+    randomUUID(),
+  ).lastInsertRowid);
+  const movementCountBefore = Number(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements").get().count);
+
+  const issued = await api(
+    "PATCH",
+    `/billing/quick/operator-queue/${legacyConsultationId}/status`,
+    operatorToken,
+    {
+      submission_id: submissionId,
+      expected_workflow_status: "awaiting_operator",
+      status: "ready_for_payment",
+      note: "Issued as unpaid",
+      source_reference: `LEGACY-${suffix}`,
+    },
+  );
+  assert.equal(issued.status, 200, JSON.stringify(issued.data));
+  assert.equal(issued.data.bill_id, baseInvoice.data.id);
+  assert.equal(issued.data.finalized, true);
+  const bill = db.prepare("SELECT status, finalized_at, source_reference FROM billing WHERE id = ?").get(baseInvoice.data.id);
+  assert.equal(bill.status, "unpaid");
+  assert.ok(bill.finalized_at);
+  assert.equal(bill.source_reference, `LEGACY-${suffix}`);
+  assert.equal(Number(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements").get().count), movementCountBefore);
+
+  const updates = await api(
+    "GET",
+    `/billing/quick/submissions?search=${encodeURIComponent(`V-${String(legacyConsultationId).padStart(6, "0")}`)}`,
+    operatorToken,
+  );
+  assert.equal(updates.status, 200, JSON.stringify(updates.data));
+  assert.equal(updates.data.submissions[0].bill_id, baseInvoice.data.id);
+  assert.ok(updates.data.submissions[0].finalized_at);
+});
+
 test("a mixed reused and newly deducted supply line reverses completely without restoring dispensed stock", async () => {
   const today = getTodayLocal();
   const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;

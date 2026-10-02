@@ -329,6 +329,9 @@ function patientBillOpenPath(bill, patientId, role) {
       const status = String(bill.status || "").toLowerCase() === "paid" ? "paid" : "unpaid";
       return `/operator/pending-payment?billId=${bill.id}&status=${status}`;
     }
+    if (bill?.active_submission_id) {
+      return `/billing?view=status&submissionConsultationId=${bill.consultation_id}`;
+    }
     return `/billing?doctorId=${bill.consultation_doctor_id || bill.doctor_id_snapshot || ""}&consultationId=${bill.consultation_id}`;
   }
   return `/billing?patientId=${patientId}&billId=${bill.id}`;

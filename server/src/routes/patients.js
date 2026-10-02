@@ -1233,7 +1233,16 @@ router.get("/:id", (req, res) => {
             b.*,
             c.consultation_date,
             c.doctor_id AS consultation_doctor_id,
-            d.full_name AS doctor_name
+            d.full_name AS doctor_name,
+            (
+              SELECT latest.id
+              FROM billing_lite_submissions latest
+              WHERE latest.consultation_id = b.consultation_id
+                AND latest.billing_id = b.id
+                AND latest.reversed_at IS NULL
+              ORDER BY latest.id DESC
+              LIMIT 1
+            ) AS active_submission_id
           FROM billing b
           JOIN consultations c ON c.id = b.consultation_id
           JOIN doctors d ON d.id = c.doctor_id

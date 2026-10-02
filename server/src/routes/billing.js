@@ -2677,6 +2677,7 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
   const expectedWorkflowStatus = String(req.body?.expected_workflow_status || "").trim();
   const status = String(req.body?.status || "").trim();
   const note = String(req.body?.note || "").trim().slice(0, 500);
+  const requestedSourceReference = normalizeSourceReference(req.body?.source_reference);
   const allowed = new Set(["awaiting_operator", "needs_doctor", "ready_for_payment"]);
   if (
     !Number.isInteger(consultationId) || consultationId <= 0
@@ -2712,6 +2713,60 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
         throw Object.assign(new Error("This submission has already been reversed."), { status: 409 });
       }
       submission = latest;
+      const bill = db.prepare(`
+        SELECT * FROM billing
+        WHERE id = ? AND consultation_id = ? AND voided_at IS NULL
+      `).get(submission.billing_id, consultationId);
+      if (!bill) {
+        throw Object.assign(new Error("The bill linked to this submission was not found."), { status: 404 });
+      }
+      let sourceReference = normalizeSourceReference(bill.source_reference);
+      if (status === "ready_for_payment") {
+        sourceReference = sourceReference || requestedSourceReference;
+        if (sourceReference.length < 3) {
+          throw Object.assign(new Error("Enter the manual invoice receipt reference before issuing this invoice."), {
+            status: 400,
+            extra: { code: "BILLING_SOURCE_REFERENCE_REQUIRED" },
+          });
+        }
+        const duplicate = db.prepare(`
+          SELECT id, invoice_number
+          FROM billing
+          WHERE lower(trim(source_reference)) = lower(trim(?))
+            AND id != ?
+            AND voided_at IS NULL
+          LIMIT 1
+        `).get(sourceReference, bill.id);
+        if (duplicate) {
+          throw Object.assign(
+            new Error(`Source reference ${sourceReference} is already attached to ${duplicate.invoice_number || `bill #${duplicate.id}`}.`),
+            { status: 409, extra: { code: "DUPLICATE_SOURCE_REFERENCE", bill_id: duplicate.id } },
+          );
+        }
+        db.prepare(`
+          UPDATE billing
+          SET source_reference = CASE WHEN trim(COALESCE(source_reference, '')) = '' THEN ? ELSE source_reference END,
+              issued_at = COALESCE(issued_at, CURRENT_TIMESTAMP),
+              issued_by_user_id = COALESCE(issued_by_user_id, ?),
+              issued_by_name = CASE WHEN trim(COALESCE(issued_by_name, '')) = '' THEN ? ELSE issued_by_name END,
+              issued_by_role = CASE WHEN trim(COALESCE(issued_by_role, '')) IN ('', 'system') THEN ? ELSE issued_by_role END,
+              finalized_at = COALESCE(finalized_at, CURRENT_TIMESTAMP),
+              finalized_by_user_id = COALESCE(finalized_by_user_id, ?),
+              finalized_by_name = CASE WHEN trim(COALESCE(finalized_by_name, '')) = '' THEN ? ELSE finalized_by_name END,
+              finalized_by_role = CASE WHEN trim(COALESCE(finalized_by_role, '')) = '' THEN ? ELSE finalized_by_role END,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND status = 'unpaid' AND voided_at IS NULL
+        `).run(
+          sourceReference,
+          req.auth.id || null,
+          String(req.auth.full_name || req.auth.username || ""),
+          String(req.auth.role || "operator"),
+          req.auth.id || null,
+          String(req.auth.full_name || req.auth.username || ""),
+          String(req.auth.role || "operator"),
+          bill.id,
+        );
+      }
       const updated = db.prepare(`
       UPDATE billing_lite_submissions
       SET workflow_status = ?,
@@ -2735,6 +2790,9 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
         previousStatus: submission.workflow_status,
         nextStatus: status,
         reason: note,
+        details: status === "ready_for_payment"
+          ? { invoice_issued_unpaid: true, source_reference: sourceReference }
+          : {},
       });
     }).immediate();
   } catch (error) {
@@ -2757,7 +2815,14 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
     }
   }
 
-  res.json({ submission_id: submissionId, consultation_id: consultationId, workflow_status: status, workflow_note: note });
+  res.json({
+    submission_id: submissionId,
+    consultation_id: consultationId,
+    bill_id: Number(submission.billing_id),
+    workflow_status: status,
+    workflow_note: note,
+    finalized: status === "ready_for_payment",
+  });
 });
 
 router.get("/quick/submissions", (req, res) => {
@@ -2817,7 +2882,9 @@ router.get("/quick/submissions", (req, res) => {
         p.patient_identifier,
         a.appointment_date,
         a.appointment_time,
-        b.status AS bill_status
+        b.status AS bill_status,
+        b.source_reference,
+        b.finalized_at
       FROM billing_lite_submissions s
       JOIN consultations c ON c.id = s.consultation_id
       JOIN appointments a ON a.id = c.appointment_id
@@ -2830,6 +2897,7 @@ router.get("/quick/submissions", (req, res) => {
     .all(params)
     .map((row) => ({
       id: Number(row.id),
+      bill_id: Number(row.billing_id),
       consultation_id: Number(row.consultation_id),
       visit_number: formatVisitNumber(row.consultation_id),
       patient_identifier: String(row.patient_identifier || ""),
@@ -2846,6 +2914,8 @@ router.get("/quick/submissions", (req, res) => {
       })),
       submitted_at: row.created_at,
       status: row.bill_status === "paid" ? "completed" : row.workflow_status || "awaiting_operator",
+      source_reference: String(row.source_reference || ""),
+      finalized_at: row.finalized_at || null,
       workflow_note: row.workflow_note || "",
       reversed_at: row.reversed_at || null,
       reversal_reason: row.reversal_reason || "",

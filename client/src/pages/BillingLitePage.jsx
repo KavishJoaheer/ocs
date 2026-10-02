@@ -199,11 +199,16 @@ function BillingLitePage() {
   const operatorIssueOnly = user?.role === "operator";
   const [searchParams] = useSearchParams();
   const requestedConsultationId = Number(searchParams.get("consultationId") || 0);
+  const requestedSubmissionConsultationId = Number(searchParams.get("submissionConsultationId") || 0);
   const requestedDoctorId = operatorIssueOnly ? String(searchParams.get("doctorId") || "") : "";
-  const [view, setView] = useState("today");
+  const [view, setView] = useState(searchParams.get("view") === "status" ? "status" : "today");
   const [submissions, setSubmissions] = useState([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
-  const [submissionSearch, setSubmissionSearch] = useState("");
+  const [submissionSearch, setSubmissionSearch] = useState(
+    Number.isInteger(requestedSubmissionConsultationId) && requestedSubmissionConsultationId > 0
+      ? `V-${String(requestedSubmissionConsultationId).padStart(6, "0")}`
+      : "",
+  );
   const [submissionStatus, setSubmissionStatus] = useState("");
   const [submissionPage, setSubmissionPage] = useState(0);
   const [submissionRefreshToken, setSubmissionRefreshToken] = useState(0);
@@ -261,6 +266,7 @@ function BillingLitePage() {
   const [editingOfflineEntry, setEditingOfflineEntry] = useState(null);
   const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
+  const [issuingSubmissionId, setIssuingSubmissionId] = useState(null);
   const [workflowDialog, setWorkflowDialog] = useState(null);
   const deepLinkOpenedRef = useRef(false);
   const [favorites, setFavorites] = useState(() => {
@@ -301,8 +307,12 @@ function BillingLitePage() {
       if (Number.isInteger(requestedConsultationId) && requestedConsultationId > 0) {
         pickerQuery.set("consultationId", String(requestedConsultationId));
       }
+      const initialSubmissionQuery = new URLSearchParams({ limit: String(SUBMISSION_PAGE_SIZE), offset: "0" });
+      if (Number.isInteger(requestedSubmissionConsultationId) && requestedSubmissionConsultationId > 0) {
+        initialSubmissionQuery.set("search", `V-${String(requestedSubmissionConsultationId).padStart(6, "0")}`);
+      }
       const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
-        api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
+        api.get(`/billing/quick/submissions?${initialSubmissionQuery.toString()}`),
         api.get(`/billing/quick/picker-options?${pickerQuery.toString()}`),
         api.get("/billing/consultation-fees"),
       ]);
@@ -1143,6 +1153,31 @@ function BillingLitePage() {
       toast.error(error.message || "The submitted supplies could not be reversed.");
     } finally {
       setReversingSubmissionId(null);
+    }
+  }
+
+  async function issueExistingSubmission(submission, sourceReferenceInput) {
+    const sourceReference = String(sourceReferenceInput || submission.source_reference || "").trim();
+    if (sourceReference.length < 3) {
+      toast.error("Enter the manual invoice receipt reference.");
+      return;
+    }
+    setIssuingSubmissionId(submission.id);
+    try {
+      const result = await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
+        submission_id: submission.id,
+        expected_workflow_status: submission.status,
+        status: "ready_for_payment",
+        note: "Issued as an unpaid invoice by the operator.",
+        source_reference: sourceReference,
+      });
+      setWorkflowDialog(null);
+      toast.success("Invoice issued. It is now in Payment follow-up.");
+      window.location.assign(`/operator/pending-payment?billId=${result.bill_id}&status=unpaid`);
+    } catch (error) {
+      toast.error(error.message || "The invoice could not be issued.");
+    } finally {
+      setIssuingSubmissionId(null);
     }
   }
 
@@ -2334,6 +2369,20 @@ function BillingLitePage() {
                         {reversingSubmissionId === submission.id ? "Reversing…" : "Reverse incorrect supplies"}
                       </button>
                     ) : null}
+                    {operatorIssueOnly && !submission.offline && !submission.finalized_at && ["awaiting_operator", "ready_for_payment"].includes(submission.status) ? (
+                      <button
+                        type="button"
+                        disabled={issuingSubmissionId === submission.id}
+                        onClick={() => setWorkflowDialog({
+                          kind: "issue-unpaid",
+                          submission,
+                          sourceReference: submission.source_reference || "",
+                        })}
+                        className="mt-3 min-h-12 w-full rounded-2xl bg-[#17666a] px-4 text-sm font-black text-white transition hover:bg-[#12575a] disabled:opacity-50"
+                      >
+                        {issuingSubmissionId === submission.id ? "Issuing…" : "Issue unpaid invoice"}
+                      </button>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -2355,7 +2404,53 @@ function BillingLitePage() {
           </section>
         ) : null}
       </main>
-      {workflowDialog ? (
+      {workflowDialog?.kind === "issue-unpaid" ? (
+        <Modal
+          open
+          onClose={() => !issuingSubmissionId && setWorkflowDialog(null)}
+          title="Issue unpaid invoice"
+          size="md"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void issueExistingSubmission(workflowDialog.submission, workflowDialog.sourceReference);
+            }}
+          >
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="font-black text-slate-950">{workflowDialog.submission.patient_name}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                {workflowDialog.submission.patient_identifier} · {workflowDialog.submission.visit_number}
+              </p>
+              <p className="mt-3 text-sm font-bold text-slate-700">
+                Existing supply entries are preserved. Stock will not be deducted again.
+              </p>
+            </div>
+            <label className="block text-sm font-black text-slate-800">
+              Manual invoice receipt reference
+              <input
+                autoFocus
+                required
+                minLength={3}
+                value={workflowDialog.sourceReference}
+                onChange={(event) => setWorkflowDialog((current) => ({ ...current, sourceReference: event.target.value }))}
+                placeholder="Example: RECEIPT-1042"
+                className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4 font-semibold outline-none focus:border-[#2aa7a0]"
+              />
+            </label>
+            <div className="rounded-2xl border border-[#b9e3df] bg-[#edf8f6] p-4 text-sm font-semibold leading-6 text-[#173f47]">
+              The invoice will be issued as unpaid and will open in Payment follow-up.
+            </div>
+            <div className="flex justify-end gap-3">
+              <button type="button" disabled={Boolean(issuingSubmissionId)} onClick={() => setWorkflowDialog(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 font-bold">Cancel</button>
+              <button type="submit" disabled={Boolean(issuingSubmissionId) || workflowDialog.sourceReference.trim().length < 3} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-black text-white disabled:opacity-50">
+                {issuingSubmissionId ? "Issuing…" : "Issue as unpaid"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : workflowDialog ? (
         <Modal
           open
           onClose={() => !reversingSubmissionId && setWorkflowDialog(null)}
