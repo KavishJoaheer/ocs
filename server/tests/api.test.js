@@ -2619,7 +2619,7 @@ test("admin and operators can assign a review doctor and time", async () => {
   assert.equal(String(slot.appointment_time).slice(0, 5), "10:30");
 });
 
-test("OCS VP directory is shared; only doctors see consultation notes and lab reports", async () => {
+test("OCS VP directory is shared; operators can read visit notes while lab reports remain role-scoped", async () => {
   const doctorLogin = await api("POST", "/api/auth/login", {
     body: { username: "arun.dharee", password: "Welcome@123" },
   });
@@ -2722,7 +2722,8 @@ test("OCS VP directory is shared; only doctors see consultation notes and lab re
 
   const operatorProfile = await api("GET", `/api/patients/${patientId}`, { token: operatorToken });
   assert.equal(operatorProfile.status, 200, JSON.stringify(operatorProfile.data));
-  assert.equal(operatorProfile.data.consultations?.length || 0, 0);
+  assert.equal(operatorProfile.data.consultations?.length > 0, true);
+  assert.match(String(operatorProfile.data.consultations[0].doctor_notes || ""), /hypertension/i);
   assert.equal(operatorProfile.data.labReports?.length || 0, 0);
   assert.equal(operatorProfile.data.bills?.length > 0, true);
   assert.equal(operatorProfile.data.patient.consultation_notes, undefined);

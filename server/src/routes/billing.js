@@ -341,6 +341,10 @@ function normalizeSourceReference(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
+function automaticInvoiceReference(consultationId) {
+  return `OCS-V${String(Number(consultationId) || 0).padStart(6, "0")}`;
+}
+
 function consultationTypeFromItems(items) {
   return String(normalizeBillingItems(items).find(isConsultationFee)?.description || "").trim();
 }
@@ -2707,6 +2711,9 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
   if (status === "needs_doctor" && note.length < 3) {
     return res.status(400).json({ error: "Add a short note explaining what the doctor should clarify." });
   }
+  if (requestedSourceReference && requestedSourceReference.length < 3) {
+    return res.status(400).json({ error: "Enter at least 3 characters for the manual invoice reference, or leave it blank." });
+  }
 
   let submission;
   try {
@@ -2740,13 +2747,7 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
       }
       let sourceReference = normalizeSourceReference(bill.source_reference);
       if (status === "ready_for_payment") {
-        sourceReference = sourceReference || requestedSourceReference;
-        if (sourceReference.length < 3) {
-          throw Object.assign(new Error("Enter the manual invoice receipt reference before issuing this invoice."), {
-            status: 400,
-            extra: { code: "BILLING_SOURCE_REFERENCE_REQUIRED" },
-          });
-        }
+        sourceReference = sourceReference || requestedSourceReference || automaticInvoiceReference(consultationId);
         const duplicate = db.prepare(`
           SELECT id, invoice_number
           FROM billing
@@ -2982,13 +2983,14 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   if (!operationId) {
     return res.status(400).json({ error: "A unique submission reference is required." });
   }
-  const sourceReference = normalizeSourceReference(req.body?.source_reference);
-  if (sourceReference.length < 3) {
+  const requestedSourceReference = normalizeSourceReference(req.body?.source_reference);
+  if (requestedSourceReference && requestedSourceReference.length < 3) {
     return res.status(400).json({
-      error: "Enter the manual invoice receipt reference before issuing this invoice.",
-      code: "BILLING_SOURCE_REFERENCE_REQUIRED",
+      error: "Enter at least 3 characters for the manual invoice reference, or leave it blank.",
+      code: "BILLING_SOURCE_REFERENCE_INVALID",
     });
   }
+  const sourceReference = requestedSourceReference || automaticInvoiceReference(consultationId);
   const paymentMethod = normalizePaymentMethod(req.body?.payment_method);
   const paymentDate = String(req.body?.payment_date || "").trim();
   const paymentReference = normalizeSourceReference(req.body?.payment_reference);

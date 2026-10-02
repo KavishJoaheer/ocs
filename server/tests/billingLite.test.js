@@ -229,21 +229,24 @@ test("a reviewed quick bill requires an audited reason when a supply price is ad
   assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity, beforeQuantity);
 });
 
-test("doctor quick billing requires the receipt and payment details before issue", async () => {
+test("doctor quick billing creates a reference automatically and still requires payment details", async () => {
   const today = getTodayLocal();
-  const missingReceipt = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+  const patient = db.prepare("SELECT id FROM patients WHERE patient_identifier = ?").get(patientIdentifier);
+  const automaticReferenceConsultationId = createBillableVisit(patient.id, "Automatic invoice reference test", "18:05");
+  const issuedWithoutPaperReference = await api("POST", `/billing/quick/visits/${automaticReferenceConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
     payment_method: "cash",
     payment_date: today,
     consultation_fee: { type: "Day Consultation", amount: 2000 },
     items: [],
   });
-  assert.equal(missingReceipt.status, 400, JSON.stringify(missingReceipt.data));
-  assert.equal(missingReceipt.data.code, "BILLING_SOURCE_REFERENCE_REQUIRED");
+  assert.equal(issuedWithoutPaperReference.status, 201, JSON.stringify(issuedWithoutPaperReference.data));
+  const issuedBill = db.prepare("SELECT source_reference FROM billing WHERE consultation_id = ?").get(automaticReferenceConsultationId);
+  assert.equal(issuedBill.source_reference, `OCS-V${String(automaticReferenceConsultationId).padStart(6, "0")}`);
 
-  const missingMethod = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+  const missingMethodConsultationId = createBillableVisit(patient.id, "Missing payment method test", "18:06");
+  const missingMethod = await api("POST", `/billing/quick/visits/${missingMethodConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
-    source_reference: "RECEIPT-REQUIRED-1",
     payment_date: today,
     consultation_fee: { type: "Day Consultation", amount: 2000 },
     items: [],
@@ -251,9 +254,9 @@ test("doctor quick billing requires the receipt and payment details before issue
   assert.equal(missingMethod.status, 400, JSON.stringify(missingMethod.data));
   assert.equal(missingMethod.data.code, "BILLING_PAYMENT_METHOD_REQUIRED");
 
-  const missingProviderReference = await api("POST", `/billing/quick/visits/${consultationId}/capture`, doctorToken, {
+  const missingProviderReferenceConsultationId = createBillableVisit(patient.id, "Missing provider reference test", "18:07");
+  const missingProviderReference = await api("POST", `/billing/quick/visits/${missingProviderReferenceConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
-    source_reference: "RECEIPT-REQUIRED-2",
     payment_method: "juice",
     payment_date: today,
     consultation_fee: { type: "Day Consultation", amount: 2000 },
@@ -303,13 +306,14 @@ test("operator quick billing requires the matching consultation doctor and payme
   assert.equal(wrongDoctor.status, 409);
   assert.equal(wrongDoctor.data.code, "BILLING_DOCTOR_MISMATCH");
 
-  const missingReference = await api(
+  const invalidReference = await api(
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), doctor_id: doctorId, payment_method: "cash", payment_date: today, items: [] },
+    { operation_id: randomUUID(), doctor_id: doctorId, source_reference: "X", payment_method: "cash", payment_date: today, items: [] },
   );
-  assert.equal(missingReference.status, 400);
+  assert.equal(invalidReference.status, 400);
+  assert.equal(invalidReference.data.code, "BILLING_SOURCE_REFERENCE_INVALID");
 
   const issued = await api(
     "POST",
@@ -395,7 +399,6 @@ test("operator can issue an unpaid invoice and it appears in payment follow-up",
     {
       operation_id: randomUUID(),
       doctor_id: doctorId,
-      source_reference: `UNPAID-${randomUUID()}`,
       record_payment: false,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
@@ -407,13 +410,14 @@ test("operator can issue an unpaid invoice and it appears in payment follow-up",
   assert.equal(issued.data.visit.submission_status, "ready_for_payment");
 
   const bill = db.prepare(`
-    SELECT id, status, finalized_at, payment_method
+    SELECT id, status, finalized_at, payment_method, source_reference
     FROM billing
     WHERE consultation_id = ? AND voided_at IS NULL
   `).get(unpaidConsultationId);
   assert.equal(bill.status, "unpaid");
   assert.ok(bill.finalized_at);
   assert.equal(bill.payment_method, null);
+  assert.equal(bill.source_reference, `OCS-V${String(unpaidConsultationId).padStart(6, "0")}`);
   assert.equal(
     Number(db.prepare("SELECT COUNT(*) AS count FROM billing_payment_ledger WHERE billing_id = ?").get(bill.id).count),
     0,
@@ -758,7 +762,6 @@ test("operator can issue a legacy pending submission as unpaid without repeating
       expected_workflow_status: "awaiting_operator",
       status: "ready_for_payment",
       note: "Issued as unpaid",
-      source_reference: `LEGACY-${suffix}`,
     },
   );
   assert.equal(issued.status, 200, JSON.stringify(issued.data));
@@ -767,7 +770,7 @@ test("operator can issue a legacy pending submission as unpaid without repeating
   const bill = db.prepare("SELECT status, finalized_at, source_reference FROM billing WHERE id = ?").get(baseInvoice.data.id);
   assert.equal(bill.status, "unpaid");
   assert.ok(bill.finalized_at);
-  assert.equal(bill.source_reference, `LEGACY-${suffix}`);
+  assert.equal(bill.source_reference, `OCS-V${String(legacyConsultationId).padStart(6, "0")}`);
   assert.equal(Number(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements").get().count), movementCountBefore);
 
   const updates = await api(

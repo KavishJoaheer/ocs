@@ -1263,7 +1263,9 @@ router.get("/:id", (req, res) => {
   const labReports = canViewLabMedicalReports(req.auth)
     ? getLabReportsByPatientId(patientId)
     : [];
-  const visibleConsultations = canViewConsultationNotes(req.auth) ? consultations : [];
+  const visibleConsultations = (
+    canViewConsultationNotes(req.auth) || req.auth.role === "operator"
+  ) ? consultations : [];
   const revisions = getPatientRevisions(patientId);
   const operatorAccess = getPatientOperatorAccess(patientId);
   const operatorOptions = req.auth.role === "admin" ? getOperatorOptions() : [];

@@ -1039,10 +1039,6 @@ function BillingLitePage() {
       toast.error(priceError);
       return;
     }
-    if (sourceReference.trim().length < 3) {
-      toast.error("Enter the manual invoice receipt reference.");
-      return;
-    }
     if (recordPaymentNow && !["cash", "juice", "card", "ib"].includes(paymentMethod)) {
       toast.error("Select the payment method.");
       return;
@@ -1158,10 +1154,6 @@ function BillingLitePage() {
 
   async function issueExistingSubmission(submission, sourceReferenceInput) {
     const sourceReference = String(sourceReferenceInput || submission.source_reference || "").trim();
-    if (sourceReference.length < 3) {
-      toast.error("Enter the manual invoice receipt reference.");
-      return;
-    }
     setIssuingSubmissionId(submission.id);
     try {
       const result = await api.patch(`/billing/quick/operator-queue/${submission.consultation_id}/status`, {
@@ -2069,15 +2061,15 @@ function BillingLitePage() {
 
                 <div className="mt-5 space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <label className="block">
-                    <span className="text-sm font-black text-slate-700">Receipt reference</span>
+                    <span className="text-sm font-black text-slate-700">Manual invoice reference (optional)</span>
                     <input
                       value={sourceReference}
                       onChange={(event) => setSourceReference(event.target.value)}
-                      placeholder="Example: RECEIPT-1042"
+                      placeholder="Enter the paper invoice number, if available"
                       className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
                     />
                     <span className="mt-2 block text-xs font-semibold text-slate-500">
-                      Required for audit and duplicate-invoice protection.
+                      Leave blank and OCS will create a reference automatically.
                     </span>
                   </label>
 
@@ -2428,23 +2420,24 @@ function BillingLitePage() {
               </p>
             </div>
             <label className="block text-sm font-black text-slate-800">
-              Manual invoice receipt reference
+              Manual invoice reference (optional)
               <input
                 autoFocus
-                required
-                minLength={3}
                 value={workflowDialog.sourceReference}
                 onChange={(event) => setWorkflowDialog((current) => ({ ...current, sourceReference: event.target.value }))}
-                placeholder="Example: RECEIPT-1042"
+                placeholder="Enter the paper invoice number, if available"
                 className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 px-4 font-semibold outline-none focus:border-[#2aa7a0]"
               />
+              <span className="mt-2 block text-xs font-semibold text-slate-500">
+                Leave blank and OCS will create a reference automatically.
+              </span>
             </label>
             <div className="rounded-2xl border border-[#b9e3df] bg-[#edf8f6] p-4 text-sm font-semibold leading-6 text-[#173f47]">
               The invoice will be issued as unpaid and will open in Payment follow-up.
             </div>
             <div className="flex justify-end gap-3">
               <button type="button" disabled={Boolean(issuingSubmissionId)} onClick={() => setWorkflowDialog(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 font-bold">Cancel</button>
-              <button type="submit" disabled={Boolean(issuingSubmissionId) || workflowDialog.sourceReference.trim().length < 3} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-black text-white disabled:opacity-50">
+              <button type="submit" disabled={Boolean(issuingSubmissionId)} className="min-h-11 rounded-xl bg-[#17666a] px-4 font-black text-white disabled:opacity-50">
                 {issuingSubmissionId ? "Issuing…" : "Issue as unpaid"}
               </button>
             </div>
