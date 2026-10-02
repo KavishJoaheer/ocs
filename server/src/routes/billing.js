@@ -793,8 +793,11 @@ function canActorSubmitQuickVisit(visit, role) {
   return role === "doctor" || visit.submission_status === "ready";
 }
 
-function getQuickVisit(consultationId, doctorId) {
-  const row = quickVisitBaseRows(doctorId, { consultationId: Number(consultationId || 0) })[0];
+function getQuickVisit(consultationId, doctorId, billableRole = "") {
+  const row = quickVisitBaseRows(doctorId, {
+    consultationId: Number(consultationId || 0),
+    billableRole,
+  })[0];
   return row ? serializeQuickVisit(row) : null;
 }
 
@@ -2374,7 +2377,7 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     return res.status(error.status || 403).json({ error: error.message, ...(error.extra || {}) });
   }
   const doctorId = Number(consultation.doctor_id);
-  const visit = getQuickVisit(Number(req.params.consultationId), doctorId);
+  const visit = getQuickVisit(Number(req.params.consultationId), doctorId, req.auth?.role);
   if (!visit) {
     return res.status(404).json({ error: "This visit was not found in your doctor workspace." });
   }

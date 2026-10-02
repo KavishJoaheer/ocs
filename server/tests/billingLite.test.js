@@ -1064,6 +1064,12 @@ test("patient picker and capture enforce the configured live billing cutover", a
     );
     assert.equal(exactOperatorPicker.status, 200, JSON.stringify(exactOperatorPicker.data));
     assert.equal(exactOperatorPicker.data.patients[0].visits[0].consultation_id, futureConsultationId);
+    const exactOperatorCatalog = await api(
+      "GET",
+      `/billing/quick/catalog/${futureConsultationId}?doctorId=${doctorId}`,
+      operatorToken,
+    );
+    assert.equal(exactOperatorCatalog.status, 200, JSON.stringify(exactOperatorCatalog.data));
     const issuedLegacyDraft = await api(
       "POST",
       `/billing/quick/visits/${futureConsultationId}/capture`,
