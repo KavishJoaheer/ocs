@@ -114,6 +114,9 @@ const RETIRED_OCS_GO_LIVE_SKUS = [
   "IM Neurorubin forte-twice weekly for one month",
   "Lasilix (IM/IV) - Each next 20mg",
   "IM Tribeforte",
+  "Suction Tube for suction machine",
+  "Strapping",
+  "Neurorubin forte-4 doses",
 ];
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
