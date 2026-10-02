@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   CalendarClock,
+  Eye,
+  FileImage,
   FilePenLine,
   ReceiptText,
   SquarePen,
   TriangleAlert,
+  Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
@@ -18,6 +21,11 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { canEditConsultationNote, canViewConsultationNotes } from "../lib/consultationAccess.js";
+import {
+  closePreviewTab,
+  openInlinePreviewTab,
+  presentFileBlob,
+} from "../lib/fileBlobViewer.js";
 import {
   formatCurrency,
   formatDate,
@@ -36,6 +44,9 @@ function ConsultationDetailPage() {
     doctor_notes: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedBillId, setSelectedBillId] = useState("");
+  const [invoicePhoto, setInvoicePhoto] = useState(null);
+  const [isUploadingInvoice, setIsUploadingInvoice] = useState(false);
   const [noteChangedElsewhere, setNoteChangedElsewhere] = useState(false);
   // The loader re-runs on every live refresh. These let it see the current edit
   // state without listing it as a dependency, which would restart the fetch each
@@ -45,6 +56,8 @@ function ConsultationDetailPage() {
 
   const canEdit = consultation && canEditConsultationNote(user, consultation);
   const canViewNotes = canViewConsultationNotes(user);
+  const canAttachManualInvoice = user?.role === "operator";
+  const canViewManualInvoices = ["admin", "doctor", "operator"].includes(user?.role);
   const refreshKey = useLiveRefreshKey();
   const hasUnsavedNote =
     isEditing &&
@@ -102,6 +115,12 @@ function ConsultationDetailPage() {
     setIsEditing(false);
     setNoteChangedElsewhere(false);
   }, [id]);
+
+  useEffect(() => {
+    const activeBills = (consultation?.bills || []).filter((bill) => !bill.voided_at);
+    setSelectedBillId(activeBills.length === 1 ? String(activeBills[0].id) : "");
+    setInvoicePhoto(null);
+  }, [consultation?.id, consultation?.bills]);
 
   // A phone reload, a closed tab, or tapping Back / the sidebar would otherwise
   // discard the note silently. React Router's useBlocker needs a data router,
@@ -198,6 +217,54 @@ function ConsultationDetailPage() {
       toast.error(error.message);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleInvoiceUpload(event) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    if (!invoicePhoto || !selectedBillId) {
+      toast.error("Choose the matching bill and an invoice photo.");
+      return;
+    }
+
+    setIsUploadingInvoice(true);
+    try {
+      const formData = new FormData();
+      formData.append("consultation_id", String(consultation.id));
+      formData.append("billing_id", selectedBillId);
+      formData.append("invoice_photo", invoicePhoto);
+      const attachment = await api.post("/manual-invoice-attachments", formData);
+      setConsultation((current) => ({
+        ...current,
+        manual_invoice_attachments: [
+          attachment,
+          ...(current.manual_invoice_attachments || []),
+        ],
+      }));
+      setInvoicePhoto(null);
+      formElement.reset();
+      toast.success("Manual invoice photo attached to this consultation and bill.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsUploadingInvoice(false);
+    }
+  }
+
+  async function handleOpenInvoice(attachment) {
+    const previewTab = openInlinePreviewTab();
+    try {
+      const response = await api.getBlob(attachment.download_url);
+      presentFileBlob({
+        ...response,
+        mimeType: response.contentType || attachment.mime_type,
+        filename: response.filename || attachment.original_name,
+        previewTab,
+      });
+    } catch (error) {
+      closePreviewTab(previewTab);
+      toast.error(error.message);
     }
   }
 
@@ -529,6 +596,103 @@ function ConsultationDetailPage() {
           )}
         </SectionCard>
       </div>
+
+      {canViewManualInvoices ? <SectionCard
+        title="Manual invoice photos"
+        subtitle="Each photo is kept with this exact consultation and its matching bill."
+        actions={
+          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <FileImage className="size-4" />
+            {(consultation.manual_invoice_attachments || []).length} attached
+          </span>
+        }
+      >
+        {canAttachManualInvoice ? (
+          consultation.bills?.some((bill) => !bill.voided_at) ? (
+            <form
+              onSubmit={handleInvoiceUpload}
+              className="mb-5 grid gap-4 rounded-[26px] border border-sky-100 bg-sky-50/70 p-5 lg:grid-cols-[0.8fr_1.2fr_auto] lg:items-end"
+            >
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Matching bill</span>
+                <select
+                  required
+                  value={selectedBillId}
+                  onChange={(event) => setSelectedBillId(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-sky-400"
+                >
+                  <option value="">Select bill</option>
+                  {consultation.bills
+                    .filter((bill) => !bill.voided_at)
+                    .map((bill) => (
+                      <option key={bill.id} value={bill.id}>
+                        Bill #{bill.id} · {formatCurrency(bill.total_amount)} · {bill.status}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm font-semibold text-slate-700">Manual invoice photo</span>
+                <input
+                  required
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
+                  onChange={(event) => setInvoicePhoto(event.target.files?.[0] || null)}
+                  className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 file:mr-3 file:rounded-xl file:border-0 file:bg-sky-100 file:px-3 file:py-2 file:font-semibold file:text-sky-800"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={isUploadingInvoice}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:opacity-60"
+              >
+                <Upload className="size-4" />
+                {isUploadingInvoice ? "Attaching..." : "Attach photo"}
+              </button>
+            </form>
+          ) : (
+            <div className="mb-5 rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              A bill must be created for this consultation before its manual invoice photo can be attached.
+            </div>
+          )
+        ) : null}
+
+        {(consultation.manual_invoice_attachments || []).length ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {consultation.manual_invoice_attachments.map((attachment) => (
+              <article
+                key={attachment.id}
+                className="flex items-center justify-between gap-4 rounded-[24px] border border-slate-200/80 bg-white p-4"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-950">
+                    {attachment.original_name}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Bill #{attachment.billing_id} · {formatDate(attachment.created_at)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Attached by {attachment.uploaded_by_name || "Operator"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenInvoice(attachment)}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
+                >
+                  <Eye className="size-4" />
+                  Open
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            title="No manual invoice photo attached"
+            description="The invoice issued for this consultation will appear here once an operator attaches it."
+          />
+        )}
+      </SectionCard> : null}
     </div>
   );
 }

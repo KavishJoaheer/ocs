@@ -167,7 +167,7 @@ function App() {
             <Route path="/live-report" element={<LiveReportPage />} />
           </Route>
 
-          <Route element={<ProtectedRoute roles={["admin", "doctor", "lab_tech"]} />}>
+          <Route element={<ProtectedRoute roles={["admin", "doctor", "lab_tech", "operator"]} />}>
             <Route path="/consultations" element={<ConsultationsPage />} />
             <Route path="/consultations/:id" element={<ConsultationDetailPage />} />
           </Route>

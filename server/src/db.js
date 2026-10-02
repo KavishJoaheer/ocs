@@ -24,11 +24,13 @@ const defaultDbPath = path.join(
 );
 const dbPath = explicitDbPath || defaultDbPath;
 const labReportAttachmentsDir = path.join(path.dirname(dbPath), "lab-report-attachments");
+const manualInvoiceAttachmentsDir = path.join(path.dirname(dbPath), "manual-invoice-attachments");
 const financeAttachmentsDir = path.join(path.dirname(dbPath), "finance-attachments");
 const rosterDir = path.join(path.dirname(dbPath), "roster");
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 fs.mkdirSync(labReportAttachmentsDir, { recursive: true });
+fs.mkdirSync(manualInvoiceAttachmentsDir, { recursive: true });
 fs.mkdirSync(financeAttachmentsDir, { recursive: true });
 fs.mkdirSync(rosterDir, { recursive: true });
 
@@ -246,6 +248,32 @@ function createLabReportAttachmentsTable() {
       FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE SET NULL,
       FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
     );
+  `);
+}
+
+function createManualInvoiceAttachmentsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS manual_invoice_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      consultation_id INTEGER NOT NULL,
+      billing_id INTEGER NOT NULL,
+      patient_id INTEGER NOT NULL,
+      original_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL UNIQUE,
+      mime_type TEXT NOT NULL,
+      file_size INTEGER NOT NULL DEFAULT 0,
+      uploaded_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (consultation_id) REFERENCES consultations(id) ON DELETE RESTRICT,
+      FOREIGN KEY (billing_id) REFERENCES billing(id) ON DELETE RESTRICT,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE RESTRICT,
+      FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_manual_invoice_consultation
+      ON manual_invoice_attachments(consultation_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_manual_invoice_billing
+      ON manual_invoice_attachments(billing_id);
   `);
 }
 
@@ -1658,6 +1686,7 @@ function initializeDatabase() {
   createUserPushSubscriptionsTable();
   createLabReportsTable();
   createLabReportAttachmentsTable();
+  createManualInvoiceAttachmentsTable();
   createPatientRevisionsTable();
   createPatientLifecycleEventsTable();
   createPatientOperatorAccessTable();
@@ -4034,6 +4063,7 @@ module.exports = {
   ensureBillingForConsultation,
   financeAttachmentsDir,
   labReportAttachmentsDir,
+  manualInvoiceAttachmentsDir,
   rosterDir,
   initializeDatabase,
   ensureInventoryOperationsSchema,

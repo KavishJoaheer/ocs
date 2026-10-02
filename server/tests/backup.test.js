@@ -14,7 +14,13 @@ process.env.NODE_ENV = "test";
 const { after, test } = require("node:test");
 const assert = require("node:assert/strict");
 const Database = require("better-sqlite3");
-const { db, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir } = require("../src/db");
+const {
+  db,
+  financeAttachmentsDir,
+  initializeDatabase,
+  labReportAttachmentsDir,
+  manualInvoiceAttachmentsDir,
+} = require("../src/db");
 const { createVerifiedBackup, sha256File } = require("../src/scripts/backupClinicData");
 
 after(() => {
@@ -41,6 +47,21 @@ test("creates a verified SQLite snapshot with referenced attachments and checksu
     ) VALUES (?, ?, 'report.pdf', ?, 'application/pdf', 20, ?)
   `).run(reportId, patientId, storedName, storedName);
 
+  fs.mkdirSync(manualInvoiceAttachmentsDir, { recursive: true });
+  const manualInvoiceName = "backup-test-manual-invoice.png";
+  fs.writeFileSync(path.join(manualInvoiceAttachmentsDir, manualInvoiceName), "manual invoice image");
+  const linkedVisit = db.prepare(`
+    SELECT c.id AS consultation_id, b.id AS billing_id, c.patient_id
+    FROM consultations c
+    JOIN billing b ON b.consultation_id = c.id
+    ORDER BY c.id LIMIT 1
+  `).get();
+  db.prepare(`
+    INSERT INTO manual_invoice_attachments (
+      consultation_id,billing_id,patient_id,original_name,stored_name,mime_type,file_size
+    ) VALUES (?, ?, ?, 'manual-invoice.png', ?, 'image/png', 20)
+  `).run(linkedVisit.consultation_id, linkedVisit.billing_id, linkedVisit.patient_id, manualInvoiceName);
+
   fs.mkdirSync(financeAttachmentsDir, { recursive: true });
   const financeStoredName = "backup-test-expense.pdf";
   fs.writeFileSync(path.join(financeAttachmentsDir, financeStoredName), "%PDF-1.4 expense backup test");
@@ -61,17 +82,25 @@ test("creates a verified SQLite snapshot with referenced attachments and checksu
   const snapshotPath = path.join(result.backupDir, "clinic.db");
   const attachmentPath = path.join(result.backupDir, "lab-report-attachments", storedName);
   const financeAttachmentPath = path.join(result.backupDir, "finance-attachments", financeStoredName);
+  const manualInvoicePath = path.join(
+    result.backupDir,
+    "manual-invoice-attachments",
+    manualInvoiceName,
+  );
   assert.equal(fs.existsSync(snapshotPath), true);
   assert.equal(fs.existsSync(attachmentPath), true);
   assert.equal(fs.existsSync(financeAttachmentPath), true);
+  assert.equal(fs.existsSync(manualInvoicePath), true);
   assert.equal(result.manifest.sqlite_quick_check, "ok");
   assert.equal(result.manifest.foreign_key_violations, 0);
   assert.equal(result.manifest.attachment_records, 1);
+  assert.equal(result.manifest.manual_invoice_attachment_records, 1);
   assert.equal(result.manifest.finance_attachment_records, 1);
   assert.equal(result.manifest.files.find((file) => file.path === "clinic.db").sha256, sha256File(snapshotPath));
 
   const snapshot = new Database(snapshotPath, { readonly: true });
   assert.equal(snapshot.prepare("SELECT COUNT(*) AS count FROM lab_report_attachments").get().count, 1);
+  assert.equal(snapshot.prepare("SELECT COUNT(*) AS count FROM manual_invoice_attachments").get().count, 1);
   snapshot.close();
 });
 

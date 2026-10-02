@@ -234,10 +234,10 @@ function ConsultationsPage() {
 
   async function loadData() {
     try {
-      const [consultationData, appointmentData] = await Promise.all([
-        api.get("/consultations"),
-        api.get("/consultations/available-appointments"),
-      ]);
+      const consultationData = await api.get("/consultations");
+      const appointmentData = canManageConsultations
+        ? await api.get("/consultations/available-appointments")
+        : [];
 
       setConsultations(consultationData);
       setAvailableAppointments(appointmentData);
@@ -284,7 +284,11 @@ function ConsultationsPage() {
       <PageHeader
         eyebrow="Clinical notes"
         title="Consultations"
-        description="Write structured doctor notes tied to appointments, then let the system generate billing automatically behind the scenes."
+        description={
+          canManageConsultations
+            ? "Write structured doctor notes tied to appointments, then let the system generate billing automatically behind the scenes."
+            : "Open a doctor's consultation in read-only mode and attach the matching manual invoice photo to its bill."
+        }
         actions={
           canManageConsultations ? (
             <button
@@ -355,11 +359,11 @@ function ConsultationsPage() {
                           <SquarePen className="size-4" />
                           Edit
                         </button>
-                      ) : canManageConsultations ? (
+                      ) : (
                         <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                           View only
                         </span>
-                      ) : null}
+                      )}
                     </div>
                   </div>
 

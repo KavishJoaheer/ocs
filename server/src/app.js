@@ -4,7 +4,14 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const { db, dbPath, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir } = require("./db");
+const {
+  db,
+  dbPath,
+  financeAttachmentsDir,
+  initializeDatabase,
+  labReportAttachmentsDir,
+  manualInvoiceAttachmentsDir,
+} = require("./db");
 const authRouter = require("./routes/auth");
 const dashboardRouter = require("./routes/dashboard");
 const operatorRouter = require("./routes/operator");
@@ -20,6 +27,7 @@ const financeRouter = require("./routes/finance");
 const accountingRouter = require("./routes/accounting");
 const inventoryRouter = require("./routes/inventory");
 const labReportsRouter = require("./routes/labReports");
+const manualInvoiceAttachmentsRouter = require("./routes/manualInvoiceAttachments");
 const pushRouter = require("./routes/push");
 const restockRequestsRouter = require("./routes/restockRequests");
 const visitRequestsRouter = require("./routes/visitRequests");
@@ -231,6 +239,7 @@ function createApp() {
       db.prepare("SELECT 1 AS ok").get();
       fs.accessSync(path.dirname(dbPath), fs.constants.R_OK | fs.constants.W_OK);
       fs.accessSync(labReportAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
+      fs.accessSync(manualInvoiceAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
       fs.accessSync(financeAttachmentsDir, fs.constants.R_OK | fs.constants.W_OK);
       const storage = fs.statfsSync(path.dirname(dbPath));
       const freeBytes = Number(storage.bavail) * Number(storage.bsize);
@@ -352,12 +361,21 @@ function createApp() {
     "/api/consultations",
     requireAuth,
     authorizeByMethod({
-      GET: ["admin", "doctor", "lab_tech"],
+      GET: ["admin", "doctor", "lab_tech", "operator"],
       POST: ["admin", "doctor"],
       PUT: ["admin", "doctor"],
       DELETE: ["admin", "doctor"],
     }),
     consultationsRouter,
+  );
+  app.use(
+    "/api/manual-invoice-attachments",
+    requireAuth,
+    authorizeByMethod({
+      GET: ["admin", "doctor", "operator"],
+      POST: ["operator"],
+    }),
+    manualInvoiceAttachmentsRouter,
   );
   app.use(
     "/api/billing",

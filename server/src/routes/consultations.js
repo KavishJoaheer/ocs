@@ -113,11 +113,39 @@ function getConsultationById(consultationId) {
     .all(consultationId)
     .map(parseBillingRow);
 
+  const manualInvoiceAttachments = db
+    .prepare(`
+      SELECT
+        attachment.id,
+        attachment.consultation_id,
+        attachment.billing_id,
+        attachment.original_name,
+        attachment.mime_type,
+        attachment.file_size,
+        attachment.created_at,
+        uploader.full_name AS uploaded_by_name,
+        uploader.role AS uploaded_by_role,
+        billing.invoice_number,
+        billing.source_reference,
+        billing.status AS billing_status
+      FROM manual_invoice_attachments attachment
+      LEFT JOIN users uploader ON uploader.id = attachment.uploaded_by_user_id
+      JOIN billing ON billing.id = attachment.billing_id
+      WHERE attachment.consultation_id = ?
+      ORDER BY attachment.created_at DESC, attachment.id DESC
+    `)
+    .all(consultationId)
+    .map((attachment) => ({
+      ...attachment,
+      download_url: `/manual-invoice-attachments/${attachment.id}/download`,
+    }));
+
   return {
     ...consultation,
     bill_count: Number(consultation.bill_count || 0),
     bill_total_amount: toNumber(consultation.bill_total_amount, 0),
     bills,
+    manual_invoice_attachments: manualInvoiceAttachments,
   };
 }
 
@@ -221,13 +249,21 @@ router.get("/:id", (req, res) => {
     return res.status(404).json({ error: "Consultation not found." });
   }
 
-  if (!canViewConsultationNotes(req.auth) && req.auth?.role !== "lab_tech") {
+  if (
+    !canViewConsultationNotes(req.auth) &&
+    req.auth?.role !== "lab_tech" &&
+    req.auth?.role !== "operator"
+  ) {
     return res.status(403).json({
-      error: "Only doctors can view consultation notes.",
+      error: "You do not have access to this consultation note.",
     });
   }
 
-  res.json(consultation);
+  res.json(
+    req.auth?.role === "lab_tech"
+      ? { ...consultation, manual_invoice_attachments: [] }
+      : consultation,
+  );
 });
 
 router.post("/", (req, res) => {

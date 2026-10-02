@@ -128,6 +128,12 @@ const navItems = [
     roles: ["doctor", "operator"],
   },
   {
+    to: "/consultations",
+    label: "Consultations",
+    icon: ClipboardList,
+    roles: ["operator"],
+  },
+  {
     to: "/admin/finance",
     label: "Finance",
     icon: CreditCard,

@@ -5,7 +5,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Database = require("better-sqlite3");
 
-const { db, dbPath, financeAttachmentsDir, initializeDatabase, labReportAttachmentsDir, rosterDir } = require("../db");
+const {
+  db,
+  dbPath,
+  financeAttachmentsDir,
+  initializeDatabase,
+  labReportAttachmentsDir,
+  manualInvoiceAttachmentsDir,
+  rosterDir,
+} = require("../db");
 
 function timestampForPath(date = new Date()) {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
@@ -146,6 +154,26 @@ async function createVerifiedBackup({
       );
     }
 
+    const manualInvoiceRows = snapshotDb
+      .prepare("SELECT id, stored_name FROM manual_invoice_attachments ORDER BY id")
+      .all();
+    for (const attachment of manualInvoiceRows) {
+      const storedName = String(attachment.stored_name || "").trim();
+      const sourcePath = path.resolve(manualInvoiceAttachmentsDir, storedName);
+      if (!storedName || !isWithin(manualInvoiceAttachmentsDir, sourcePath)) {
+        throw new Error(`Unsafe manual invoice attachment path in record ${attachment.id}.`);
+      }
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(`Manual invoice attachment ${attachment.id} is missing: ${storedName}`);
+      }
+      copyVerifiedFile(
+        sourcePath,
+        path.join(partialDir, "manual-invoice-attachments", storedName),
+        path.join("manual-invoice-attachments", storedName),
+        files,
+      );
+    }
+
     const financeAttachmentRows = snapshotDb.prepare(`
       SELECT 'expense' AS record_type,id,receipt_stored_name AS stored_name
       FROM finance_expenses WHERE receipt_stored_name IS NOT NULL
@@ -182,6 +210,7 @@ async function createVerifiedBackup({
       sqlite_quick_check: "ok",
       foreign_key_violations: 0,
       attachment_records: attachmentRows.length,
+      manual_invoice_attachment_records: manualInvoiceRows.length,
       finance_attachment_records: financeAttachmentRows.length,
       files,
     };

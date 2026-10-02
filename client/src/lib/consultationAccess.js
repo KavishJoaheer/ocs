@@ -1,10 +1,10 @@
 /** Consultation notes use `doctor_id` as the authoring doctor record. */
 export function canViewConsultationNotes(user) {
-  return user?.role === "admin" || user?.role === "doctor";
+  return ["admin", "doctor", "operator"].includes(user?.role);
 }
 
 export function canManageConsultationNotes(user) {
-  return canViewConsultationNotes(user);
+  return user?.role === "admin" || user?.role === "doctor";
 }
 
 export function isOperatorConsultationViewOnly(user) {
