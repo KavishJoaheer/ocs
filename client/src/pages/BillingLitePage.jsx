@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import Modal from "../components/Modal.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useKeyboardOffset } from "../hooks/useKeyboardOffset.js";
@@ -196,6 +197,9 @@ function isCatalogItemReady(item) {
 function BillingLitePage() {
   const { user } = useAuth();
   const operatorIssueOnly = user?.role === "operator";
+  const [searchParams] = useSearchParams();
+  const requestedConsultationId = Number(searchParams.get("consultationId") || 0);
+  const requestedDoctorId = operatorIssueOnly ? String(searchParams.get("doctorId") || "") : "";
   const [view, setView] = useState("today");
   const [submissions, setSubmissions] = useState([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
@@ -219,12 +223,13 @@ function BillingLitePage() {
   const [lookupResults, setLookupResults] = useState([]);
   const [patientOptions, setPatientOptions] = useState([]);
   const [doctorOptions, setDoctorOptions] = useState([]);
-  const [billingDoctorId, setBillingDoctorId] = useState("");
-  const billingDoctorIdRef = useRef("");
+  const [billingDoctorId, setBillingDoctorId] = useState(requestedDoctorId);
+  const billingDoctorIdRef = useRef(requestedDoctorId);
   const [sourceReference, setSourceReference] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentDate, setPaymentDate] = useState(() => dayjs().format("YYYY-MM-DD"));
+  const [recordPaymentNow, setRecordPaymentNow] = useState(!operatorIssueOnly);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [visitPickerExpanded, setVisitPickerExpanded] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
@@ -257,6 +262,7 @@ function BillingLitePage() {
   const [lastSubmissionOffline, setLastSubmissionOffline] = useState(false);
   const [reversingSubmissionId, setReversingSubmissionId] = useState(null);
   const [workflowDialog, setWorkflowDialog] = useState(null);
+  const deepLinkOpenedRef = useRef(false);
   const [favorites, setFavorites] = useState(() => {
     return new Set();
   });
@@ -292,6 +298,9 @@ function BillingLitePage() {
       const pickerQuery = new URLSearchParams({ limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
       const activeBillingDoctorId = billingDoctorIdRef.current;
       if (operatorIssueOnly && activeBillingDoctorId) pickerQuery.set("doctorId", activeBillingDoctorId);
+      if (Number.isInteger(requestedConsultationId) && requestedConsultationId > 0) {
+        pickerQuery.set("consultationId", String(requestedConsultationId));
+      }
       const [submissionPayload, pickerPayload, feePayload] = await Promise.all([
         api.get(`/billing/quick/submissions?limit=${SUBMISSION_PAGE_SIZE}&offset=0`),
         api.get(`/billing/quick/picker-options?${pickerQuery.toString()}`),
@@ -319,6 +328,19 @@ function BillingLitePage() {
   useEffect(() => {
     void loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (deepLinkOpenedRef.current || !Number.isInteger(requestedConsultationId) || requestedConsultationId <= 0) return;
+    const patient = patientOptions.find((option) =>
+      option.visits?.some((visit) => Number(visit.consultation_id) === requestedConsultationId),
+    );
+    const visit = patient?.visits?.find((option) => Number(option.consultation_id) === requestedConsultationId);
+    if (!patient || !visit || (operatorIssueOnly && !billingDoctorId)) return;
+    deepLinkOpenedRef.current = true;
+    setSelectedPatientId(String(patient.patient_id));
+    setSelectedPickerVisitId(String(visit.consultation_id));
+    void chooseVisit(visit);
+  }, [billingDoctorId, operatorIssueOnly, patientOptions, requestedConsultationId]);
 
   useEffect(() => {
     if (view !== "status") return undefined;
@@ -362,6 +384,7 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setRecordPaymentNow(!operatorIssueOnly);
     if (!doctorId) return;
     setIsCatalogLoading(true);
     try {
@@ -651,6 +674,7 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setRecordPaymentNow(!operatorIssueOnly);
     setCart({});
     setCatalog([]);
     setMaskSizeByItem({});
@@ -1009,15 +1033,15 @@ function BillingLitePage() {
       toast.error("Enter the manual invoice receipt reference.");
       return;
     }
-    if (!["cash", "juice", "card", "ib"].includes(paymentMethod)) {
+    if (recordPaymentNow && !["cash", "juice", "card", "ib"].includes(paymentMethod)) {
       toast.error("Select the payment method.");
       return;
     }
-    if (!paymentDate || dayjs(paymentDate).isAfter(dayjs(), "day")) {
+    if (recordPaymentNow && (!paymentDate || dayjs(paymentDate).isAfter(dayjs(), "day"))) {
       toast.error("Select a valid payment date that is not in the future.");
       return;
     }
-    if (paymentMethod !== "cash" && paymentReference.trim().length < 3) {
+    if (recordPaymentNow && paymentMethod !== "cash" && paymentReference.trim().length < 3) {
       toast.error("Enter the Juice, card, or IB transaction reference.");
       return;
     }
@@ -1027,9 +1051,10 @@ function BillingLitePage() {
       operation_id: editingOfflineEntry?.payload?.operation_id || crypto.randomUUID(),
       doctor_id: operatorIssueOnly ? Number(billingDoctorId) : undefined,
       source_reference: sourceReference.trim(),
-      payment_method: paymentMethod,
-      payment_date: paymentDate,
-      payment_reference: paymentReference.trim() || undefined,
+      record_payment: recordPaymentNow,
+      payment_method: recordPaymentNow ? paymentMethod : undefined,
+      payment_date: recordPaymentNow ? paymentDate : undefined,
+      payment_reference: recordPaymentNow ? paymentReference.trim() || undefined : undefined,
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
@@ -1062,7 +1087,7 @@ function BillingLitePage() {
       setSelectedVisit(payload.visit || selectedVisit);
       setView("success");
       await loadDashboard({ silent: true });
-      toast.success("Invoice issued and payment recorded.");
+      toast.success(recordPaymentNow ? "Invoice issued and payment recorded." : "Invoice issued as unpaid and added to Payment follow-up.");
     } catch (error) {
       if (isBrowserOffline() || isNetworkFailure(error)) {
         try {
@@ -1176,6 +1201,7 @@ function BillingLitePage() {
       setPaymentMethod(String(queueEntry.payload?.payment_method || queueEntry.meta?.paymentMethod || ""));
       setPaymentReference(String(queueEntry.payload?.payment_reference || ""));
       setPaymentDate(String(queueEntry.payload?.payment_date || queueEntry.meta?.paymentDate || dayjs().format("YYYY-MM-DD")));
+      setRecordPaymentNow(queueEntry.payload?.record_payment !== false);
       setEditingOfflineEntry(queueEntry);
       setView("catalog");
       toast.success("Saved submission opened for correction. Review it before submitting again.");
@@ -1220,6 +1246,7 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
+    setRecordPaymentNow(!operatorIssueOnly);
     setConsultationAdjustmentReason("");
     setPatientPickerOpen(false);
     setVisitPickerExpanded(false);
@@ -2019,7 +2046,37 @@ function BillingLitePage() {
                     </span>
                   </label>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  {operatorIssueOnly ? (
+                    <fieldset>
+                      <legend className="text-sm font-black text-slate-700">Payment status</legend>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          aria-pressed={!recordPaymentNow}
+                          onClick={() => {
+                            setRecordPaymentNow(false);
+                            setPaymentMethod("");
+                            setPaymentReference("");
+                          }}
+                          className={`min-h-14 rounded-xl border-2 px-4 text-left font-black transition ${!recordPaymentNow ? "border-[#2aa7a0] bg-[#edf8f6] text-[#17666a]" : "border-slate-200 bg-white text-slate-600"}`}
+                        >
+                          Issue as unpaid
+                          <span className="mt-1 block text-xs font-semibold">Adds it to Payment follow-up.</span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={recordPaymentNow}
+                          onClick={() => setRecordPaymentNow(true)}
+                          className={`min-h-14 rounded-xl border-2 px-4 text-left font-black transition ${recordPaymentNow ? "border-[#2aa7a0] bg-[#edf8f6] text-[#17666a]" : "border-slate-200 bg-white text-slate-600"}`}
+                        >
+                          Payment received
+                          <span className="mt-1 block text-xs font-semibold">Issue and record payment now.</span>
+                        </button>
+                      </div>
+                    </fieldset>
+                  ) : null}
+
+                  {recordPaymentNow ? <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block">
                       <span className="text-sm font-black text-slate-700">Payment method</span>
                       <select
@@ -2047,9 +2104,9 @@ function BillingLitePage() {
                         className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-base font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]"
                       />
                     </label>
-                  </div>
+                  </div> : null}
 
-                  {paymentMethod && paymentMethod !== "cash" ? (
+                  {recordPaymentNow && paymentMethod && paymentMethod !== "cash" ? (
                     <label className="block">
                       <span className="text-sm font-black text-slate-700">Payment transaction reference</span>
                       <input
@@ -2072,7 +2129,7 @@ function BillingLitePage() {
                   <div>
                     <p className="text-sm font-bold text-slate-600">Invoice total</p>
                     <p className="text-sm font-semibold text-slate-500">
-                      Payment is recorded when the invoice is issued
+                      {recordPaymentNow ? "Payment is recorded when the invoice is issued" : "This invoice will appear in Payment follow-up"}
                     </p>
                   </div>
                   <p className="text-2xl font-black text-[#173f47]">{formatRupees(grandTotal)}</p>
@@ -2085,7 +2142,7 @@ function BillingLitePage() {
                   className="mt-6 hidden min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60 md:flex"
                 >
                   {isSubmitting ? <LoaderCircle className="size-6 animate-spin" /> : <Send className="size-6" />}
-                  {isSubmitting ? "Issuing…" : "Issue invoice"}
+                  {isSubmitting ? "Issuing…" : operatorIssueOnly ? (recordPaymentNow ? "Issue and record payment" : "Issue unpaid invoice") : "Issue invoice"}
                 </button>
               </div>
             </div>
@@ -2094,7 +2151,7 @@ function BillingLitePage() {
               onClick={submitBilling}
               disabled={isSubmitting}
               className="billing-integrated-review-bar fixed left-1/2 z-30 flex min-h-14 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-2xl bg-[#17666a] px-5 text-white shadow-[0_12px_30px_rgba(23,63,71,0.22)] transition active:scale-[0.98] disabled:opacity-60 md:hidden"
-              aria-label={`Issue invoice for ${formatRupees(grandTotal)}`}
+              aria-label={`${operatorIssueOnly ? (recordPaymentNow ? "Issue and record payment" : "Issue unpaid invoice") : "Issue invoice"} for ${formatRupees(grandTotal)}`}
             >
               <span className="text-left">
                 <span className="block text-xs font-bold text-white/70">Invoice total</span>
@@ -2102,7 +2159,7 @@ function BillingLitePage() {
               </span>
               <span className="flex items-center gap-2 text-base font-black">
                 {isSubmitting ? <LoaderCircle className="size-5 animate-spin" aria-hidden="true" /> : <Send className="size-5" aria-hidden="true" />}
-                {isSubmitting ? "Issuing…" : "Issue invoice"}
+                {isSubmitting ? "Issuing…" : operatorIssueOnly ? (recordPaymentNow ? "Issue and pay" : "Issue unpaid") : "Issue invoice"}
               </span>
             </button>
           </section>

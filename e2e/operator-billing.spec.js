@@ -179,7 +179,7 @@ for (const device of [
 }
 
 test.describe("operator billing", () => {
-  test("desktop lets an operator issue an invoice with the required payment evidence", async ({ page, request }) => {
+  test("desktop lets an operator choose unpaid follow-up or payment received", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -192,10 +192,14 @@ test.describe("operator billing", () => {
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
     await advanceOperatorInvoiceToReview(page, request, operator.token);
     await expect(page.getByLabel("Receipt reference")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Issue as unpaid/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Payment received/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue unpaid invoice", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Payment received/i }).click();
     await expect(page.getByLabel("Payment method")).toBeVisible();
     await expect(page.getByLabel("Payment date")).toBeVisible();
     await expect(page.getByText(/operator account is recorded in the audit history/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue and record payment", exact: true })).toBeVisible();
   });
 
   test("mobile keeps billing reachable while protecting the invoice form", async ({ page, request }) => {
@@ -218,6 +222,8 @@ test.describe("operator billing", () => {
 
     await advanceOperatorInvoiceToReview(page, request, operator.token);
     await expect(page.getByLabel("Receipt reference")).toBeVisible();
+    await expect(page.getByText(/This invoice will appear in Payment follow-up/i)).toBeVisible();
+    await page.getByRole("button", { name: /Payment received/i }).click();
     await expect(page.getByLabel("Payment method")).toBeVisible();
     await expect(page.getByText(/Payment is recorded when the invoice is issued/i)).toBeVisible();
   });
@@ -229,8 +235,9 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
     await advanceOperatorInvoiceToReview(page, request, operator.token);
     await page.getByLabel("Receipt reference").fill(`E2E-PAY-${Date.now()}`);
+    await page.getByRole("button", { name: /Payment received/i }).click();
     await page.getByLabel("Payment method").selectOption("cash");
-    await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
+    await page.getByRole("button", { name: "Issue and record payment", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Completed", { exact: true })).toBeVisible();
   });

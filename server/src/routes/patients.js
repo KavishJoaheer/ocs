@@ -1232,6 +1232,7 @@ router.get("/:id", (req, res) => {
           SELECT
             b.*,
             c.consultation_date,
+            c.doctor_id AS consultation_doctor_id,
             d.full_name AS doctor_name
           FROM billing b
           JOIN consultations c ON c.id = b.consultation_id

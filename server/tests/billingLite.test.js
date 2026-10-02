@@ -376,6 +376,58 @@ test("operator quick billing requires the matching consultation doctor and payme
   );
 });
 
+test("operator can issue an unpaid invoice and it appears in payment follow-up", async () => {
+  const patient = db.prepare("SELECT id FROM patients WHERE patient_identifier = ?").get(patientIdentifier);
+  const unpaidConsultationId = createBillableVisit(patient.id, "Operator unpaid invoice test", "18:15");
+
+  const picker = await api(
+    "GET",
+    `/billing/quick/picker-options?doctorId=${doctorId}&consultationId=${unpaidConsultationId}`,
+    operatorToken,
+  );
+  assert.equal(picker.status, 200, JSON.stringify(picker.data));
+  assert.equal(picker.data.patients[0].visits[0].consultation_id, unpaidConsultationId);
+
+  const issued = await api(
+    "POST",
+    `/billing/quick/visits/${unpaidConsultationId}/capture`,
+    operatorToken,
+    {
+      operation_id: randomUUID(),
+      doctor_id: doctorId,
+      source_reference: `UNPAID-${randomUUID()}`,
+      record_payment: false,
+      consultation_fee: { type: "Day Consultation", amount: 2000 },
+      items: [],
+    },
+  );
+  assert.equal(issued.status, 201, JSON.stringify(issued.data));
+  assert.equal(issued.data.submission.workflow_status, "ready_for_payment");
+  assert.equal(issued.data.submission.payment, null);
+  assert.equal(issued.data.visit.submission_status, "ready_for_payment");
+
+  const bill = db.prepare(`
+    SELECT id, status, finalized_at, payment_method
+    FROM billing
+    WHERE consultation_id = ? AND voided_at IS NULL
+  `).get(unpaidConsultationId);
+  assert.equal(bill.status, "unpaid");
+  assert.ok(bill.finalized_at);
+  assert.equal(bill.payment_method, null);
+  assert.equal(
+    Number(db.prepare("SELECT COUNT(*) AS count FROM billing_payment_ledger WHERE billing_id = ?").get(bill.id).count),
+    0,
+  );
+
+  const followUp = await api("GET", `/billing?paginated=1&status=unpaid&search=${bill.id}`, operatorToken);
+  assert.equal(followUp.status, 200, JSON.stringify(followUp.data));
+  assert.ok(followUp.data.bills.some((row) => Number(row.id) === Number(bill.id)));
+
+  const workspace = await api("GET", "/dashboard/operator-workspace", operatorToken);
+  assert.equal(workspace.status, 200, JSON.stringify(workspace.data));
+  assert.ok(workspace.data.pendingPayments.some((row) => Number(row.id) === Number(bill.id)));
+});
+
 test("Billing Lite atomically appends supplies, deducts stock, and prevents retry duplication", async () => {
   const catalog = await api("GET", `/billing/quick/catalog/${consultationId}`);
   assert.equal(catalog.status, 200, JSON.stringify(catalog.data));

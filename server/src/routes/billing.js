@@ -2267,10 +2267,15 @@ router.get("/quick/picker-options", (req, res) => {
   });
 
   const search = String(req.query.search || "").trim().slice(0, 100);
+  const requestedConsultationId = Number(req.query.consultationId || 0);
+  const consultationId = Number.isInteger(requestedConsultationId) && requestedConsultationId > 0
+    ? requestedConsultationId
+    : null;
   const limit = Math.min(200, Math.max(20, Number.parseInt(req.query.limit, 10) || 100));
   const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const patientMap = new Map();
   const visitRows = quickVisitBaseRows(doctorId, {
+    consultationId,
     search,
     billableRole: req.auth?.role,
     limit: limit + 1,
@@ -2890,16 +2895,17 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   const paymentMethod = normalizePaymentMethod(req.body?.payment_method);
   const paymentDate = String(req.body?.payment_date || "").trim();
   const paymentReference = normalizeSourceReference(req.body?.payment_reference);
-  if (!PAYMENT_METHODS.has(paymentMethod)) {
+  const recordPaymentNow = req.auth?.role !== "operator" || req.body?.record_payment !== false;
+  if (recordPaymentNow && !PAYMENT_METHODS.has(paymentMethod)) {
     return res.status(400).json({
       error: "Select a valid payment method: cash, juice, card, or IB.",
       code: "BILLING_PAYMENT_METHOD_REQUIRED",
     });
   }
-  if (!validPaymentDate(paymentDate)) {
+  if (recordPaymentNow && !validPaymentDate(paymentDate)) {
     return res.status(400).json({ error: "Enter a valid payment date (YYYY-MM-DD)." });
   }
-  if (paymentMethod !== "cash" && paymentReference.length < 3) {
+  if (recordPaymentNow && paymentMethod !== "cash" && paymentReference.length < 3) {
     return res.status(400).json({
       error: "Enter the Juice, card, or IB transaction reference.",
       code: "BILLING_PAYMENT_REFERENCE_REQUIRED",
@@ -3410,6 +3416,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       const amountAdded = roundCurrency(
         submissionItems.reduce((sum, item) => sum + (item.type === "Sale" ? Number(item.amount || 0) : 0), 0),
       );
+      const workflowStatus = recordPaymentNow ? "completed" : "ready_for_payment";
       const inserted = db
         .prepare(`
           INSERT INTO billing_lite_submissions (
@@ -3426,7 +3433,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           JSON.stringify(submissionItems),
           amountAdded,
-          "completed",
+          workflowStatus,
         );
 
       db.prepare(`
@@ -3448,25 +3455,27 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         db.prepare("SELECT * FROM billing WHERE id = ? AND voided_at IS NULL").get(bill.id),
       );
       assertBillFinalized(issuedBill);
-      issuedPaymentTransaction = recordPaymentTransaction({
-        bill: issuedBill,
-        amount: issuedBill.total_amount,
-        paymentMethod,
-        paymentDate,
-        externalReference: paymentReference,
-        operationId: `quick-issue-payment:${operationId}`,
-        actor: req.auth,
-      });
-      issuedPaymentSummary = syncBillingPaymentSummary(
-        bill.id,
-        req.auth,
-        `Payment recorded while issuing invoice ${sourceReference}`,
-      );
-      if (issuedPaymentSummary.payment_state !== "paid") {
-        throw Object.assign(new Error("The invoice payment could not be completed atomically."), {
-          status: 409,
-          extra: { code: "QUICK_BILLING_PAYMENT_INCOMPLETE" },
+      if (recordPaymentNow) {
+        issuedPaymentTransaction = recordPaymentTransaction({
+          bill: issuedBill,
+          amount: issuedBill.total_amount,
+          paymentMethod,
+          paymentDate,
+          externalReference: paymentReference,
+          operationId: `quick-issue-payment:${operationId}`,
+          actor: req.auth,
         });
+        issuedPaymentSummary = syncBillingPaymentSummary(
+          bill.id,
+          req.auth,
+          `Payment recorded while issuing invoice ${sourceReference}`,
+        );
+        if (issuedPaymentSummary.payment_state !== "paid") {
+          throw Object.assign(new Error("The invoice payment could not be completed atomically."), {
+            status: 409,
+            extra: { code: "QUICK_BILLING_PAYMENT_INCOMPLETE" },
+          });
+        }
       }
 
       const supersededClarifications = db.prepare(`
@@ -3520,7 +3529,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         billingId: bill.id,
         actor: req.auth,
         eventType: "submitted",
-        nextStatus: "completed",
+        nextStatus: workflowStatus,
         details: {
           item_count: submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
           amount_added: amountAdded,
@@ -3547,13 +3556,13 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
               adjusted_by_role: String(item.price_adjusted_by_role || req.auth?.role || ""),
             })),
           source_reference: sourceReference,
-          payment: {
+          payment: recordPaymentNow ? {
             transaction_id: Number(issuedPaymentTransaction?.id || 0) || null,
             method: paymentMethod,
             date: paymentDate,
             external_reference: paymentReference || null,
             amount: roundCurrency(issuedBill.total_amount),
-          },
+          } : null,
           issued_on_behalf_of_doctor: req.auth?.role === "operator",
           operator_doctor_selection_verified: req.auth?.role === "operator" ? true : null,
           consultation_doctor_id: doctorId,
@@ -3570,15 +3579,15 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         item_count: submissionItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
         consultation_fee: { type: consultationFeeType, amount: consultationFeeAmount, changed: feeChanged },
         source_reference: sourceReference,
-        workflow_status: "completed",
-        payment: {
+        workflow_status: workflowStatus,
+        payment: recordPaymentNow ? {
           transaction_id: Number(issuedPaymentTransaction?.id || 0) || null,
           method: paymentMethod,
           date: paymentDate,
           external_reference: paymentReference || null,
           amount: roundCurrency(issuedBill.total_amount),
           state: issuedPaymentSummary.payment_state,
-        },
+        } : null,
       };
       operation.save(result);
     }).immediate();

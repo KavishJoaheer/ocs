@@ -308,7 +308,30 @@ function MobileBillingStatusBar({ status }) {
     );
   }
 
+  if (normalized === "ready_to_issue") {
+    return (
+      <span className="inline-flex rounded-lg bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">
+        Ready to issue
+      </span>
+    );
+  }
+
   return <StatusBadge value={status} />;
+}
+
+function patientBillStatus(bill) {
+  return bill?.finalized_at ? (bill.payment_status || bill.status) : "ready_to_issue";
+}
+
+function patientBillOpenPath(bill, patientId, role) {
+  if (role === "operator") {
+    if (bill?.finalized_at) {
+      const status = String(bill.status || "").toLowerCase() === "paid" ? "paid" : "unpaid";
+      return `/operator/pending-payment?billId=${bill.id}&status=${status}`;
+    }
+    return `/billing?doctorId=${bill.consultation_doctor_id || bill.doctor_id_snapshot || ""}&consultationId=${bill.consultation_id}`;
+  }
+  return `/billing?patientId=${patientId}&billId=${bill.id}`;
 }
 
 function getMobileBillingCanvasClass(bills) {
@@ -317,7 +340,7 @@ function getMobileBillingCanvasClass(bills) {
   }
 
   const hasUnpaid = bills.some(
-    (bill) => String(bill.payment_status || bill.status).trim().toLowerCase() === "unpaid",
+    (bill) => String(patientBillStatus(bill)).trim().toLowerCase() === "unpaid",
   );
 
   return cx(
@@ -329,7 +352,7 @@ function getMobileBillingCanvasClass(bills) {
 }
 
 function getMobileBillingCardClass(bill) {
-  const normalized = String(bill.payment_status || bill.status).trim().toLowerCase();
+  const normalized = String(patientBillStatus(bill)).trim().toLowerCase();
 
   if (normalized === "paid") {
     return "rounded-[24px] border border-[#e6ebd9]/80 bg-[#e6ebd9]/40 p-4 text-[#3b4733]";
@@ -2695,7 +2718,7 @@ function PatientProfilePage() {
                             {formatDate(bill.consultation_date)}
                           </p>
                         </div>
-                        <MobileBillingStatusBar status={bill.payment_status || bill.status} />
+                        <MobileBillingStatusBar status={patientBillStatus(bill)} />
                       </div>
                       <div className="mt-3 space-y-3">
                         <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
@@ -2730,6 +2753,14 @@ function PatientProfilePage() {
                           </li>
                         ))}
                       </ul>
+                      {showPatientBillingUi ? (
+                        <Link
+                          to={patientBillOpenPath(bill, id, user.role)}
+                          className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-ocs-slate"
+                        >
+                          {bill.finalized_at && bill.status === "unpaid" ? "Open payment follow-up" : "Open bill"}
+                        </Link>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -3207,11 +3238,11 @@ function PatientProfilePage() {
                             {formatCurrency(bill.total_amount)}
                           </td>
                           <td className="px-3 py-1.5 align-middle">
-                            <StatusBadge value={bill.status} />
+                            <MobileBillingStatusBar status={patientBillStatus(bill)} />
                           </td>
                           <td className="px-3 py-1.5 align-middle text-right">
                             <Link
-                              to={`/billing?patientId=${id}`}
+                              to={patientBillOpenPath(bill, id, user.role)}
                               className="inline-flex rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
                             >
                               Open

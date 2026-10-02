@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, DollarSign, FileText, ReceiptText, Search } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -125,9 +125,14 @@ function PaymentModal({ bill, busy, onClose, onConfirm }) {
 }
 
 export default function OperatorBillingStatusPage() {
+  const [searchParams] = useSearchParams();
+  const requestedBillId = Number(searchParams.get("billId") || 0);
+  const requestedBillOpenedRef = useRef(false);
   const refreshKey = useLiveRefreshKey();
-  const [activeView, setActiveView] = useState("pending");
-  const [searchText, setSearchText] = useState("");
+  const [activeView, setActiveView] = useState(searchParams.get("status") === "paid" ? "paid" : "pending");
+  const [searchText, setSearchText] = useState(
+    Number.isInteger(requestedBillId) && requestedBillId > 0 ? String(requestedBillId) : "",
+  );
   const [loading, setLoading] = useState(true);
   const [bills, setBills] = useState([]);
   const [billTotal, setBillTotal] = useState(0);
@@ -172,6 +177,14 @@ export default function OperatorBillingStatusPage() {
   }, [activeView, page, refreshKey, reloadToken, searchText]);
 
   useEffect(() => { setPage(0); }, [activeView, searchText]);
+
+  useEffect(() => {
+    if (requestedBillOpenedRef.current || loading || !Number.isInteger(requestedBillId) || requestedBillId <= 0) return;
+    const bill = bills.find((row) => Number(row.id) === requestedBillId);
+    if (!bill) return;
+    requestedBillOpenedRef.current = true;
+    if (bill.status === "unpaid" && !bill.payment_block && !bill.fee_review_required) void openPayment(bill);
+  }, [bills, loading, requestedBillId]);
 
   const viewTitle = useMemo(() => {
     if (activeView === "pending") return "Payments to follow up";
