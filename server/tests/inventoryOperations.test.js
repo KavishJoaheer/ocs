@@ -150,6 +150,21 @@ async function startStocktakeSession(body = {}, token = operatorToken) {
   });
 }
 
+async function cancelOpenStocktakes() {
+  const rows = db.prepare(`
+    SELECT id
+    FROM inventory_stocktake_sessions
+    WHERE status IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+    ORDER BY id ASC
+  `).all();
+  for (const row of rows) {
+    const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${row.id}/cancel`, {
+      token: operatorToken,
+    });
+    assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+  }
+}
+
 async function createAcceptedRequest({ token = doctorToken, itemId, itemName, quantity, note = "ops" }) {
   const created = await api("POST", "/api/restock-requests", {
     token,
@@ -333,6 +348,70 @@ test("low stock is running low only; empty catalogue is not out of stock", () =>
   assert.equal(isOutOfStock({ quantity: 0, minimum_quantity: 4, ever_stocked: true }), true);
   assert.equal(isOutOfStock({ quantity: 2, minimum_quantity: 4, available_to_use: 0 }), true);
   assert.equal(isOutOfStock({ quantity: 0, minimum_quantity: 0, ever_stocked: true }), false);
+});
+
+test("stock counts exclude non-stock services and reject overlapping active scopes", async () => {
+  const servicesFolder = db.prepare("SELECT id FROM inventory_folders WHERE name = 'Services'").get();
+  assert.ok(servicesFolder?.id);
+  const serviceId = Number(db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, quantity, minimum_quantity, unit,
+      cost_price, selling_price, stock_scope
+    ) VALUES (?, 'service', ?, 0, 0, 'service', 0, 500, 'ocs')
+  `).run(`Countless service ${randomUUID()}`, servicesFolder.id).lastInsertRowid);
+
+  const servicePreview = await api(
+    "GET",
+    `/api/inventory/stocktake/scope?item_ids=${serviceId}`,
+    { token: operatorToken },
+  );
+  assert.equal(servicePreview.status, 200, JSON.stringify(servicePreview.data));
+  assert.equal(servicePreview.data.item_count, 0);
+  const serviceCount = await api("POST", "/api/inventory/stocktake/sessions", {
+    token: operatorToken,
+    body: { item_ids: [serviceId], scope_token: servicePreview.data.scope_token },
+  });
+  assert.equal(serviceCount.status, 400, JSON.stringify(serviceCount.data));
+  assert.match(serviceCount.data.error, /no stock items/i);
+
+  const stockId = insertOcsItem({ name: `Single active count ${randomUUID()}`, qty: 2 });
+  const first = await startStocktakeSession({ item_ids: [stockId] });
+  assert.equal(first.status, 201, JSON.stringify(first.data));
+  const second = await startStocktakeSession({ item_ids: [stockId] });
+  assert.equal(second.status, 409, JSON.stringify(second.data));
+  assert.equal(second.data.code, "STOCKTAKE_SCOPE_ALREADY_ACTIVE");
+  assert.equal(Number(second.data.active_session_id), Number(first.data.session.id));
+  const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${first.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
+});
+
+test("an official zero stock count makes a par-level item out of stock", async () => {
+  const itemId = insertOcsItem({ name: `Counted zero ${randomUUID()}`, qty: 0 });
+  db.prepare("UPDATE inventory SET minimum_quantity = 4 WHERE id = ?").run(itemId);
+  const created = await startStocktakeSession({ item_ids: [itemId] });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const line = created.data.session.items[0];
+  const saved = await api("PATCH", `/api/inventory/stocktake/sessions/${created.data.session.id}`, {
+    token: operatorToken,
+    body: { lines: [{ id: line.id, physical_quantity: 0 }] },
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const submitted = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/submit`, {
+    token: operatorToken,
+  });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.data));
+  const applied = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/review`, {
+    token: adminToken,
+    body: { decision: "approved" },
+  });
+  assert.equal(applied.status, 200, JSON.stringify(applied.data));
+  const decorated = decorateInventoryItems([
+    db.prepare("SELECT * FROM inventory WHERE id = ?").get(itemId),
+  ])[0];
+  assert.equal(decorated.ever_stocked, true);
+  assert.equal(isOutOfStock(decorated), true);
 });
 
 test("acceptance creates reservations without reducing physical quantity", async () => {
@@ -3871,6 +3950,7 @@ test("doctor activity CSV is scoped and wastage requires a reason and lot", asyn
 });
 
 test("full-catalogue stocktake requires explicit confirmation and a scope fingerprint", async () => {
+  await cancelOpenStocktakes();
   const denied = await api("POST", "/api/inventory/stocktake/sessions", {
     token: operatorToken,
     body: {},
@@ -3890,6 +3970,10 @@ test("full-catalogue stocktake requires explicit confirmation and a scope finger
   });
   assert.equal(created.status, 201, JSON.stringify(created.data));
   assert.equal(created.data.session.items.length, preview.data.item_count);
+  const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
 });
 
 test("activity history correction filter and blank actors are excluded from the user filter", async () => {
@@ -4260,6 +4344,10 @@ test("stocktake scope token detects membership swaps with the same count", async
   assert.equal(created.status, 201, JSON.stringify(created.data));
   assert.ok(created.data.session.items.some((row) => Number(row.inventory_id) === added));
   assert.ok(!created.data.session.items.some((row) => Number(row.inventory_id) === first.id));
+  const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${created.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
 });
 
 test("billing rolls back the first line when a later line cannot be allocated", async () => {
@@ -4393,8 +4481,13 @@ test("stocktake scope token detects folder membership and row-version changes", 
     token: operatorToken,
     body: { item_ids: [scoped], scope_token: fresh.data.scope_token },
   });
-  assert.equal(repeated.status, 201, JSON.stringify(repeated.data));
-  assert.notEqual(Number(repeated.data.session.id), Number(first.data.session.id));
+  assert.equal(repeated.status, 409, JSON.stringify(repeated.data));
+  assert.equal(repeated.data.code, "STOCKTAKE_SCOPE_ALREADY_ACTIVE");
+  assert.equal(Number(repeated.data.active_session_id), Number(first.data.session.id));
+  const cancelled = await api("POST", `/api/inventory/stocktake/sessions/${first.data.session.id}/cancel`, {
+    token: operatorToken,
+  });
+  assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
 });
 
 test("opening batches stay usable while cost and expiry are still missing", async () => {

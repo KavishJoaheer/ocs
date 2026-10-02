@@ -295,6 +295,18 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     () => (Array.isArray(doctors) ? doctors.filter((doctor) => doctor?.id) : []),
     [doctors],
   );
+  const stockFolders = useMemo(
+    () => (Array.isArray(folders)
+      ? folders.filter((folder) => String(folder?.name || "").trim().toLowerCase() !== "services")
+      : []),
+    [folders],
+  );
+  const stockItems = useMemo(
+    () => (Array.isArray(items)
+      ? items.filter((item) => String(item?.item_kind || "stock") === "stock")
+      : []),
+    [items],
+  );
   const isBagScope = String(scope).startsWith("bag:");
   const bagDoctorId = isBagScope ? Number(String(scope).slice(4)) || null : null;
   const selectedBagDoctor = bagDoctorId
@@ -302,15 +314,17 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
     : null;
   const scopedItems = useMemo(() => {
     if (isBagScope) return [];
-    return scope && scope !== "all" ? items.filter((item) => String(item.folder_id) === String(scope)) : items;
-  }, [items, scope, isBagScope]);
+    return scope && scope !== "all"
+      ? stockItems.filter((item) => String(item.folder_id) === String(scope))
+      : stockItems;
+  }, [stockItems, scope, isBagScope]);
   const selectedFolderName = !scope
     ? "No location selected"
     : isBagScope
       ? `${String(selectedBagDoctor?.full_name || "Doctor").trim()}'s bag`
       : scope === "all"
         ? "All OCS folders"
-        : folders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
+        : stockFolders.find((folder) => String(folder.id) === String(scope))?.name || "Selected folder";
   const fullCatalogue = scope === "all" || isBagScope;
   const scopeChosen = Boolean(scope);
   const historyQueryText = historyQuery.trim().toLowerCase();
@@ -904,7 +918,7 @@ function InventoryStocktakePanel({ folders = [], items = [], doctors = [], onApp
             <option value="">Select a location…</option>
             <optgroup label="Warehouse">
               <option value="all">All OCS folders</option>
-              {folders.map((folder) => (
+              {stockFolders.map((folder) => (
                 <option key={folder.id} value={folder.id}>
                   {folder.name}
                 </option>

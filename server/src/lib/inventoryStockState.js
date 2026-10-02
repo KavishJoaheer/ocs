@@ -189,6 +189,19 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
     "item_id",
     "total",
   );
+  const officiallyCountedByItem = queryKeyedMap(
+    `
+      SELECT si.inventory_id AS item_id, 1 AS total
+      FROM inventory_stocktake_session_items si
+      JOIN inventory_stocktake_sessions s ON s.id = si.session_id
+      WHERE s.status = 'applied'
+        AND si.inventory_id IN (__IN__)
+      GROUP BY si.inventory_id
+    `,
+    itemIds,
+    "item_id",
+    "total",
+  );
   const decoratedBatches = decorateBatches(liveBatches, { today, reservedByBatch });
   const batchesByItem = new Map();
   for (const batch of decoratedBatches) {
@@ -283,7 +296,10 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       current_cost_value: roundCurrency(knownCostValue),
       unpriced_units: unpricedUnits,
       valuation_complete: unpricedUnits === 0,
-      ever_stocked: onHand > 0 || Boolean(everStockedByItem.get(itemId)),
+      ever_stocked:
+        onHand > 0 ||
+        Boolean(everStockedByItem.get(itemId)) ||
+        Boolean(officiallyCountedByItem.get(itemId)),
       lots: batches,
     };
   });

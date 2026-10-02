@@ -1825,7 +1825,9 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByText(/Completed in 7 days/i).filter({ visible: true })).toBeVisible();
     const start = page.getByRole("button", { name: "Start Stock Count" });
     await expect(start).toBeDisabled();
-    await page.getByRole("combobox", { name: "Location" }).selectOption({ label: "All OCS folders" });
+    const location = page.getByRole("combobox", { name: "Location" });
+    await expect(location.locator("option", { hasText: "Services" })).toHaveCount(0);
+    await location.selectOption({ label: "All OCS folders" });
     await expect(start).toBeEnabled();
     await start.click();
     await expect(page.getByRole("dialog").getByText(/blind stock count/i)).toBeVisible();

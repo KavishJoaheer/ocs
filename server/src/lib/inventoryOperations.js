@@ -1806,7 +1806,7 @@ function loadStocktakeScopeItems({ folderId = null, itemIds = [], ownerDoctorId 
               )
               .get(Number(id)),
       )
-      .filter(Boolean);
+      .filter((item) => item && String(item.item_kind || "stock") === "stock");
   }
   if (doctorId) {
     return db
@@ -1816,6 +1816,7 @@ function loadStocktakeScopeItems({ folderId = null, itemIds = [], ownerDoctorId 
         WHERE stock_scope = 'doctor'
           AND owner_doctor_id = ?
           AND archived_at IS NULL
+          AND COALESCE(item_kind, 'stock') = 'stock'
           AND (? IS NULL OR folder_id = ?)
         ORDER BY item_name ASC
       `,
@@ -1829,11 +1830,27 @@ function loadStocktakeScopeItems({ folderId = null, itemIds = [], ownerDoctorId 
       WHERE stock_scope = 'ocs'
         AND owner_doctor_id IS NULL
         AND archived_at IS NULL
+        AND COALESCE(item_kind, 'stock') = 'stock'
         AND (? IS NULL OR folder_id = ?)
       ORDER BY item_name ASC
     `,
     )
     .all(folderId || null, folderId || null);
+}
+
+function findOverlappingOpenStocktake(items) {
+  const ids = (items || []).map((item) => Number(item.id)).filter(Boolean);
+  if (!ids.length) return null;
+  const placeholders = ids.map(() => "?").join(",");
+  return db.prepare(`
+    SELECT s.id, s.status, s.folder_id, s.owner_doctor_id
+    FROM inventory_stocktake_sessions s
+    JOIN inventory_stocktake_session_items si ON si.session_id = s.id
+    WHERE s.status IN ('draft', 'in_progress', 'recount_required', 'submitted', 'approved')
+      AND si.inventory_id IN (${placeholders})
+    ORDER BY s.id DESC
+    LIMIT 1
+  `).get(...ids) || null;
 }
 
 function stocktakeScopeFingerprint(items, { folderId = null, itemIds = [], ownerDoctorId = null } = {}) {
@@ -1917,6 +1934,18 @@ function createStocktakeSession({
         code: "STOCKTAKE_SCOPE_STALE",
         item_count: fingerprint.item_count,
         scope_token: fingerprint.scope_token,
+      },
+    );
+  }
+  const overlapping = findOverlappingOpenStocktake(items);
+  if (overlapping) {
+    throw HttpError(
+      409,
+      `Count #${overlapping.id} already covers stock in this location. Resume or cancel that count before starting another.`,
+      {
+        code: "STOCKTAKE_SCOPE_ALREADY_ACTIVE",
+        active_session_id: Number(overlapping.id),
+        active_session_status: String(overlapping.status || ""),
       },
     );
   }
