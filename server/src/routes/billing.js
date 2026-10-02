@@ -38,6 +38,7 @@ const { getDoctorUserId, sendPushToUser } = require("../lib/push");
 const { financialAction, stockFinancials } = require("../lib/inventoryFinancials");
 const { getBillingCutoverDate } = require("../lib/billingCutover");
 const {
+  catalogueKeyForName,
   drugAdministrationByCategory,
   includedLabel,
   isUnchargedConsumable,
@@ -2379,10 +2380,27 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
     .all(doctorId);
 
   const decorated = decorateInventoryItems(rows);
+  const decoratedByCatalogueKey = new Map(
+    decorated
+      .filter((item) => String(item.catalogue_key || "").trim())
+      .map((item) => [String(item.catalogue_key).trim().toLowerCase(), item]),
+  );
+  const decoratedByName = new Map(
+    decorated.map((item) => [String(item.item_name || "").trim().toLowerCase(), item]),
+  );
   const items = decorated.flatMap((item) => {
     const recipe = treatmentServiceByItem(item)
       || drugAdministrationByCategory(item.folder_name, item.parent_folder_name);
     const isService = String(item.item_kind || "stock") === "service";
+    const linkedQuantityMaximum = recipe?.quantityPrompt && recipe.components.length
+      ? Math.max(0, Math.min(...recipe.components.map((component) => {
+          const componentKey = String(component.catalogueKey || catalogueKeyForName(component.itemName) || "").trim().toLowerCase();
+          const componentItem = (componentKey && decoratedByCatalogueKey.get(componentKey))
+            || decoratedByName.get(String(component.itemName || "").trim().toLowerCase());
+          const available = Number(componentItem?.available_to_promise ?? componentItem?.available_to_use ?? 0);
+          return Math.floor(available / Number(component.quantity || 1));
+        })))
+      : null;
     return [{
       id: Number(item.id),
       item_name: String(item.item_name || ""),
@@ -2401,6 +2419,8 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       requires_catheter: serviceRequiresCatheter(recipe),
       requires_ngt: serviceRequiresNgt(recipe),
       included_label: includedLabel(recipe),
+      linked_quantity_label: String(recipe?.quantityPrompt || ""),
+      linked_quantity_max: linkedQuantityMaximum,
       cost_only: isUnchargedConsumable(item),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),

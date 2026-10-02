@@ -1353,6 +1353,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
     cannulaPink: stock("Cannula (Pink)", consumableId, 5, 0, 9),
     intrafix: stock("Intrafix (Drip Set / Infusion set)", consumableId, 5, 0, 11),
     saline500: stock("IV N/S 500ml", ivFolderId, 5, 0, 30),
+    nextSaline500: stock("N/S 500ml", ivFolderId, 5, 0, 30),
   };
   const imDrugId = stock("IM administration test drug", imFolderId, 5, 100, 20);
   const ivDrugId = stock("IV administration test drug", ivFolderId, 5, 200, 40);
@@ -1371,9 +1372,10 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
   const abdominal = catalog.data.items.find((item) => item.item_name === "Abdominal tapping");
   const washout = catalog.data.items.find((item) => item.item_name === "Bladder wash out + N/S");
+  const nextSaline = catalog.data.items.find((item) => item.item_name === "Each next N/S 500ml");
   const imDrug = catalog.data.items.find((item) => item.id === imDrugId);
   const ivDrug = catalog.data.items.find((item) => item.id === ivDrugId);
-  assert.ok(abdominal && washout && imDrug && ivDrug);
+  assert.ok(abdominal && washout && nextSaline && imDrug && ivDrug);
   assert.deepEqual(
     [abdominal.requires_syringe, abdominal.requires_cannula, washout.requires_syringe, washout.requires_saline],
     [true, true, true, true],
@@ -1383,6 +1385,9 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
     [true, false, false, false],
   );
   assert.equal(abdominal.included_label, "1 syringe, 1 cannula, and 1 Intrafix (Drip Set / Infusion set)");
+  assert.equal(nextSaline.linked_quantity_label, "N/S 500ml used");
+  assert.equal(nextSaline.linked_quantity_max, 5);
+  assert.equal(nextSaline.included_label, "1 N/S 500ml");
   assert.equal(imDrug.included_label, "1 syringe");
   assert.equal(ivDrug.included_label, "");
   const missing = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
@@ -1395,6 +1400,15 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   assert.equal(imDrug.syringe_optional, true);
   assert.equal(washout.syringe_optional, false);
   assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(imDrugId).quantity), 5);
+
+  const tooManySalines = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("NEXT-SALINE-TOO-MANY"),
+    items: [{ inventory_item_id: nextSaline.id, quantity: 6, unit_price: 500 }],
+  });
+  assert.equal(tooManySalines.status, 409, JSON.stringify(tooManySalines.data));
+  assert.equal(tooManySalines.data.code, "INSUFFICIENT_ATP");
+  assert.equal(Number(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(componentIds.nextSaline500).quantity), 5);
 
   const billed = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),
@@ -1409,6 +1423,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
         syringe_size: "50",
         saline_size: "500",
       },
+      { inventory_item_id: nextSaline.id, quantity: 2, unit_price: 500 },
       { inventory_item_id: imDrugId, quantity: 1, unit_price: 100, syringe_size: "3" },
       { inventory_item_id: ivDrugId, quantity: 1, unit_price: 200 },
     ],
@@ -1421,7 +1436,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
   assert.equal(lines.some((line) => line.description === "IV administration test drug"), true);
   const componentNames = [
     "Syringe (3ml)", "Syringe (5ml)", "Syringe (10ml)", "Irrigation Syringe (50ml)",
-    "Cannula (Blue)", "Cannula (Pink)", "Intrafix (Drip Set / Infusion set)", "IV N/S 500ml",
+    "Cannula (Blue)", "Cannula (Pink)", "Intrafix (Drip Set / Infusion set)", "IV N/S 500ml", "N/S 500ml",
   ];
   assert.equal(lines.some((line) => componentNames.includes(line.description)), false);
   assert.deepEqual(
@@ -1435,6 +1450,7 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
       cannulaPink: 5,
       intrafix: 4,
       saline500: 4,
+      nextSaline500: 3,
     },
   );
   const includedMovements = db.prepare(`
@@ -1443,8 +1459,22 @@ test("services and standalone IM drugs consume their uncharged supplies while IV
     WHERE CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
       AND CAST(json_extract(meta_json, '$.billed_quantity') AS INTEGER) = 0
   `).all(billed.data.submission.bill_id);
-  assert.equal(includedMovements.length, 6);
+  assert.equal(includedMovements.length, 7);
   assert.equal(includedMovements.every((movement) => JSON.parse(movement.meta_json).treatment_component === true), true);
+  const nextSalineLine = lines.find((line) => line.description === "Each next N/S 500ml");
+  assert.equal(nextSalineLine.quantity, 2);
+  assert.equal(nextSalineLine.unit_price, 500);
+  assert.equal(nextSalineLine.amount, 1000);
+  const nextSalineMovement = db.prepare(`
+    SELECT quantity, unit_cost_snapshot, unit_price_snapshot, meta_json
+    FROM inventory_movements
+    WHERE item_id = ?
+      AND CAST(json_extract(meta_json, '$.billing_id') AS INTEGER) = ?
+      AND json_extract(meta_json, '$.treatment_name') = 'Each next N/S 500ml'
+  `).get(componentIds.nextSaline500, billed.data.submission.bill_id);
+  assert.equal(Number(nextSalineMovement.quantity), 2);
+  assert.equal(Number(nextSalineMovement.unit_cost_snapshot), 30);
+  assert.equal(Number(nextSalineMovement.unit_price_snapshot), 0);
 
   const noSyringeAppointmentId = Number(db.prepare(`
     INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)

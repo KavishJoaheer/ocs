@@ -170,6 +170,12 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
       : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`;
   }
   if (item.syringe_optional && syringeSize === "0") return "No syringe deducted";
+  if (item.linked_quantity_label) {
+    const linkedAvailable = Number(item.linked_quantity_max || 0);
+    return linkedAvailable > 0
+      ? `Deducts from bag: ${item.linked_quantity_label} · ${linkedAvailable} available`
+      : `${item.linked_quantity_label} is out of stock`;
+  }
   if (item.included_label) return `Deducts from bag: ${item.included_label}`;
   if (item.is_service_charge && Number(item.selling_price || 0) <= 0) return "Price and reason required";
   if (priceMissing) return "Pricing required";
@@ -179,7 +185,9 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
 }
 
 function isCatalogItemReady(item) {
-  if (item.is_service_charge) return true;
+  if (item.is_service_charge) {
+    return !item.linked_quantity_label || Number(item.linked_quantity_max || 0) > 0;
+  }
   const available = Number(item.available_to_use || 0);
   if (!item.cost_price_ready || available < 1) return false;
   return item.cost_only || Number(item.selling_price || 0) > 0;
@@ -771,6 +779,30 @@ function BillingLitePage() {
     const selectClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]";
     return (
       <>
+        {item.linked_quantity_label ? (
+          <label className="mt-3 block">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">{item.linked_quantity_label}</span>
+            <select
+              aria-label={item.linked_quantity_label}
+              value={Number(cart[item.id] || 0)}
+              onChange={(event) => setCart((current) => ({
+                ...current,
+                [item.id]: Number(event.target.value || 0),
+              }))}
+              className={selectClass}
+            >
+              {Array.from(
+                { length: Math.max(0, Number(item.linked_quantity_max || 0)) },
+                (_, index) => index + 1,
+              ).map((quantity) => (
+                <option key={quantity} value={quantity}>{quantity}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs font-semibold text-slate-500">
+              The same quantity will be deducted from the doctor’s bag and charged at {formatRupees(item.selling_price)} each.
+            </span>
+          </label>
+        ) : null}
         {item.requires_mask ? (
           <label className="mt-3 block">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask</span>
@@ -908,7 +940,13 @@ function BillingLitePage() {
     if (item.is_service_charge) {
       setCart((current) => ({
         ...current,
-        [item.id]: Math.max(0, Number(current[item.id] || 0) + delta),
+        [item.id]: Math.max(
+          0,
+          Math.min(
+            item.linked_quantity_label ? Number(item.linked_quantity_max || 0) : Number.MAX_SAFE_INTEGER,
+            Number(current[item.id] || 0) + delta,
+          ),
+        ),
       }));
       return;
     }
@@ -1676,7 +1714,9 @@ function BillingLitePage() {
                   const available = Number(item.available_to_use || 0);
                   const priceMissing = !item.cost_only && !item.is_service_charge && Number(item.selling_price || 0) <= 0;
                   const costMissing = !item.is_service_charge && !item.cost_price_ready;
-                  const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing || costMissing;
+                  const isUnavailable = item.is_service_charge
+                    ? Boolean(item.linked_quantity_label) && Number(item.linked_quantity_max || 0) < 1
+                    : available < 1 || priceMissing || costMissing;
                   const isFavorite = favorites.has(item.id);
                   const tone = folderTone(item.subcategory || item.category);
                   const stockLabel = catalogStockLabel(item, {
@@ -1723,7 +1763,16 @@ function BillingLitePage() {
                             {stockLabel}
                           </p>
                         </div>
-                        {quantity > 0 ? (
+                        {quantity > 0 && item.linked_quantity_label ? (
+                          <button
+                            type="button"
+                            onClick={() => setCart((current) => ({ ...current, [item.id]: 0 }))}
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 font-semibold text-slate-600 active:scale-95"
+                            aria-label={`Remove ${item.item_name}`}
+                          >
+                            <Minus className="size-4" /> Remove
+                          </button>
+                        ) : quantity > 0 ? (
                           <div className="flex shrink-0 items-center rounded-xl bg-[#e6f7f4] p-1">
                             <button
                               type="button"

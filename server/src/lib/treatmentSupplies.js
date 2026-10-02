@@ -176,6 +176,12 @@ const SERVICES = Object.freeze([
     ],
   },
   {
+    itemName: "Each next N/S 500ml",
+    sellingPrice: 500,
+    quantityPrompt: "N/S 500ml used",
+    components: [{ itemName: "N/S 500ml", quantity: 1 }],
+  },
+  {
     itemName: "Removal of catheter",
     components: [],
   },
