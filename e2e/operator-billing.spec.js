@@ -190,7 +190,7 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(page.getByLabel("Consultation doctor")).toBeVisible();
     await expect(page.getByText("Financial reconciliation", { exact: true })).toHaveCount(0);
-    await advanceOperatorInvoiceToReview(page, request, operator.token);
+    const { patient, visit } = await advanceOperatorInvoiceToReview(page, request, operator.token);
     await expect(page.getByLabel("Receipt reference")).toBeVisible();
     await expect(page.getByRole("button", { name: /Issue as unpaid/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /Payment received/i })).toBeVisible();
@@ -200,6 +200,14 @@ test.describe("operator billing", () => {
     await expect(page.getByLabel("Payment date")).toBeVisible();
     await expect(page.getByText(/operator account is recorded in the audit history/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Issue and record payment", exact: true })).toBeVisible();
+
+    await page.goto(`${STAFF_BASE}/patients/${patient.patient_id}`);
+    await page.getByRole("button", { name: "Open", exact: true }).first().click();
+    await expect(page.getByRole("link", { name: "Attach manual invoice photo", exact: true })).toBeVisible();
+
+    await page.goto(`${STAFF_BASE}/consultations/${visit.consultation_id}#manual-invoice-photos`);
+    await expect(page.getByLabel("Manual invoice photo")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Attach photo", exact: true })).toBeVisible();
   });
 
   test("mobile keeps billing reachable while protecting the invoice form", async ({ page, request }) => {

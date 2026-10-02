@@ -1060,6 +1060,15 @@ test("patient picker and capture enforce the configured live billing cutover", a
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
 
     ensureBillingForConsultation(futureConsultationId, futurePatientId, null, "Day Consultation");
+    const operatorDraftPicker = await api(
+      "GET",
+      `/billing/quick/picker-options?doctorId=${doctorId}&search=${encodeURIComponent("OCS-FUTURE-")}&limit=20`,
+      operatorToken,
+    );
+    assert.equal(operatorDraftPicker.status, 200, JSON.stringify(operatorDraftPicker.data));
+    assert.ok(operatorDraftPicker.data.patients.some((patient) =>
+      patient.visits.some((visit) => visit.consultation_id === futureConsultationId)),
+    );
     const exactOperatorPicker = await api(
       "GET",
       `/billing/quick/picker-options?doctorId=${doctorId}&consultationId=${futureConsultationId}`,

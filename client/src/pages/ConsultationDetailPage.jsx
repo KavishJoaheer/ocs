@@ -122,6 +122,13 @@ function ConsultationDetailPage() {
     setInvoicePhoto(null);
   }, [consultation?.id, consultation?.bills]);
 
+  useEffect(() => {
+    if (!consultation || window.location.hash !== "#manual-invoice-photos") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("manual-invoice-photos")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [consultation]);
+
   // A phone reload, a closed tab, or tapping Back / the sidebar would otherwise
   // discard the note silently. React Router's useBlocker needs a data router,
   // which this app does not use, so in-app links are intercepted here.
@@ -597,16 +604,18 @@ function ConsultationDetailPage() {
         </SectionCard>
       </div>
 
-      {canViewManualInvoices ? <SectionCard
-        title="Manual invoice photos"
-        subtitle="Each photo is kept with this exact consultation and its matching bill."
-        actions={
-          <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-            <FileImage className="size-4" />
-            {(consultation.manual_invoice_attachments || []).length} attached
-          </span>
-        }
-      >
+      {canViewManualInvoices ? (
+        <div id="manual-invoice-photos" className="scroll-mt-6">
+          <SectionCard
+            title="Manual invoice photos"
+            subtitle="Each photo is kept with this exact consultation and its matching bill."
+            actions={
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <FileImage className="size-4" />
+                {(consultation.manual_invoice_attachments || []).length} attached
+              </span>
+            }
+          >
         {canAttachManualInvoice ? (
           consultation.bills?.some((bill) => !bill.voided_at) ? (
             <form
@@ -692,7 +701,9 @@ function ConsultationDetailPage() {
             description="The invoice issued for this consultation will appear here once an operator attaches it."
           />
         )}
-      </SectionCard> : null}
+          </SectionCard>
+        </div>
+      ) : null}
     </div>
   );
 }

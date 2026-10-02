@@ -621,8 +621,7 @@ function quickVisitBaseRows(doctorId, {
           @cutoverDate = ''
           OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate)
           OR (
-            @consultationId IS NOT NULL
-            AND @billableRole IN ('operator', 'admin')
+            @billableRole IN ('operator', 'admin')
             AND EXISTS (
               SELECT 1
               FROM billing legacy_draft

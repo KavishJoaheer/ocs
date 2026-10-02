@@ -3439,13 +3439,15 @@ function PatientProfilePage() {
                   Edit
                 </button>
               ) : null}
-              {canManageConsultations && !isMobile ? (
+              {canViewConsultations ? (
                 <Link
-                  to={`/consultations/${consultationNoteViewer.id}`}
+                  to={`/consultations/${consultationNoteViewer.id}${isOperatorConsultationViewOnly(user) ? "#manual-invoice-photos" : ""}`}
                   onClick={() => setConsultationNoteViewer(null)}
                   className="inline-flex items-center justify-center rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700 md:bg-ocs-teal md:hover:bg-ocs-teal/90"
                 >
-                  Open full consultation record
+                  {isOperatorConsultationViewOnly(user)
+                    ? "Attach manual invoice photo"
+                    : "Open full consultation record"}
                 </Link>
               ) : null}
             </div>
