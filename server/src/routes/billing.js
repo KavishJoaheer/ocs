@@ -613,7 +613,22 @@ function quickVisitBaseRows(doctorId, {
       WHERE c.doctor_id = @doctorId
         AND c.voided_at IS NULL
         AND p.deleted_at IS NULL
-        AND (@cutoverDate = '' OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate))
+        AND (
+          @cutoverDate = ''
+          OR date(COALESCE(NULLIF(c.consultation_date, ''), a.appointment_date)) >= date(@cutoverDate)
+          OR (
+            @consultationId IS NOT NULL
+            AND @billableRole IN ('operator', 'admin')
+            AND EXISTS (
+              SELECT 1
+              FROM billing legacy_draft
+              WHERE legacy_draft.consultation_id = c.id
+                AND legacy_draft.status = 'unpaid'
+                AND legacy_draft.finalized_at IS NULL
+                AND legacy_draft.voided_at IS NULL
+            )
+          )
+        )
         AND (@consultationId IS NULL OR c.id = @consultationId)
         AND (@patientIdentifier = '' OR UPPER(p.patient_identifier) = @patientIdentifier)
         AND (
@@ -2938,7 +2953,16 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
   const cutoverDate = getBillingCutoverDate(db);
   const consultationBusinessDate = String(requestedConsultation.consultation_date || "").slice(0, 10);
-  if (cutoverDate && consultationBusinessDate < cutoverDate) {
+  const existingLegacyDraft = req.auth?.role === "operator" && Boolean(db.prepare(`
+    SELECT 1
+    FROM billing
+    WHERE consultation_id = ?
+      AND status = 'unpaid'
+      AND finalized_at IS NULL
+      AND voided_at IS NULL
+    LIMIT 1
+  `).get(consultationId));
+  if (cutoverDate && consultationBusinessDate < cutoverDate && !existingLegacyDraft) {
     return res.status(409).json({
       error: `Billing is closed for visits before ${cutoverDate}.`,
       code: "BILLING_CUTOVER_NOT_REACHED",

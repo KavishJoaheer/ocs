@@ -1055,6 +1055,31 @@ test("patient picker and capture enforce the configured live billing cutover", a
     assert.equal(captured.status, 409, JSON.stringify(captured.data));
     assert.equal(captured.data.code, "BILLING_CUTOVER_NOT_REACHED");
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM billing WHERE consultation_id = ? AND voided_at IS NULL").get(futureConsultationId).count, 0);
+
+    ensureBillingForConsultation(futureConsultationId, futurePatientId, null, "Day Consultation");
+    const exactOperatorPicker = await api(
+      "GET",
+      `/billing/quick/picker-options?doctorId=${doctorId}&consultationId=${futureConsultationId}`,
+      operatorToken,
+    );
+    assert.equal(exactOperatorPicker.status, 200, JSON.stringify(exactOperatorPicker.data));
+    assert.equal(exactOperatorPicker.data.patients[0].visits[0].consultation_id, futureConsultationId);
+    const issuedLegacyDraft = await api(
+      "POST",
+      `/billing/quick/visits/${futureConsultationId}/capture`,
+      operatorToken,
+      {
+        operation_id: randomUUID(),
+        source_reference: `CUTOVER-LEGACY-${Date.now()}`,
+        record_payment: false,
+        doctor_id: doctorId,
+        consultation_fee: { type: "Day Consultation", amount: 2000 },
+        items: [],
+      },
+    );
+    assert.equal(issuedLegacyDraft.status, 201, JSON.stringify(issuedLegacyDraft.data));
+    assert.equal(issuedLegacyDraft.data.submission.workflow_status, "ready_for_payment");
+    assert.ok(db.prepare("SELECT finalized_at FROM billing WHERE consultation_id = ?").get(futureConsultationId).finalized_at);
   } finally {
     if (previous) {
       db.prepare(`
