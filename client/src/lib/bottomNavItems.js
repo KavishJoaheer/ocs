@@ -31,6 +31,7 @@ export const operatorBottomNavItems = [
   },
   { to: "/patients/add", label: "Add patient", icon: UserPlus, roles: ["operator"] },
   { to: "/visit-requests", label: "Visits", icon: ClipboardList, roles: ["operator"] },
+  { to: "/billing", label: "Billing", icon: CreditCard, roles: ["operator"] },
   { to: "/operator/long-term-review", label: "Reviews", icon: Activity, roles: ["operator"] },
 ];
 

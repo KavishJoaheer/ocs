@@ -263,7 +263,7 @@ test("doctor quick billing requires the receipt and payment details before issue
   assert.equal(missingProviderReference.data.code, "BILLING_PAYMENT_REFERENCE_REQUIRED");
 });
 
-test("operator quick billing requires the matching consultation doctor and paper reference", async () => {
+test("operator quick billing requires the matching consultation doctor and payment evidence", async () => {
   const patient = db.prepare("SELECT id FROM patients WHERE patient_identifier = ?").get(patientIdentifier);
   const today = getTodayLocal();
   const appointmentId = Number(
@@ -289,7 +289,7 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
+    { operation_id: randomUUID(), source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, items: [] },
   );
   assert.equal(missingDoctor.status, 400);
   assert.equal(missingDoctor.data.code, "BILLING_DOCTOR_REQUIRED");
@@ -298,7 +298,7 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), doctor_id: otherDoctorId, source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
+    { operation_id: randomUUID(), doctor_id: otherDoctorId, source_reference: "PAPER-QB-1", payment_method: "cash", payment_date: today, items: [] },
   );
   assert.equal(wrongDoctor.status, 409);
   assert.equal(wrongDoctor.data.code, "BILLING_DOCTOR_MISMATCH");
@@ -307,25 +307,9 @@ test("operator quick billing requires the matching consultation doctor and paper
     "POST",
     `/billing/quick/visits/${operatorConsultationId}/capture`,
     operatorToken,
-    { operation_id: randomUUID(), doctor_id: doctorId, payment_method: "cash", payment_date: today, raised_by_doctor: true, items: [] },
+    { operation_id: randomUUID(), doctor_id: doctorId, payment_method: "cash", payment_date: today, items: [] },
   );
   assert.equal(missingReference.status, 400);
-
-  const missingDoctorConfirmation = await api(
-    "POST",
-    `/billing/quick/visits/${operatorConsultationId}/capture`,
-    operatorToken,
-    {
-      operation_id: randomUUID(),
-      doctor_id: doctorId,
-      source_reference: "PAPER-QB-1",
-      payment_method: "cash",
-      payment_date: today,
-      items: [],
-    },
-  );
-  assert.equal(missingDoctorConfirmation.status, 400);
-  assert.equal(missingDoctorConfirmation.data.code, "OPERATOR_DOCTOR_CONFIRMATION_REQUIRED");
 
   const issued = await api(
     "POST",
@@ -337,7 +321,6 @@ test("operator quick billing requires the matching consultation doctor and paper
       source_reference: "PAPER-QB-1",
       payment_method: "cash",
       payment_date: today,
-      raised_by_doctor: true,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [{
         inventory_item_id: operatorItemId,
@@ -374,7 +357,6 @@ test("operator quick billing requires the matching consultation doctor and paper
       source_reference: "PAPER-QB-2",
       payment_method: "cash",
       payment_date: today,
-      raised_by_doctor: true,
       consultation_fee: { type: "Day Consultation", amount: 2000 },
       items: [],
     },

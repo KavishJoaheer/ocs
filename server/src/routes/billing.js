@@ -2905,14 +2905,6 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       code: "BILLING_PAYMENT_REFERENCE_REQUIRED",
     });
   }
-  const raisedByDoctor = req.body?.raised_by_doctor === true;
-  if (req.auth?.role === "operator" && !raisedByDoctor) {
-    return res.status(400).json({
-      error: 'Select "Raise invoice by Doctor" before issuing this invoice.',
-      code: "OPERATOR_DOCTOR_CONFIRMATION_REQUIRED",
-    });
-  }
-
   const hasRequestedFee = Boolean(req.body?.consultation_fee && typeof req.body.consultation_fee === "object");
   const requestedFeeType = String(req.body?.consultation_fee?.type || "").trim();
   const requestedFeeAmount = Number(req.body?.consultation_fee?.amount);
@@ -3563,7 +3555,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             amount: roundCurrency(issuedBill.total_amount),
           },
           issued_on_behalf_of_doctor: req.auth?.role === "operator",
-          raised_by_doctor_confirmation: req.auth?.role === "operator" ? raisedByDoctor : null,
+          operator_doctor_selection_verified: req.auth?.role === "operator" ? true : null,
           consultation_doctor_id: doctorId,
           consultation_doctor_name: String(consultation.doctor_name || ""),
           issued_by_user_id: Number(req.auth?.id || 0) || null,

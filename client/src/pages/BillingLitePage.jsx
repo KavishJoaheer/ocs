@@ -225,7 +225,6 @@ function BillingLitePage() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentDate, setPaymentDate] = useState(() => dayjs().format("YYYY-MM-DD"));
-  const [operatorDoctorConfirmation, setOperatorDoctorConfirmation] = useState(false);
   const [patientPickerOpen, setPatientPickerOpen] = useState(false);
   const [visitPickerExpanded, setVisitPickerExpanded] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
@@ -363,7 +362,6 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
-    setOperatorDoctorConfirmation(false);
     if (!doctorId) return;
     setIsCatalogLoading(true);
     try {
@@ -653,7 +651,6 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
-    setOperatorDoctorConfirmation(false);
     setCart({});
     setCatalog([]);
     setMaskSizeByItem({});
@@ -1024,10 +1021,6 @@ function BillingLitePage() {
       toast.error("Enter the Juice, card, or IB transaction reference.");
       return;
     }
-    if (operatorIssueOnly && !operatorDoctorConfirmation) {
-      toast.error("Confirm that you’re issuing this invoice on behalf of the doctor.");
-      return;
-    }
     setIsSubmitting(true);
     const endpoint = `/billing/quick/visits/${selectedVisit.consultation_id}/capture`;
     const submissionPayload = {
@@ -1037,7 +1030,6 @@ function BillingLitePage() {
       payment_method: paymentMethod,
       payment_date: paymentDate,
       payment_reference: paymentReference.trim() || undefined,
-      raised_by_doctor: operatorIssueOnly ? operatorDoctorConfirmation : undefined,
       consultation_fee: {
         type: consultationType,
         amount: Number(consultationPrice),
@@ -1184,7 +1176,6 @@ function BillingLitePage() {
       setPaymentMethod(String(queueEntry.payload?.payment_method || queueEntry.meta?.paymentMethod || ""));
       setPaymentReference(String(queueEntry.payload?.payment_reference || ""));
       setPaymentDate(String(queueEntry.payload?.payment_date || queueEntry.meta?.paymentDate || dayjs().format("YYYY-MM-DD")));
-      setOperatorDoctorConfirmation(Boolean(queueEntry.payload?.raised_by_doctor));
       setEditingOfflineEntry(queueEntry);
       setView("catalog");
       toast.success("Saved submission opened for correction. Review it before submitting again.");
@@ -1229,7 +1220,6 @@ function BillingLitePage() {
     setPaymentMethod("");
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
-    setOperatorDoctorConfirmation(false);
     setConsultationAdjustmentReason("");
     setPatientPickerOpen(false);
     setVisitPickerExpanded(false);
@@ -2072,17 +2062,9 @@ function BillingLitePage() {
                   ) : null}
 
                   {operatorIssueOnly ? (
-                    <label className="flex items-start gap-3 rounded-xl border border-[#b9e3df] bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#173f47]">
-                      <input
-                        type="checkbox"
-                        checked={operatorDoctorConfirmation}
-                        onChange={(event) => setOperatorDoctorConfirmation(event.target.checked)}
-                        className="mt-1 size-4"
-                      />
-                      <span>
-                        I’m issuing this invoice on behalf of {selectedVisit.doctor_name || "the selected consultation doctor"}.
-                      </span>
-                    </label>
+                    <p className="rounded-xl border border-[#b9e3df] bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#173f47]">
+                      Issuing for {selectedVisit.doctor_name || "the selected consultation doctor"}. Your operator account is recorded in the audit history.
+                    </p>
                   ) : null}
                 </div>
 

@@ -194,11 +194,11 @@ test.describe("operator billing", () => {
     await expect(page.getByLabel("Receipt reference")).toBeVisible();
     await expect(page.getByLabel("Payment method")).toBeVisible();
     await expect(page.getByLabel("Payment date")).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: /issuing this invoice on behalf/i })).toBeVisible();
+    await expect(page.getByText(/operator account is recorded in the audit history/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Issue invoice", exact: true })).toBeVisible();
   });
 
-  test("mobile keeps billing out of navigation while protecting the invoice form", async ({ page, request }) => {
+  test("mobile keeps billing reachable while protecting the invoice form", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -206,12 +206,13 @@ test.describe("operator billing", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
     const bottomNav = page.locator("#ocs-bottom-nav");
-    await expect(bottomNav.getByRole("link")).toHaveCount(4);
+    await expect(bottomNav.getByRole("link")).toHaveCount(5);
     await expect(bottomNav.getByRole("link", { name: "Patients", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Add patient", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Visits", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Reviews", exact: true })).toBeVisible();
-    for (const hiddenDestination of ["Home", "Billing", "Follow-up", "Inventory", "Stock history", "HCM news"]) {
+    for (const hiddenDestination of ["Home", "Follow-up", "Inventory", "Stock history", "HCM news"]) {
       await expect(bottomNav.getByRole("link", { name: hiddenDestination, exact: true })).toHaveCount(0);
     }
 
@@ -221,7 +222,7 @@ test.describe("operator billing", () => {
     await expect(page.getByText(/Payment is recorded when the invoice is issued/i)).toBeVisible();
   });
 
-  test("operator confirmation issues the invoice and records the payment", async ({ page, request }) => {
+  test("operator issues the invoice and records the payment", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/billing`);
@@ -229,7 +230,6 @@ test.describe("operator billing", () => {
     await advanceOperatorInvoiceToReview(page, request, operator.token);
     await page.getByLabel("Receipt reference").fill(`E2E-PAY-${Date.now()}`);
     await page.getByLabel("Payment method").selectOption("cash");
-    await page.getByRole("checkbox", { name: /issuing this invoice on behalf/i }).check();
     await page.getByRole("button", { name: "Issue invoice", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Invoice issued" })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Completed", { exact: true })).toBeVisible();
