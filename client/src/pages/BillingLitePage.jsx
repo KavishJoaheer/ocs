@@ -805,8 +805,9 @@ function BillingLitePage() {
         ) : null}
         {item.requires_mask ? (
           <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask</span>
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask used</span>
             <select
+              aria-label="Face mask used"
               value={maskSizeByItem[item.id] || ""}
               onChange={(event) => setMaskSizeByItem((current) => ({
                 ...current,
@@ -818,6 +819,11 @@ function BillingLitePage() {
               <option value="adult">Adult face mask</option>
               <option value="paediatric">Paediatric face mask</option>
             </select>
+            {item.included_label ? (
+              <span className="mt-1 block text-xs font-semibold text-slate-500">
+                {item.included_label} will be deducted from the doctor’s bag and its batch cost recorded.
+              </span>
+            ) : null}
           </label>
         ) : null}
         {item.requires_enema ? (
