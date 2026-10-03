@@ -95,7 +95,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
   const itemName = String(source.item_name || "").trim();
   const itemKind = String(source.item_kind || "stock") === "service" ? "service" : "stock";
   const minimumQuantity = itemKind === "service" ? 0 : Number(source.minimum_quantity || 0);
-  const costPrice = Number(source.cost_price || 0);
+  const costPrice = itemKind === "service" ? 0 : Number(source.cost_price || 0);
   const sellingPrice = Number(source.selling_price || 0);
   const existing = findDoctorItem(doctorId, source);
 
@@ -107,6 +107,7 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       folder_id = ?,
       minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE ? END,
       quantity = CASE WHEN ? = 'service' THEN 0 ELSE quantity END,
+      expiry_date = CASE WHEN ? = 'service' THEN NULL ELSE expiry_date END,
       unit = ?,
       cost_price = ?,
       selling_price = ?,
@@ -133,16 +134,20 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       itemKind,
       minimumQuantity,
       itemKind,
-      source.unit || "unit",
+      itemKind,
+      itemKind === "service" ? "service" : source.unit || "unit",
       costPrice,
       sellingPrice,
       String(source.catalogue_key || "").trim(),
       String(source.catalogue_key || "").trim(),
       Number(source.is_cost_only || 0) === 1 ? 1 : 0,
-      source.attributes || "",
-      source.moa_notes || "",
+      itemKind === "service" ? "" : source.attributes || "",
+      itemKind === "service" ? "" : source.moa_notes || "",
       target.id,
     );
+    if (itemKind === "service") {
+      db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ? AND quantity_remaining != 0").run(target.id);
+    }
     return "updated";
   }
 
@@ -155,16 +160,20 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
       itemKind,
       minimumQuantity,
       itemKind,
-      source.unit || "unit",
+      itemKind,
+      itemKind === "service" ? "service" : source.unit || "unit",
       costPrice,
       sellingPrice,
       String(source.catalogue_key || "").trim(),
       String(source.catalogue_key || "").trim(),
       Number(source.is_cost_only || 0) === 1 ? 1 : 0,
-      source.attributes || "",
-      source.moa_notes || "",
+      itemKind === "service" ? "" : source.attributes || "",
+      itemKind === "service" ? "" : source.moa_notes || "",
       archived.id,
     );
+    if (itemKind === "service") {
+      db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ? AND quantity_remaining != 0").run(archived.id);
+    }
     return "restored";
   }
 
@@ -181,11 +190,11 @@ function upsertDoctorItemFromOcs(doctorId, source, { insertOnly = false } = {}) 
     source.folder_id,
     doctorId,
     minimumQuantity,
-    source.unit || "unit",
-    Number(source.cost_price || 0),
+    itemKind === "service" ? "service" : source.unit || "unit",
+    costPrice,
     sellingPrice,
-    source.attributes || "",
-    source.moa_notes || "",
+    itemKind === "service" ? "" : source.attributes || "",
+    itemKind === "service" ? "" : source.moa_notes || "",
     String(source.catalogue_key || "").trim(),
     Number(source.is_cost_only || 0) === 1 ? 1 : 0,
   );

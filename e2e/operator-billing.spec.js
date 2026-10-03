@@ -105,7 +105,9 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   await consultationSelect.selectOption(String(visit.consultation_id));
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
-  await page.getByRole("button").filter({ hasText: /Review/ }).click();
+  await page.getByRole("button", { name: /Choose consumables/i }).click();
+  await expect(page.getByRole("heading", { name: "Consumables used" })).toBeVisible();
+  await page.getByRole("button", { name: /Review invoice/i }).click();
   await expect(page.getByRole("heading", { name: "Review invoice" })).toBeVisible();
   return { doctor, patient, visit };
 }
@@ -160,10 +162,17 @@ for (const device of [
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
 
-    const reviewBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Review" });
+    const chooseConsumablesBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Choose consumables" });
+    await expect(chooseConsumablesBar).toBeVisible();
+    const chooseConsumablesBox = await chooseConsumablesBar.boundingBox();
+    await expect(page.locator("#ocs-bottom-nav")).toBeHidden();
+    expect((chooseConsumablesBox?.y || 0) + (chooseConsumablesBox?.height || 0)).toBeLessThanOrEqual(device.height);
+
+    await chooseConsumablesBar.click();
+    await expect(page.getByRole("heading", { name: "Consumables used" })).toBeVisible();
+    const reviewBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Review invoice" });
     await expect(reviewBar).toBeVisible();
     const reviewBox = await reviewBar.boundingBox();
-    await expect(page.locator("#ocs-bottom-nav")).toBeHidden();
     expect((reviewBox?.y || 0) + (reviewBox?.height || 0)).toBeLessThanOrEqual(device.height);
 
     await reviewBar.click();

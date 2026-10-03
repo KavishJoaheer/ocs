@@ -2564,6 +2564,7 @@ router.put("/items/:id", (req, res) => {
   const itemId = Number(req.params.id);
   const existing = findEditableCatalogueItemForRequest(req, itemId);
   if (!existing) return res.status(404).json({ error: "Stock item not found." });
+  const isService = String(existing.item_kind || "stock") === "service";
   const expectedVersion = Number(req.body?.expected_version ?? req.body?.row_version ?? 0);
 
   const isOcsMasterRow =
@@ -2617,33 +2618,39 @@ router.put("/items/:id", (req, res) => {
   const folderId = masterFieldsLocked
     ? Number(existing.folder_id || 0)
     : Number(req.body.folder_id || existing.folder_id || 0);
-  const quantity = quantityLocked
-    ? Number(existing.quantity)
+  const quantity = isService
+    ? 0
+    : quantityLocked
+      ? Number(existing.quantity)
     : Number(req.body.quantity ?? existing.quantity);
-  const minimumQuantity = Number(req.body.minimum_quantity ?? existing.minimum_quantity);
-  const unit = masterFieldsLocked
+  const minimumQuantity = isService ? 0 : Number(req.body.minimum_quantity ?? existing.minimum_quantity);
+  const unit = isService
+    ? "service"
+    : masterFieldsLocked
     ? String(existing.unit ?? "unit").trim()
     : String(req.body.unit ?? existing.unit ?? "unit").trim();
-  const costPrice = masterFieldsLocked
+  const costPrice = isService
+    ? 0
+    : masterFieldsLocked
     ? roundCurrency(existing.cost_price)
     : roundCurrency(req.body.cost_price ?? existing.cost_price);
   const sellingPrice = masterFieldsLocked
     ? roundCurrency(existing.selling_price)
     : roundCurrency(req.body.selling_price ?? existing.selling_price);
-  const attributes = String(req.body.attributes ?? existing.attributes ?? "").trim();
-  const moaNotes = String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
+  const attributes = isService ? "" : String(req.body.attributes ?? existing.attributes ?? "").trim();
+  const moaNotes = isService ? "" : String(req.body.moa_notes ?? existing.moa_notes ?? "").trim();
   // Deprecated catalogue expiry_date: preserve the historical column, never treat it as operational.
   // Incoming expiry_date is ignored so catalogue editing cannot change batch expiry or nearest-expiry.
-  const expiryDate = String(existing.expiry_date || "").trim() || null;
+  const expiryDate = isService ? null : String(existing.expiry_date || "").trim() || null;
   const adjustmentNote = String(req.body.adjustment_note || "").trim();
-  const costPriceChanged = roundCurrency(existing.cost_price) !== costPrice;
+  const costPriceChanged = !isService && roundCurrency(existing.cost_price) !== costPrice;
   const sellingPriceChanged = roundCurrency(existing.selling_price) !== sellingPrice;
   const priceChanged = costPriceChanged || sellingPriceChanged;
 
   if (!itemName) return res.status(400).json({ error: "Item name is required." });
   if (!folderId) return res.status(400).json({ error: "Folder is required." });
   if (
-    (Object.prototype.hasOwnProperty.call(req.body || {}, "cost_price") && !isValidCurrencyAmount(req.body.cost_price)) ||
+    (!isService && Object.prototype.hasOwnProperty.call(req.body || {}, "cost_price") && !isValidCurrencyAmount(req.body.cost_price)) ||
     (Object.prototype.hasOwnProperty.call(req.body || {}, "selling_price") && !isValidCurrencyAmount(req.body.selling_price))
   ) {
     return res.status(400).json({ error: "Cost and selling prices must be zero or more and use no more than two decimal places." });
@@ -2714,7 +2721,7 @@ router.put("/items/:id", (req, res) => {
       if (isOcsMasterRow) {
         const renamedBagIds = renameDoctorBagCatalogue(existing.item_name, itemName);
         updatedBagItemIds.push(...renamedBagIds);
-        const itemKind = String(existing.item_kind || "stock") === "service" ? "service" : "stock";
+        const itemKind = isService ? "service" : "stock";
         const bagRows = db.prepare(`
           UPDATE inventory
           SET
@@ -2725,14 +2732,37 @@ router.put("/items/:id", (req, res) => {
             item_kind = ?,
             quantity = CASE WHEN ? = 'service' THEN 0 ELSE quantity END,
             minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE minimum_quantity END,
+            expiry_date = CASE WHEN ? = 'service' THEN NULL ELSE expiry_date END,
+            attributes = CASE WHEN ? = 'service' THEN '' ELSE attributes END,
+            moa_notes = CASE WHEN ? = 'service' THEN '' ELSE moa_notes END,
             row_version = row_version + 1,
             updated_at = CURRENT_TIMESTAMP
           WHERE stock_scope = 'doctor'
             AND owner_doctor_id IS NOT NULL
             AND LOWER(TRIM(item_name)) = LOWER(TRIM(?))
           RETURNING id
-        `).all(folderId, unit, costPrice, sellingPrice, itemKind, itemKind, itemKind, itemName);
+        `).all(
+          folderId,
+          unit,
+          costPrice,
+          sellingPrice,
+          itemKind,
+          itemKind,
+          itemKind,
+          itemKind,
+          itemKind,
+          itemKind,
+          itemName,
+        );
         updatedBagItemIds.push(...bagRows.map((row) => Number(row.id)));
+      }
+      if (isService) {
+        db.prepare(`
+          UPDATE inventory_batches
+          SET quantity_remaining = 0
+          WHERE quantity_remaining != 0
+            AND item_id IN (?, ${updatedBagItemIds.length ? updatedBagItemIds.map(() => "?").join(", ") : "NULL"})
+        `).run(itemId, ...updatedBagItemIds);
       }
       if (priceChanged) {
         recordAudit({

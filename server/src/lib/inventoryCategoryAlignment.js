@@ -38,7 +38,6 @@ const CATEGORY_RULES = [
     itemKind: "service",
     ensureEverywhere: true,
     unit: "service",
-    costPrice: 300,
     sellingPrice: 1200,
   },
   {
@@ -47,7 +46,6 @@ const CATEGORY_RULES = [
     itemKind: "service",
     ensureEverywhere: true,
     unit: "service",
-    costPrice: 300,
     sellingPrice: 2000,
   },
   {
@@ -56,7 +54,6 @@ const CATEGORY_RULES = [
     itemKind: "service",
     ensureEverywhere: true,
     unit: "service",
-    costPrice: 100,
     sellingPrice: 500,
   },
   {
@@ -65,8 +62,13 @@ const CATEGORY_RULES = [
     itemKind: "service",
     ensureEverywhere: true,
     unit: "service",
-    costPrice: 200,
     sellingPrice: 800,
+  },
+  {
+    itemName: "Catheter Change",
+    folderName: "Services",
+    itemKind: "service",
+    unit: "service",
   },
 ];
 
@@ -447,11 +449,13 @@ function alignInventoryCategories() {
         updated += Number(updateRows.run(folderId, itemKind, alias, folderId, itemKind).changes || 0);
       }
       if (itemKind === "service") {
+        const hasSellingPrice = Object.prototype.hasOwnProperty.call(rule, "sellingPrice");
         updated += Number(db.prepare(`
           UPDATE inventory
           SET quantity = 0, minimum_quantity = 0, expiry_date = NULL,
               item_kind = 'service', unit = 'service', attributes = '', moa_notes = '',
-              cost_price = ?, selling_price = ?,
+              cost_price = 0,
+              selling_price = CASE WHEN ? = 1 THEN ? ELSE selling_price END,
               row_version = COALESCE(row_version, 1) + 1,
               updated_at = CURRENT_TIMESTAMP
           WHERE lower(trim(item_name)) = lower(trim(?))
@@ -460,13 +464,13 @@ function alignInventoryCategories() {
               quantity != 0 OR minimum_quantity != 0 OR expiry_date IS NOT NULL
               OR item_kind != 'service' OR unit != 'service'
               OR COALESCE(attributes, '') != '' OR COALESCE(moa_notes, '') != ''
-              OR cost_price != ? OR selling_price != ?
+              OR cost_price != 0 OR (? = 1 AND selling_price != ?)
             )
         `).run(
-          Number(rule.costPrice || 0),
+          hasSellingPrice ? 1 : 0,
           Number(rule.sellingPrice || 0),
           rule.itemName,
-          Number(rule.costPrice || 0),
+          hasSellingPrice ? 1 : 0,
           Number(rule.sellingPrice || 0),
         ).changes || 0);
         db.prepare(`
@@ -480,8 +484,11 @@ function alignInventoryCategories() {
     }
     updated += Number(db.prepare(`
       UPDATE inventory
-      SET minimum_quantity = 0,
+      SET quantity = 0,
+          minimum_quantity = 0,
           unit = 'service',
+          cost_price = 0,
+          expiry_date = NULL,
           attributes = '',
           moa_notes = '',
           row_version = COALESCE(row_version, 1) + 1,
@@ -489,12 +496,23 @@ function alignInventoryCategories() {
       WHERE item_kind = 'service'
         AND archived_at IS NULL
         AND (
-          minimum_quantity != 0
+          quantity != 0
+          OR minimum_quantity != 0
           OR unit != 'service'
+          OR cost_price != 0
+          OR expiry_date IS NOT NULL
           OR COALESCE(attributes, '') != ''
           OR COALESCE(moa_notes, '') != ''
         )
     `).run().changes || 0);
+    db.prepare(`
+      UPDATE inventory_batches
+      SET quantity_remaining = 0
+      WHERE quantity_remaining != 0
+        AND item_id IN (
+          SELECT id FROM inventory WHERE item_kind = 'service' AND archived_at IS NULL
+        )
+    `).run();
     return { updated, inserted, renamed, conflicts };
   });
 

@@ -857,7 +857,7 @@ test("warehouse cost and selling price changes copy onto every doctor bag for th
   assert.equal(Number(warehouse.selling_price), 22);
 });
 
-test("admin can change a service price and the price copies onto every doctor bag", async () => {
+test("admin can change a service selling price while cost and stock fields stay absent everywhere", async () => {
   const name = `Shared Service Price ${Date.now()}`;
   const serviceId = Number(db.prepare(`
     INSERT INTO inventory (
@@ -874,6 +874,10 @@ test("admin can change a service price and the price copies onto every doctor ba
   `);
   const firstBagId = Number(insertBagService.run(name, folderId, doctorId).lastInsertRowid);
   const secondBagId = Number(insertBagService.run(name, folderId, doctorTwoId).lastInsertRowid);
+
+  await api("GET", "/api/inventory?view=stock&dateFrom=2026-10-01&dateTo=2026-10-01", {
+    token: adminToken,
+  });
 
   const updated = await api(
     "PUT",
@@ -905,9 +909,14 @@ test("admin can change a service price and the price copies onto every doctor ba
     assert.equal(Number(row.quantity), 0, String(id));
     assert.equal(Number(row.minimum_quantity), 0, String(id));
     assert.equal(row.unit, "service", String(id));
-    assert.equal(Number(row.cost_price), 300, String(id));
+    assert.equal(Number(row.cost_price), 0, String(id));
     assert.equal(Number(row.selling_price), 1200, String(id));
   }
+  const servicePayload = updated.data.ocs_stock.find((item) => Number(item.id) === serviceId);
+  assert.ok(servicePayload);
+  assert.equal(servicePayload.quantity, null);
+  assert.equal(servicePayload.available_to_use, null);
+  assert.equal(servicePayload.cost_price, null);
 });
 
 test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {

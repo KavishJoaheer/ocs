@@ -181,12 +181,12 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   }
 
   const expectedServices = [
-    ["IM Ceftriaxone 1g + lidocaine", 300, 1200],
-    ["IV Solu-cortef 100MG (Hisone) (including cannulation)", 300, 2000],
-    ["Each next N/S 500ml", 100, 500],
-    ["IV Lasilix 20mg", 200, 800],
+    ["IM Ceftriaxone 1g + lidocaine", 1200],
+    ["IV Solu-cortef 100MG (Hisone) (including cannulation)", 2000],
+    ["Each next N/S 500ml", 500],
+    ["IV Lasilix 20mg", 800],
   ];
-  for (const [itemName, costPrice, sellingPrice] of expectedServices) {
+  for (const [itemName, sellingPrice] of expectedServices) {
     const serviceRows = db.prepare(`
       SELECT i.item_kind, i.quantity, i.minimum_quantity, i.unit, i.attributes, i.moa_notes,
         i.cost_price, i.selling_price, i.expiry_date, f.name AS folder_name
@@ -203,7 +203,7 @@ test("category alignment moves warehouse and doctor rows without changing stock 
       assert.equal(service.moa_notes, "", itemName);
       assert.equal(Number(service.quantity), 0, itemName);
       assert.equal(Number(service.minimum_quantity), 0, itemName);
-      assert.equal(Number(service.cost_price), costPrice, itemName);
+      assert.equal(Number(service.cost_price), 0, itemName);
       assert.equal(Number(service.selling_price), sellingPrice, itemName);
       assert.equal(service.expiry_date, null, itemName);
     }
@@ -211,8 +211,11 @@ test("category alignment moves warehouse and doctor rows without changing stock 
 
   db.prepare(`
     UPDATE inventory
-    SET minimum_quantity = 8,
+    SET quantity = 9,
+        minimum_quantity = 8,
         unit = 'session',
+        cost_price = 75,
+        expiry_date = '2030-01-01',
         attributes = 'Legacy service attribute',
         moa_notes = 'Legacy administration note'
     WHERE item_kind = 'service' AND archived_at IS NULL
@@ -220,14 +223,17 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   const normalized = alignInventoryCategories();
   assert.ok(normalized.updated >= activeDoctorCount + 1);
   const normalizedServices = db.prepare(`
-    SELECT minimum_quantity, unit, attributes, moa_notes
+    SELECT quantity, minimum_quantity, unit, cost_price, expiry_date, attributes, moa_notes
     FROM inventory
     WHERE item_kind = 'service' AND archived_at IS NULL
   `).all();
   assert.ok(normalizedServices.length >= activeDoctorCount + 1);
   for (const service of normalizedServices) {
+    assert.equal(Number(service.quantity), 0);
     assert.equal(Number(service.minimum_quantity), 0);
     assert.equal(service.unit, "service");
+    assert.equal(Number(service.cost_price), 0);
+    assert.equal(service.expiry_date, null);
     assert.equal(service.attributes, "");
     assert.equal(service.moa_notes, "");
   }
@@ -237,6 +243,41 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   assert.equal(retry.inserted, 0);
   assert.equal(retry.renamed, 0);
   assert.equal(retry.conflicts, 0);
+});
+
+test("Catheter Change is normalized as a cost-free service while preserving its selling price", () => {
+  const consumableId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorId = Number(db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 1").get().id);
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price, expiry_date
+    ) VALUES ('Catheter Change', 'stock', ?, ?, ?, 6, 2, 'unit', 125, 2000, '2030-12-31')
+  `);
+  const ids = [
+    Number(insert.run(consumableId, "ocs", null).lastInsertRowid),
+    Number(insert.run(consumableId, "doctor", doctorId).lastInsertRowid),
+  ];
+
+  alignInventoryCategories();
+
+  for (const id of ids) {
+    const row = db.prepare(`
+      SELECT i.item_kind, i.quantity, i.minimum_quantity, i.unit, i.cost_price,
+        i.selling_price, i.expiry_date, f.name AS folder_name
+      FROM inventory i
+      JOIN inventory_folders f ON f.id = i.folder_id
+      WHERE i.id = ?
+    `).get(id);
+    assert.equal(row.folder_name, "Services");
+    assert.equal(row.item_kind, "service");
+    assert.equal(row.quantity, 0);
+    assert.equal(row.minimum_quantity, 0);
+    assert.equal(row.unit, "service");
+    assert.equal(row.cost_price, 0);
+    assert.equal(row.selling_price, 2000);
+    assert.equal(row.expiry_date, null);
+  }
 });
 
 test("go-live removals leave the warehouse and every doctor bag", () => {

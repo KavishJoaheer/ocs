@@ -1842,8 +1842,9 @@ test.describe("Inventory workflow", () => {
     await openStockTab(page);
 
     await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
-    await expect(page.getByRole("columnheader", { name: "Cost price" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Type" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Selling price" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Cost price" })).toHaveCount(0);
     await expect(page.getByRole("columnheader", { name: "Available" })).toHaveCount(0);
     await expect(page.getByRole("columnheader", { name: "Expiry" })).toHaveCount(0);
     await expect(page.getByText("Non-stock service", { exact: true })).toHaveCount(0);
@@ -1873,6 +1874,9 @@ test.describe("Inventory workflow", () => {
     await expect(dialog.getByText("Attributes", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("Unit", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText("MOA notes", { exact: true })).toHaveCount(0);
+    await dialog.getByRole("tab", { name: "Pricing" }).click();
+    await expect(dialog.getByText("Cost price (Rs)", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Selling price (Rs)", { exact: true })).toBeVisible();
   });
 
   test("mobile inventory picker keeps the page from scrolling sideways", async ({ request, page }) => {

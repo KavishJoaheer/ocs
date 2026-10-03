@@ -212,6 +212,7 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
 
   return rows.map((item) => {
     const itemId = Number(item.id);
+    const isService = String(item.item_kind || "stock") === "service";
     const onHand = Number(item.quantity || 0);
     const batches = batchesByItem.get(itemId) || [];
     const reservedQuantity = Number(reservedByItem.get(itemId) || 0);
@@ -269,6 +270,40 @@ function decorateInventoryItems(items, { today = getTodayLocal() } = {}) {
       (sum, batch) => sum + (Number(batch.unit_cost || 0) > 0 ? 0 : Number(batch.quantity_remaining || 0)),
       0,
     );
+    if (isService) {
+      return {
+        ...item,
+        quantity: null,
+        on_hand_quantity: null,
+        minimum_quantity: null,
+        cost_price: null,
+        reserved_quantity: null,
+        expired_quantity: null,
+        quarantined_quantity: null,
+        missing_expiry_quantity: null,
+        missing_cost_quantity: null,
+        has_quarantined: false,
+        usable_on_hand: null,
+        available_to_use: null,
+        available_to_promise: null,
+        available_to_transfer: null,
+        available_to_fulfil: null,
+        nearest_usable_expiry: null,
+        expiry_date: null,
+        nearest_expiry_date: null,
+        has_expired: false,
+        missing_expiry: false,
+        has_non_expiring: false,
+        is_near_expiry: false,
+        is_non_expiring_only: false,
+        unbatched_quantity: null,
+        current_cost_value: null,
+        unpriced_units: null,
+        valuation_complete: true,
+        ever_stocked: false,
+        lots: [],
+      };
+    }
     return {
       ...item,
       quantity: onHand,

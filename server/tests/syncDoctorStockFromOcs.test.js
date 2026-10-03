@@ -34,7 +34,7 @@ test("every doctor bag repeats the warehouse catalogue without copying warehouse
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
       quantity, minimum_quantity, unit, cost_price, selling_price
-    ) VALUES ('Warehouse Catalogue Service', 'service', ?, 'ocs', NULL, 0, 0, 'service', 0, 500)
+    ) VALUES ('Warehouse Catalogue Service', 'service', ?, 'ocs', NULL, 0, 0, 'session', 99, 500)
   `).run(folderId).lastInsertRowid);
   const keptBagId = Number(db.prepare(`
     INSERT INTO inventory (
@@ -79,7 +79,7 @@ test("every doctor bag repeats the warehouse catalogue without copying warehouse
       WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = 'Warehouse Catalogue Item' AND archived_at IS NULL
     `).get(doctor.id);
     const service = db.prepare(`
-      SELECT quantity, item_kind, selling_price FROM inventory
+      SELECT quantity, minimum_quantity, item_kind, unit, cost_price, selling_price FROM inventory
       WHERE stock_scope = 'doctor' AND owner_doctor_id = ? AND item_name = 'Warehouse Catalogue Service' AND archived_at IS NULL
     `).get(doctor.id);
     assert.ok(item, `item missing for doctor ${doctor.id}`);
@@ -87,6 +87,9 @@ test("every doctor bag repeats the warehouse catalogue without copying warehouse
     assert.ok(service, `service missing for doctor ${doctor.id}`);
     assert.equal(service.item_kind, "service");
     assert.equal(Number(service.quantity), 0);
+    assert.equal(Number(service.minimum_quantity), 0);
+    assert.equal(service.unit, "service");
+    assert.equal(Number(service.cost_price), 0);
     assert.equal(Number(service.selling_price), 500);
     if (Number(doctor.id) !== Number(first.id)) assert.equal(Number(item.quantity), 0);
   }
@@ -126,6 +129,11 @@ test("doctor bags take the warehouse name, folder, and service kind", () => {
   const salineId = Number(insert.run("N/S 500ml", "stock", consumableId, "doctor", doctorId, 7).lastInsertRowid);
   insert.run("Alignment Test Service", "service", servicesId, "ocs", null, 0);
   const serviceBagId = Number(insert.run("Alignment Test Service", "stock", consumableId, "doctor", doctorId, 3).lastInsertRowid);
+  db.prepare("UPDATE inventory SET expiry_date = '2030-01-01', cost_price = 25 WHERE id = ?").run(serviceBagId);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, unit_cost, expiry_date)
+    VALUES (?, 3, 25, '2030-01-01')
+  `).run(serviceBagId);
 
   syncDoctorStockFromOcsSync({ skipInit: true, pruneExtras: true });
 
@@ -148,8 +156,11 @@ test("doctor bags take the warehouse name, folder, and service kind", () => {
   assert.equal(Number(saline.folder_id), ivId);
   assert.equal(Number(saline.quantity), 7);
 
-  const service = db.prepare("SELECT item_kind, folder_id, quantity FROM inventory WHERE id = ?").get(serviceBagId);
+  const service = db.prepare("SELECT item_kind, folder_id, quantity, cost_price, expiry_date FROM inventory WHERE id = ?").get(serviceBagId);
   assert.equal(service.item_kind, "service");
   assert.equal(Number(service.folder_id), servicesId);
   assert.equal(Number(service.quantity), 0);
+  assert.equal(Number(service.cost_price), 0);
+  assert.equal(service.expiry_date, null);
+  assert.equal(Number(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE item_id = ?").get(serviceBagId).quantity_remaining), 0);
 });

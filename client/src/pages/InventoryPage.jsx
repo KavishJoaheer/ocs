@@ -2835,7 +2835,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions }) {
           <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span className={!isService && !item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
               {isService
-                ? `Cost / Sell: ${formatRupees(item.cost_price)} / ${formatRupees(item.selling_price)}`
+                ? `Selling price: ${formatRupees(item.selling_price)}`
                 : formatInventoryExpiry(item)}
             </span>
           </p>
@@ -3561,6 +3561,7 @@ export default function InventoryPage() {
       .filter((item) => !showExpiredOnly || isExpiredItem(item))
       .filter((item) => {
         if (!showUnpricedOnly) return true;
+        if (item.item_kind === "service") return false;
         if (unpricedFromBags && unpricedKeys.size) {
           return unpricedKeys.has(String(item.item_name || "").trim().toLowerCase());
         }
@@ -3916,16 +3917,16 @@ export default function InventoryPage() {
       "Doctor ID": scopeIsMaster ? "" : String(selectedContextDoctorId),
       Category: item.folder_name || "",
       "Item name": item.item_name || "",
-      Quantity: Number(item.quantity ?? 0),
-      "On hand": Number(item.on_hand_quantity ?? item.quantity ?? 0),
-      Reserved: Number(item.reserved_quantity ?? 0),
-      Expired: Number(item.expired_quantity ?? 0),
-      Quarantined: Number(item.quarantined_quantity ?? 0),
-      Available: Number(item.available_to_promise ?? item.available_to_use ?? 0),
+      Quantity: isService ? "" : Number(item.quantity ?? 0),
+      "On hand": isService ? "" : Number(item.on_hand_quantity ?? item.quantity ?? 0),
+      Reserved: isService ? "" : Number(item.reserved_quantity ?? 0),
+      Expired: isService ? "" : Number(item.expired_quantity ?? 0),
+      Quarantined: isService ? "" : Number(item.quarantined_quantity ?? 0),
+      Available: isService ? "" : Number(item.available_to_promise ?? item.available_to_use ?? 0),
       "Min qty": isService ? "" : Number(item.minimum_quantity ?? 0),
       Unit: isService ? "" : item.unit ?? "",
       "Nearest usable expiry": isService ? "" : item.nearest_usable_expiry || formatInventoryExpiry(item),
-      "Cost (Rs)": Number(item.cost_price ?? 0),
+      "Cost (Rs)": isService ? "" : Number(item.cost_price ?? 0),
       "Selling price (Rs)": Number(item.selling_price ?? 0),
       Attributes: isService ? "" : item.attributes || "",
       };
@@ -5244,7 +5245,7 @@ export default function InventoryPage() {
                         className="px-3 py-2 text-center align-middle"
                         title={serviceOnlyView ? undefined : "How many you can use or give out right now"}
                       >
-                        {serviceOnlyView ? "Cost price" : "Available"}
+                        {serviceOnlyView ? "Type" : "Available"}
                       </th>
                       <th className="px-3 py-2 text-center align-middle">
                         {serviceOnlyView ? "Selling price" : "Expiry"}
@@ -5288,8 +5289,8 @@ export default function InventoryPage() {
                               <InventoryStatusChips item={item} />
                             </td>
                             <td className="px-3 py-1.5 align-middle text-center">
-                              <strong className={cx("text-base tabular-nums", !isService && (isLow || isOut || itemHasExpiredStock(item)) ? "text-rose-700" : "text-slate-900")} title={isService ? "Service cost price" : ATP_HELP_TEXT}>
-                                {isService ? formatRupees(item.cost_price) : quantities.atp}
+                              <strong className={cx("text-base tabular-nums", !isService && (isLow || isOut || itemHasExpiredStock(item)) ? "text-rose-700" : "text-slate-900")} title={isService ? "Billable service" : ATP_HELP_TEXT}>
+                                {isService ? "Service" : quantities.atp}
                               </strong>
                               {!isService && quantities.onHand > quantities.atp ? (
                                 <p className="text-[10px] font-medium text-slate-500">{quantities.onHand} in stock</p>
@@ -5341,8 +5342,8 @@ export default function InventoryPage() {
                                 {isService ? (
                                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Service pricing</p>
-                                    <p className="mt-2 text-sm text-slate-700">Cost / Sell: {formatRupees(item.cost_price)} / {formatRupees(item.selling_price)}</p>
-                                    <p className="mt-1 text-sm text-slate-500">Billable service · no stock fields or batch tracking.</p>
+                                    <p className="mt-2 text-sm text-slate-700">Selling price: {formatRupees(item.selling_price)}</p>
+                                    <p className="mt-1 text-sm text-slate-500">Always available for billing · no stock, cost, or batch tracking.</p>
                                   </div>
                                 ) : (
                                 <div className="grid gap-3 md:grid-cols-2">

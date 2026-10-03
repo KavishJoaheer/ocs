@@ -560,6 +560,7 @@ test("quick billing treats a non-stock service without inventory deduction", asy
   assert.ok(service);
   assert.equal(service.is_service_charge, true);
   assert.equal(service.available_to_use, null);
+  assert.equal(service.cost_price, 0);
 
   const captured = await api("POST", `/billing/quick/visits/${serviceConsultationId}/capture`, doctorToken, {
     operation_id: randomUUID(),

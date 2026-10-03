@@ -210,6 +210,10 @@ const SERVICES = Object.freeze([
     components: [],
   },
   {
+    itemName: "Catheter Change",
+    components: [],
+  },
+  {
     itemName: "Bladder Training",
     components: [],
   },
@@ -570,6 +574,12 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
         folder_id = ?,
         quantity = 0,
         minimum_quantity = 0,
+        unit = 'service',
+        cost_price = 0,
+        expiry_date = NULL,
+        attributes = '',
+        moa_notes = '',
+        is_cost_only = 0,
         selling_price = CASE
           WHEN COALESCE(selling_price, 0) <= 0 AND ? > 0 THEN ?
           ELSE selling_price

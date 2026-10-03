@@ -55,7 +55,7 @@ export default function ItemEditorModal({
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline);
   const isService = item?.item_kind === "service";
   const priceChanged = Boolean(item) && (
-    Number(form.cost_price || 0) !== Number(baseline.cost_price || 0)
+    (!isService && Number(form.cost_price || 0) !== Number(baseline.cost_price || 0))
     || Number(form.selling_price || 0) !== Number(baseline.selling_price || 0)
   );
 
@@ -97,7 +97,7 @@ export default function ItemEditorModal({
             attributes: isService ? "" : form.attributes,
             minimum_quantity: isService ? 0 : Number(form.minimum_quantity || 0),
             unit: isService ? "service" : form.unit,
-            cost_price: Number(form.cost_price || 0),
+            cost_price: isService ? 0 : Number(form.cost_price || 0),
             selling_price: Number(form.selling_price || 0),
             adjustment_note: priceChanged ? form.adjustment_note.trim() : undefined,
             quantity: item ? undefined : 0,
@@ -227,21 +227,23 @@ export default function ItemEditorModal({
               {section === "pricing" ? (
                 <div className="space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Pricing</h4>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="space-y-2">
-                      <span className="text-sm font-semibold text-slate-700">Cost price (Rs)</span>
-                      <input
-                        required
-                        min="0"
-                        step="0.01"
-                        type="number"
-                        name="cost_price"
-                        value={form.cost_price}
-                        readOnly={masterReadOnly}
-                        onChange={(event) => setForm((prev) => ({ ...prev, cost_price: event.target.value }))}
-                        className={FIELD(masterReadOnly)}
-                      />
-                    </label>
+                  <div className={cx("grid gap-4", !isService && "md:grid-cols-2")}>
+                    {!isService ? (
+                      <label className="space-y-2">
+                        <span className="text-sm font-semibold text-slate-700">Cost price (Rs)</span>
+                        <input
+                          required
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          name="cost_price"
+                          value={form.cost_price}
+                          readOnly={masterReadOnly}
+                          onChange={(event) => setForm((prev) => ({ ...prev, cost_price: event.target.value }))}
+                          className={FIELD(masterReadOnly)}
+                        />
+                      </label>
+                    ) : null}
                     <label className="space-y-2">
                       <span className="text-sm font-semibold text-slate-700">Selling price (Rs)</span>
                       <input
