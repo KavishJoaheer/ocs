@@ -43,7 +43,7 @@ test("invoice PDF separates services, drugs, and uncharged consumables with thei
     total_amount: 2500,
   }).output();
 
-  for (const label of ["Medical services", "Drugs used", "Consumables used", "not charged", "Total"]) {
+  for (const label of ["Services", "Drugs used", "Consumables used", "not charged", "Total"]) {
     assert.match(output, new RegExp(label));
   }
 });

@@ -228,11 +228,11 @@ function parseBillingRow(row) {
 function summarizeBillingItems(items) {
   const normalized = patientChargeableBillingItems(items);
   if (!normalized.length) {
-    return "Medical service";
+    return "Service";
   }
 
   const descriptions = normalized.map((item) => item.description).filter(Boolean);
-  return descriptions.join(", ") || "Medical service";
+  return descriptions.join(", ") || "Service";
 }
 
 function serializePatientBillingRows(rows) {

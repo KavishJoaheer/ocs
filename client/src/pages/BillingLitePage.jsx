@@ -55,7 +55,7 @@ const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
 const PATIENT_PICKER_PAGE_SIZE = 60;
 const BILLING_CATEGORY_LABELS = {
-  medical_service: "Medical services",
+  medical_service: "Services",
   drug: "Drugs used",
   consumable: "Consumables used",
 };
@@ -177,8 +177,8 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
   }
   if (item.is_service_charge) {
     return Number(item.selling_price || 0) <= 0
-      ? "Medical service · price set at review"
-      : "Medical service · record consumables separately";
+      ? "Service · price set at review"
+      : "Service · record consumables separately";
   }
   if (item.syringe_optional && syringeSize === "0") return "No syringe deducted";
   if (item.linked_quantity_label) {
@@ -518,7 +518,6 @@ function BillingLitePage() {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
     return [
       "Available",
-      "Medical services",
       "Drugs used",
       "Consumables used",
       "Favourites",
@@ -534,7 +533,7 @@ function BillingLitePage() {
         category === "All supplies" ||
         (category === "Available" && isCatalogItemReady(item)) ||
         (category === "Favourites" && favorites.has(item.id)) ||
-        BILLING_CATEGORY_LABELS[item.billing_category] === category ||
+        (item.billing_category !== "medical_service" && BILLING_CATEGORY_LABELS[item.billing_category] === category) ||
         item.subcategory === category ||
         item.category === category;
       const matchesSearch =

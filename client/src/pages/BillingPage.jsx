@@ -92,7 +92,7 @@ const QUICK_WORKFLOW_META = {
 
 const FINANCE_PAGE_SIZE = 40;
 const BILLING_SECTION_LABELS = {
-  medical_service: "Medical service",
+  medical_service: "Services",
   drug: "Drug used",
   consumable: "Consumable used",
 };

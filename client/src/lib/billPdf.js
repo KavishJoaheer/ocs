@@ -41,7 +41,7 @@ export function buildBillPdf(bill) {
   y += 3;
   const saleItems = (bill.items || []).filter((item) => item.type === "Sale");
   const sections = [
-    ["medical_service", "Medical services"],
+    ["medical_service", "Services"],
     ["drug", "Drugs used"],
     ["consumable", "Consumables used (internal cost record)"],
   ];
