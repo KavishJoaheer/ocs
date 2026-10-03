@@ -441,6 +441,7 @@ function oxygenFolderId() {
 }
 
 test("removed O2 time charges are retired in warehouse and doctor bags, including billing catalogue", () => {
+  const removedOxygenNames = ["O2 first 30mins", "O2 second 30 mins"];
   const folderId = oxygenFolderId();
   const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all().map((row) => Number(row.id));
   const insert = db.prepare(`
@@ -450,7 +451,8 @@ test("removed O2 time charges are retired in warehouse and doctor bags, includin
     ) VALUES (?, 'service', ?, ?, ?, 0, 0, '30 min session', 300, 600)
   `);
   const ids = [];
-  for (const name of RETIRED_OCS_SERVICE_ITEMS) {
+  for (const name of removedOxygenNames) {
+    assert.equal(RETIRED_OCS_SERVICE_ITEMS.includes(name), true);
     assert.equal(ocsConsumablesPdfCatalog.some((row) => row.name === name), false);
     assert.equal(ocsConsumablesExtension.some((row) => row.name === name), false);
     ids.push(Number(insert.run(name, folderId, "ocs", null).lastInsertRowid));
@@ -477,6 +479,64 @@ test("removed O2 time charges are retired in warehouse and doctor bags, includin
   const retry = alignInventoryCategories();
   assert.equal(retry.inserted, 0);
   assert.equal(retry.archived, 0);
+});
+
+test("named catheter services are written off and retired without touching similar items", () => {
+  const retiredNames = [
+    "Catheter Change (silicon)",
+    "Catheterisation + Urine bag + wash out",
+  ];
+  for (const name of retiredNames) {
+    assert.equal(RETIRED_OCS_SERVICE_ITEMS.includes(name), true, name);
+  }
+
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name='Consumable' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all().map((row) => Number(row.id));
+  const insert = db.prepare(`
+    INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price
+    ) VALUES (?, 'stock', ?, ?, ?, 1, 0, 'unit', 100, 500)
+  `);
+  const insertBatch = db.prepare(`
+    INSERT INTO inventory_batches (
+      item_id, quantity_remaining, unit_cost, expiry_date, received_date
+    ) VALUES (?, 1, 100, '2026-12-30', '2026-10-01')
+  `);
+  const ids = [];
+  for (const name of retiredNames) {
+    const warehouseId = Number(insert.run(name, folderId, "ocs", null).lastInsertRowid);
+    insertBatch.run(warehouseId);
+    ids.push(warehouseId);
+    for (const doctorId of doctorIds) {
+      const bagId = Number(insert.run(name, folderId, "doctor", doctorId).lastInsertRowid);
+      insertBatch.run(bagId);
+      ids.push(bagId);
+    }
+  }
+  const similarItemId = Number(insert.run("Catheter Change (silicone)", folderId, "ocs", null).lastInsertRowid);
+
+  const result = alignInventoryCategories();
+  assert.equal(result.archived, ids.length);
+  assert.equal(result.written_off, ids.length);
+  assert.equal(result.blocked, 0);
+  for (const id of ids) {
+    const row = db.prepare("SELECT quantity, archived_at FROM inventory WHERE id = ?").get(id);
+    assert.equal(Number(row.quantity), 0);
+    assert.ok(row.archived_at, String(id));
+    assert.equal(
+      Number(db.prepare("SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity FROM inventory_batches WHERE item_id = ?").get(id).quantity),
+      0,
+    );
+    assert.equal(
+      Number(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE item_id = ? AND action_type = 'retired_sku_write_off'").get(id).count),
+      1,
+    );
+  }
+
+  const similarItem = db.prepare("SELECT quantity, archived_at FROM inventory WHERE id = ?").get(similarItemId);
+  assert.equal(Number(similarItem.quantity), 1);
+  assert.equal(similarItem.archived_at, null);
 });
 
 test("old oxygen stock charges leave the list and the billing service stays", () => {

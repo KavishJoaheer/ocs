@@ -54,6 +54,11 @@ const STATUS_META = {
 const MAX_CONSULTATION_FEE = 4500;
 const SUBMISSION_PAGE_SIZE = 20;
 const PATIENT_PICKER_PAGE_SIZE = 60;
+const BILLING_CATEGORY_LABELS = {
+  medical_service: "Medical services",
+  drug: "Drugs used",
+  consumable: "Consumables used",
+};
 
 function mergePatientOptions(current, incoming) {
   const patients = new Map((current || []).map((patient) => [String(patient.patient_id), {
@@ -168,7 +173,12 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
   if (item.cost_only) {
     return available < 1
       ? "Out of stock"
-      : `${available} ${item.unit}${available === 1 ? "" : "s"} · cost only`;
+      : `${available} ${item.unit}${available === 1 ? "" : "s"} · internal cost ${formatRupees(item.cost_price)}`;
+  }
+  if (item.is_service_charge) {
+    return Number(item.selling_price || 0) <= 0
+      ? "Medical service · price set at review"
+      : "Medical service · record consumables separately";
   }
   if (item.syringe_optional && syringeSize === "0") return "No syringe deducted";
   if (item.linked_quantity_label) {
@@ -186,9 +196,7 @@ function catalogStockLabel(item, { available, costMissing, priceMissing, unavail
 }
 
 function isCatalogItemReady(item) {
-  if (item.is_service_charge) {
-    return !item.linked_quantity_label || Number(item.linked_quantity_max || 0) > 0;
-  }
+  if (item.is_service_charge) return true;
   const available = Number(item.available_to_use || 0);
   if (!item.cost_price_ready || available < 1) return false;
   return item.cost_only || Number(item.selling_price || 0) > 0;
@@ -215,6 +223,7 @@ function BillingLitePage() {
   const [selectedVisit, setSelectedVisit] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [cart, setCart] = useState({});
+  const [consumablesReviewed, setConsumablesReviewed] = useState(false);
   const [maskSizeByItem, setMaskSizeByItem] = useState({});
   const [enemaSizeByItem, setEnemaSizeByItem] = useState({});
   const [cannulaSizeByItem, setCannulaSizeByItem] = useState({});
@@ -507,7 +516,15 @@ function BillingLitePage() {
 
   const categories = useMemo(() => {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
-    return ["Available", "Favourites", "All supplies", ...[...names].sort((a, b) => a.localeCompare(b))];
+    return [
+      "Available",
+      "Medical services",
+      "Drugs used",
+      "Consumables used",
+      "Favourites",
+      "All supplies",
+      ...[...names].sort((a, b) => a.localeCompare(b)),
+    ];
   }, [catalog]);
 
   const matchingCatalog = useMemo(() => {
@@ -517,6 +534,7 @@ function BillingLitePage() {
         category === "All supplies" ||
         (category === "Available" && isCatalogItemReady(item)) ||
         (category === "Favourites" && favorites.has(item.id)) ||
+        BILLING_CATEGORY_LABELS[item.billing_category] === category ||
         item.subcategory === category ||
         item.category === category;
       const matchesSearch =
@@ -570,30 +588,6 @@ function BillingLitePage() {
       }
       if (supplyPriceWasAdjusted(item) && String(supplyPriceEdits[item.id]?.reason || "").trim().length < 8) {
         return `Explain the price adjustment for ${item.item_name} in at least 8 characters.`;
-      }
-      if (item.requires_mask && !["adult", "paediatric"].includes(maskSizeByItem[item.id])) {
-        return `Choose Adult or Paediatric face mask for ${item.item_name}.`;
-      }
-      if (item.requires_enema && !["adult", "paediatric"].includes(enemaSizeByItem[item.id])) {
-        return `Choose Atomic enema (Adult) or Atomic enema (Paediatric) for ${item.item_name}.`;
-      }
-      if (item.requires_cannula && !["blue", "pink", "green", "yellow"].includes(cannulaSizeByItem[item.id])) {
-        return `Choose a cannula for ${item.item_name}.`;
-      }
-      const syringeChoice = syringeSizeByItem[item.id];
-      const syringeChosen = ["3", "5", "10", "20", "50"].includes(syringeChoice)
-        || (item.syringe_optional && syringeChoice === "0");
-      if (item.requires_syringe && !syringeChosen) {
-        return `Choose a syringe for ${item.item_name}.`;
-      }
-      if (item.requires_saline && !["100", "500"].includes(salineSizeByItem[item.id])) {
-        return `Choose IV N/S 100ml or IV N/S 500ml for ${item.item_name}.`;
-      }
-      if (item.requires_catheter && !["14", "16", "18", "20", "22"].includes(catheterSizeByItem[item.id])) {
-        return `Choose a Foley catheter for ${item.item_name}.`;
-      }
-      if (item.requires_ngt && !["14", "16", "18"].includes(ngtSizeByItem[item.id])) {
-        return `Choose an NGT for ${item.item_name}.`;
       }
     }
     return "";
@@ -686,6 +680,7 @@ function BillingLitePage() {
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
     setRecordPaymentNow(!operatorIssueOnly);
     setCart({});
+    setConsumablesReviewed(false);
     setCatalog([]);
     setMaskSizeByItem({});
     setEnemaSizeByItem({});
@@ -797,6 +792,14 @@ function BillingLitePage() {
       toast.error("Select the consultation doctor first.");
       return;
     }
+    if (!consumablesReviewed) {
+      setConsumablesReviewed(true);
+      setCategory("Consumables used");
+      setCatalogSearch("");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      toast.success("Add the consumables actually used and set each quantity, then review the invoice.");
+      return;
+    }
     setPriceAdjustmentsOpen(
       Math.abs(amount - configuredAmount) >= 0.005
       || selectedItems.some((item) => !item.cost_only && (
@@ -806,184 +809,11 @@ function BillingLitePage() {
     setView("review");
   }
 
-  function supplyChoiceFields(item) {
-    const selectClass = "mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-[#173f47] outline-none focus:border-[#2aa7a0]";
-    return (
-      <>
-        {item.linked_quantity_label ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">{item.linked_quantity_label}</span>
-            <select
-              aria-label={item.linked_quantity_label}
-              value={Number(cart[item.id] || 0)}
-              onChange={(event) => setCart((current) => ({
-                ...current,
-                [item.id]: Number(event.target.value || 0),
-              }))}
-              className={selectClass}
-            >
-              {Array.from(
-                { length: Math.max(0, Number(item.linked_quantity_max || 0)) },
-                (_, index) => index + 1,
-              ).map((quantity) => (
-                <option key={quantity} value={quantity}>{quantity}</option>
-              ))}
-            </select>
-            <span className="mt-1 block text-xs font-semibold text-slate-500">
-              The same quantity will be deducted from the doctor’s bag and charged at {formatRupees(item.selling_price)} each.
-            </span>
-          </label>
-        ) : null}
-        {item.requires_mask ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Face mask used</span>
-            <select
-              aria-label="Face mask used"
-              value={maskSizeByItem[item.id] || ""}
-              onChange={(event) => setMaskSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose face mask</option>
-              <option value="adult">Adult face mask</option>
-              <option value="paediatric">Paediatric face mask</option>
-            </select>
-            {item.included_label ? (
-              <span className="mt-1 block text-xs font-semibold text-slate-500">
-                {item.included_label} will be deducted from the doctor’s bag and its batch cost recorded.
-              </span>
-            ) : null}
-          </label>
-        ) : null}
-        {item.requires_enema ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Atomic enema</span>
-            <select
-              value={enemaSizeByItem[item.id] || ""}
-              onChange={(event) => setEnemaSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose atomic enema</option>
-              <option value="adult">Atomic enema (Adult)</option>
-              <option value="paediatric">Atomic enema (Paediatric)</option>
-            </select>
-          </label>
-        ) : null}
-        {item.requires_cannula ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Cannula</span>
-            <select
-              value={cannulaSizeByItem[item.id] || ""}
-              onChange={(event) => setCannulaSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose cannula</option>
-              <option value="blue">Cannula (Blue)</option>
-              <option value="pink">Cannula (Pink)</option>
-              <option value="green">Cannula (Green)</option>
-              <option value="yellow">Cannula (Yellow)</option>
-            </select>
-          </label>
-        ) : null}
-        {item.requires_syringe ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Syringe</span>
-            <select
-              value={syringeSizeByItem[item.id] || ""}
-              onChange={(event) => setSyringeSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose syringe</option>
-              {item.syringe_optional ? <option value="0">No syringe</option> : null}
-              <option value="3">Syringe (3ml)</option>
-              <option value="5">Syringe (5ml)</option>
-              <option value="10">Syringe (10ml)</option>
-              <option value="20">Syringe (20ml)</option>
-              <option value="50">Irrigation Syringe (50ml)</option>
-            </select>
-          </label>
-        ) : null}
-        {item.requires_saline ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Normal saline</span>
-            <select
-              value={salineSizeByItem[item.id] || ""}
-              onChange={(event) => setSalineSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose N/S</option>
-              <option value="100">IV N/S 100ml</option>
-              <option value="500">IV N/S 500ml</option>
-            </select>
-          </label>
-        ) : null}
-        {item.requires_catheter ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Foley catheter</span>
-            <select
-              value={catheterSizeByItem[item.id] || ""}
-              onChange={(event) => setCatheterSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose Foley catheter</option>
-              <option value="14">Foley Catheter (Ch/Fr 14)</option>
-              <option value="16">Foley Catheter (Ch/Fr 16)</option>
-              <option value="18">Foley Catheter (Ch/Fr 18)</option>
-              <option value="20">Foley Catheter (Ch/Fr 20)</option>
-              <option value="22">Foley Catheter (Ch/Fr 22)</option>
-            </select>
-          </label>
-        ) : null}
-        {item.requires_ngt ? (
-          <label className="mt-3 block">
-            <span className="text-xs font-black uppercase tracking-wide text-slate-500">NGT</span>
-            <select
-              value={ngtSizeByItem[item.id] || ""}
-              onChange={(event) => setNgtSizeByItem((current) => ({
-                ...current,
-                [item.id]: event.target.value,
-              }))}
-              className={selectClass}
-            >
-              <option value="">Choose NGT</option>
-              <option value="14">NGT (14fg x105cm)</option>
-              <option value="16">NGT (16fg x105cm)</option>
-              <option value="18">NGT (18fg x105cm)</option>
-            </select>
-          </label>
-        ) : null}
-      </>
-    );
-  }
-
   function changeQuantity(item, delta) {
     if (item.is_service_charge) {
       setCart((current) => ({
         ...current,
-        [item.id]: Math.max(
-          0,
-          Math.min(
-            item.linked_quantity_label ? Number(item.linked_quantity_max || 0) : Number.MAX_SAFE_INTEGER,
-            Number(current[item.id] || 0) + delta,
-          ),
-        ),
+        [item.id]: Math.max(0, Number(current[item.id] || 0) + delta),
       }));
       return;
     }
@@ -1066,6 +896,7 @@ function BillingLitePage() {
         amount: Number(consultationPrice),
         adjustment_reason: consultationAdjustmentReason.trim() || undefined,
       },
+      manual_consumables: true,
       items: selectedItems.map((item) => ({
         inventory_item_id: item.id,
         quantity: item.quantity,
@@ -1207,6 +1038,7 @@ function BillingLitePage() {
       }
       setCatalog(items);
       setCart(nextCart);
+      setConsumablesReviewed(queueEntry.payload?.manual_consumables === true);
       const queuedItems = queueEntry.payload?.items || [];
       setMaskSizeByItem(itemSelectionMap(queuedItems, "mask_size"));
       setEnemaSizeByItem(itemSelectionMap(queuedItems, "enema_size"));
@@ -1256,6 +1088,7 @@ function BillingLitePage() {
     setSelectedVisit(null);
     setCatalog([]);
     setCart({});
+    setConsumablesReviewed(false);
     setMaskSizeByItem({});
     setEnemaSizeByItem({});
     setCannulaSizeByItem({});
@@ -1666,7 +1499,7 @@ function BillingLitePage() {
             <div className="mb-5 flex items-center justify-between gap-3 text-white">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white/70">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
-                <h1 className="truncate text-2xl font-black">Charges</h1>
+                <h1 className="truncate text-2xl font-black">{consumablesReviewed ? "Consumables used" : "Charges"}</h1>
               </div>
               <button
                 type="button"
@@ -1681,7 +1514,7 @@ function BillingLitePage() {
                 className="relative hidden min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95 md:flex"
               >
                 <ShoppingBasket className="size-5" />
-                Review
+                {consumablesReviewed ? "Review invoice" : "Choose consumables"}
                 {selectedUnitCount > 0 ? (
                   <span className="flex min-w-6 items-center justify-center rounded-full bg-[#173f47] px-1.5 py-0.5 text-sm text-white">{selectedUnitCount}</span>
                 ) : null}
@@ -1693,6 +1526,15 @@ function BillingLitePage() {
                 <p className="font-black">Replace the earlier submission</p>
                 <p className="mt-1 text-sm font-semibold">{selectedVisit.workflow_note || "Review the previously submitted supplies and send the complete corrected list."}</p>
                 <p className="mt-2 text-xs font-bold text-amber-800">The previous quantities are preloaded. On submission, the earlier stock movements and charge lines are reversed before this corrected list is applied.</p>
+              </div>
+            ) : null}
+
+            {consumablesReviewed ? (
+              <div className="mb-4 rounded-[1.5rem] border border-teal-200 bg-teal-50 p-4 text-[#174f54]">
+                <p className="font-black">Record the consumables actually used</p>
+                <p className="mt-1 text-sm font-semibold">
+                  Add any combination from the doctor’s bag and set each quantity. Their batch cost is recorded internally and does not increase the invoice total.
+                </p>
               </div>
             ) : null}
 
@@ -1731,7 +1573,9 @@ function BillingLitePage() {
                     value={catalogSearch}
                     onChange={(event) => {
                       setCatalogSearch(event.target.value);
-                      if (event.target.value) setCategory("All supplies");
+                      if (event.target.value && !Object.values(BILLING_CATEGORY_LABELS).includes(category)) {
+                        setCategory("All supplies");
+                      }
                     }}
                     placeholder="Search supplies"
                     className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-base font-bold outline-none transition focus:border-[#2aa7a0] focus:bg-white"
@@ -1764,9 +1608,7 @@ function BillingLitePage() {
                   const available = Number(item.available_to_use || 0);
                   const priceMissing = !item.cost_only && !item.is_service_charge && Number(item.selling_price || 0) <= 0;
                   const costMissing = !item.is_service_charge && !item.cost_price_ready;
-                  const isUnavailable = item.is_service_charge
-                    ? Boolean(item.linked_quantity_label) && Number(item.linked_quantity_max || 0) < 1
-                    : available < 1 || priceMissing || costMissing;
+                  const isUnavailable = item.is_service_charge ? false : available < 1 || priceMissing || costMissing;
                   const isFavorite = favorites.has(item.id);
                   const tone = folderTone(item.subcategory || item.category);
                   const stockLabel = catalogStockLabel(item, {
@@ -1805,7 +1647,13 @@ function BillingLitePage() {
                       <div className="mt-auto pt-5">
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                         <div className="min-w-0">
-                          <p className={`text-lg font-semibold ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>{item.cost_only ? "Not charged" : item.is_service_charge && Number(item.selling_price || 0) <= 0 ? "Set at review" : formatRupees(item.selling_price)}</p>
+                          <p className={`text-lg font-semibold ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>
+                            {item.cost_only
+                              ? `${formatRupees(item.cost_price)} cost · not charged`
+                              : item.is_service_charge && Number(item.selling_price || 0) <= 0
+                                ? "Set at review"
+                                : formatRupees(item.selling_price)}
+                          </p>
                           <p
                             className={`mt-1 line-clamp-2 text-sm font-medium leading-5 ${isUnavailable ? "text-rose-600" : "text-slate-600"}`}
                             title={stockLabel}
@@ -1852,7 +1700,6 @@ function BillingLitePage() {
                           </button>
                         ) : null}
                       </div>
-                      {quantity > 0 ? supplyChoiceFields(item) : null}
                       </div>
                     </article>
                   );
@@ -1888,7 +1735,9 @@ function BillingLitePage() {
                 <span className="block text-sm font-bold">{selectedUnitCount ? `${selectedUnitCount} supply unit${selectedUnitCount === 1 ? "" : "s"}` : "Consultation only"}</span>
                 <span className="block text-lg font-black">{formatRupees(grandTotal)}</span>
               </span>
-              <span className="flex items-center gap-2 text-base font-black">Review <ChevronRight className="size-5" /></span>
+              <span className="flex items-center gap-2 text-base font-black">
+                {consumablesReviewed ? "Review invoice" : "Choose consumables"} <ChevronRight className="size-5" />
+              </span>
             </button>
           </section>
         ) : null}
@@ -1978,18 +1827,15 @@ function BillingLitePage() {
                     {selectedItems.map((item) => (
                       <div key={item.id} className="grid gap-3 py-5 sm:grid-cols-[1fr_11rem] sm:items-start">
                         <div className="min-w-0">
+                          <p className="mb-1 text-xs font-black uppercase tracking-wide text-[#248f91]">
+                            {BILLING_CATEGORY_LABELS[item.billing_category] || "Drugs used"}
+                          </p>
                           <p className="font-black text-[#173f47]">{item.item_name}</p>
                           <p className="mt-1 text-sm font-semibold text-slate-500">
                             {item.cost_only
-                              ? `Quantity ${item.quantity} · Not charged`
+                              ? `Quantity ${item.quantity} · Internal estimated cost ${formatRupees(Number(item.cost_price || 0) * item.quantity)} · Not charged`
                               : `Quantity ${item.quantity} · Standard price ${formatRupees(item.selling_price)}`}
                           </p>
-                          {item.syringe_optional && syringeSizeByItem[item.id] === "0" ? (
-                            <p className="mt-1 text-sm font-semibold text-[#17666a]">No syringe. Nothing is taken from the bag.</p>
-                          ) : item.included_label ? (
-                            <p className="mt-1 text-sm font-semibold text-[#17666a]">From the bag: {item.quantity} × {item.included_label}</p>
-                          ) : null}
-                          {supplyChoiceFields(item)}
                         </div>
                         {item.cost_only ? (
                           <div className="rounded-xl bg-[#edf8f6] px-4 py-3 text-sm font-bold text-[#17666a]">

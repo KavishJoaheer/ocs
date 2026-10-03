@@ -17,8 +17,10 @@ const { db, ensureBillingForConsultation } = require("../src/db");
 const { hashPassword } = require("../src/lib/security");
 const { getTodayLocal } = require("../src/lib/utils");
 const {
+  CONSUMABLE_USED_NAMES,
   ensureTreatmentCatalogue,
   ensureTreatmentCatalogueMetadata,
+  isUnchargedConsumable,
 } = require("../src/lib/treatmentSupplies");
 
 let server;
@@ -2008,6 +2010,111 @@ test("billing requires medicine cost and keeps syringes, cannulas, and intrafix 
   assert.equal(Number(movement.unit_price_snapshot), 0);
   assert.equal(Number(movement.unit_cost_snapshot), 5);
   assert.equal(JSON.parse(movement.meta_json).billed_quantity, 0);
+});
+
+test("manual consumables allow independent items and quantities without increasing the charged total", async () => {
+  const expectedConsumables = [
+    "2 Way Foley Catheter (Ch/Fr 14)",
+    "2 Way Foley Catheter (Ch/Fr 16)",
+    "2 Way Foley Catheter (Ch/Fr 18)",
+    "2 Way Foley Catheter (Ch/Fr 20)",
+    "2 Way Foley Catheter (Ch/Fr 22)",
+    "Irrigation Syringe (50ml)",
+    "NGT (14fg x105cm)",
+    "NGT (16fg x105cm)",
+    "NGT (18fg x105cm)",
+    "Urine bag",
+    "Adult Face Mask",
+    "Dulopro nebule",
+    "Paediatric Face Mask",
+    "Pulmicort nebule",
+    "Urine dip stick",
+  ];
+  for (const name of expectedConsumables) {
+    assert.equal(CONSUMABLE_USED_NAMES.includes(name), true, name);
+    assert.equal(isUnchargedConsumable(name), true, name);
+  }
+
+  const patientId = Number(db.prepare("SELECT patient_id FROM consultations WHERE id = ?").get(consultationId).patient_id);
+  function folderId(name) {
+    const existing = db.prepare("SELECT id FROM inventory_folders WHERE name = ? AND owner_doctor_id IS NULL LIMIT 1").get(name);
+    return Number(existing?.id || db.prepare("INSERT INTO inventory_folders (name, owner_doctor_id) VALUES (?, NULL)").run(name).lastInsertRowid);
+  }
+  const imFolderId = folderId("IM Drugs");
+  const consumableFolderId = folderId("Consumable");
+  function stock(name, inventoryFolderId, quantity, sellingPrice, unitCost) {
+    let row = db.prepare(`
+      SELECT id FROM inventory
+      WHERE stock_scope = 'doctor' AND owner_doctor_id = ?
+        AND lower(trim(item_name)) = lower(trim(?)) AND archived_at IS NULL
+      LIMIT 1
+    `).get(doctorId, name);
+    if (!row) {
+      row = { id: Number(db.prepare(`
+        INSERT INTO inventory (
+          item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity,
+          minimum_quantity, unit, cost_price, selling_price, updated_at
+        ) VALUES (?, 'stock', ?, 'doctor', ?, 0, 0, 'unit', ?, ?, CURRENT_TIMESTAMP)
+      `).run(name, inventoryFolderId, doctorId, unitCost, sellingPrice).lastInsertRowid) };
+    }
+    db.prepare(`
+      UPDATE inventory
+      SET folder_id = ?, quantity = ?, cost_price = ?, selling_price = ?, archived_at = NULL
+      WHERE id = ?
+    `).run(inventoryFolderId, quantity, unitCost, sellingPrice, row.id);
+    db.prepare("UPDATE inventory_batches SET quantity_remaining = 0 WHERE item_id = ?").run(row.id);
+    db.prepare(`
+      INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost, is_non_expiring, status)
+      VALUES (?, ?, '2032-12-31', ?, 0, 'usable')
+    `).run(row.id, quantity, unitCost);
+    return Number(row.id);
+  }
+
+  const dynaparId = stock("IM Dynapar", imFolderId, 5, 500, 120);
+  const dexamethasoneId = stock("IM Dexamethasone", imFolderId, 5, 350, 80);
+  const syringe3Id = stock("Syringe (3ml)", consumableFolderId, 8, 25, 5);
+  const syringe5Id = stock("Syringe (5ml)", consumableFolderId, 8, 30, 7);
+  const nextConsultationId = createBillableVisit(patientId, "Flexible consumables billing", "18:15");
+
+  const catalog = await api("GET", `/billing/quick/catalog/${nextConsultationId}`);
+  assert.equal(catalog.status, 200, JSON.stringify(catalog.data));
+  assert.equal(catalog.data.items.find((item) => item.id === dynaparId).billing_category, "drug");
+  assert.equal(catalog.data.items.find((item) => item.id === syringe3Id).billing_category, "consumable");
+  assert.equal(catalog.data.items.find((item) => item.id === syringe3Id).subcategory, "Consumable");
+  assert.equal(catalog.data.items.find((item) => item.item_name === "Catherisation").billing_category, "medical_service");
+
+  const captured = await api("POST", `/billing/quick/visits/${nextConsultationId}/capture`, doctorToken, {
+    operation_id: randomUUID(),
+    ...quickIssueFields("FLEX-CONSUMABLES"),
+    manual_consumables: true,
+    items: [
+      { inventory_item_id: dynaparId, quantity: 1, unit_price: 500 },
+      { inventory_item_id: dexamethasoneId, quantity: 1, unit_price: 350 },
+      { inventory_item_id: syringe3Id, quantity: 2, unit_price: 0 },
+      { inventory_item_id: syringe5Id, quantity: 1, unit_price: 0 },
+    ],
+  });
+  assert.equal(captured.status, 201, JSON.stringify(captured.data));
+
+  const bill = db.prepare("SELECT items, total_amount FROM billing WHERE id = ?").get(captured.data.submission.bill_id);
+  const lines = JSON.parse(bill.items);
+  const consultationFee = lines.find((line) => line.is_consultation_fee);
+  const dynapar = lines.find((line) => line.inventory_item_id === dynaparId);
+  const dexamethasone = lines.find((line) => line.inventory_item_id === dexamethasoneId);
+  const syringe3 = lines.find((line) => line.inventory_item_id === syringe3Id);
+  const syringe5 = lines.find((line) => line.inventory_item_id === syringe5Id);
+  assert.equal(Number(bill.total_amount), Number(consultationFee.amount) + 500 + 350);
+  assert.deepEqual([dynapar.billing_category, dexamethasone.billing_category], ["drug", "drug"]);
+  assert.equal(syringe3.billing_category, "consumable");
+  assert.equal(syringe3.cost_only_consumable, true);
+  assert.equal(syringe3.quantity, 2);
+  assert.equal(syringe3.amount, 0);
+  assert.equal(syringe3.cost_amount, 10);
+  assert.equal(syringe5.quantity, 1);
+  assert.equal(syringe5.amount, 0);
+  assert.equal(syringe5.cost_amount, 7);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(syringe3Id).quantity, 6);
+  assert.equal(db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(syringe5Id).quantity, 7);
 });
 
 test("opening quick catalogue is read-only and preserves a configured supply price", async () => {

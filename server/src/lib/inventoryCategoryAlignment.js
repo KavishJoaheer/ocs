@@ -121,6 +121,8 @@ const RETIRED_OCS_GO_LIVE_SKUS = [
 const RETIRED_OCS_SERVICE_ITEMS = [
   "O2 first 30mins",
   "O2 second 30 mins",
+  "Catheter Change (silicon)",
+  "Catheterisation + Urine bag + wash out",
 ];
 const RETIRED_OCS_WAREHOUSE_ONLY_SKUS = [
   "Supp.Diclowal 12.5mg / 25mg",

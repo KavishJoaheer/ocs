@@ -29,3 +29,21 @@ test("invoice PDF shows gross, payments, credits, balance and net collection sep
     assert.match(output, new RegExp(label));
   }
 });
+
+test("invoice PDF separates services, drugs, and uncharged consumables with their internal cost", () => {
+  const output = buildBillPdf({
+    id: 43,
+    invoice_number: "OCS-INV-00000043",
+    patient_name: "Internal Billing Test",
+    items: [
+      { description: "Catherisation", type: "Sale", quantity: 1, unit_price: 2000, amount: 2000, billing_category: "medical_service", is_service_charge: true },
+      { description: "IM Dynapar", type: "Sale", quantity: 1, unit_price: 500, amount: 500, billing_category: "drug", inventory_item_id: 10 },
+      { description: "Syringe (3ml)", type: "Sale", quantity: 2, unit_price: 0, amount: 0, cost_amount: 10, billing_category: "consumable", cost_only_consumable: true, inventory_item_id: 11 },
+    ],
+    total_amount: 2500,
+  }).output();
+
+  for (const label of ["Medical services", "Drugs used", "Consumables used", "not charged", "Total"]) {
+    assert.match(output, new RegExp(label));
+  }
+});

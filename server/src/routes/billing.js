@@ -900,6 +900,23 @@ function consumeDoctorBatches(itemId, quantity) {
   return consumeAvailableFefo(itemId, quantity);
 }
 
+function billingCategoryForInventoryItem(item) {
+  if (String(item?.item_kind || "stock") === "service") return "medical_service";
+  return isUnchargedConsumable(item) ? "consumable" : "drug";
+}
+
+function inventoryMovementCostAmount(movementIds = []) {
+  const ids = [...new Set(movementIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => "?").join(",");
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(ABS(quantity) * COALESCE(unit_cost_snapshot, 0)), 0) AS amount
+    FROM inventory_movements
+    WHERE id IN (${placeholders})
+  `).get(...ids);
+  return roundCurrency(row?.amount || 0);
+}
+
 function deductIncludedTreatmentComponents({
   consultation,
   components,
@@ -1420,6 +1437,9 @@ function applyInventoryTransactions({
       linked_sale_movement_ids: linkedSaleMovementIds,
       dispensing_movement_ids: linkedSaleMovementIds,
       inventory_movement_ids: inventoryMovementIds,
+      billing_category: costOnly ? "consumable" : "drug",
+      cost_only_consumable: costOnly,
+      cost_amount: inventoryMovementCostAmount([...linkedSaleMovementIds, ...inventoryMovementIds]),
     });
   }
 
@@ -2448,6 +2468,8 @@ router.get("/quick/catalog/:consultationId", (req, res) => {
       linked_quantity_label: String(recipe?.quantityPrompt || ""),
       linked_quantity_max: linkedQuantityMaximum,
       cost_only: isUnchargedConsumable(item),
+      billing_category: billingCategoryForInventoryItem(item),
+      cost_price: isService ? 0 : roundCurrency(item.cost_price),
       cost_price_ready: isService || Number(item.cost_price || 0) > 0,
       selling_price: roundCurrency(item.selling_price),
       available_to_use: isService
@@ -3029,6 +3051,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
   }
 
   const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+  const manualConsumables = req.body?.manual_consumables === true;
   if (rawItems.length > 40) {
     return res.status(400).json({ error: "A quick billing submission can contain up to 40 different supplies." });
   }
@@ -3356,6 +3379,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
             unit_price: reviewedUnitPrice,
             type: "Sale",
             quantity,
+            billing_category: billingCategoryForInventoryItem(item),
+            inventory_folder_name: String(item.folder_name || item.parent_folder_name || ""),
             inventory_item_id: item.item_kind === "service" ? null : itemId,
             ...(costOnly ? { cost_only_consumable: true } : {}),
             syringe_size: syringeSizes.get(itemId) || "",
@@ -3408,7 +3433,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       }
       const componentItemIds = [];
       const appliedItems = [...applied.items];
-      for (let index = 0; index < appliedItems.length; index += 1) {
+      for (let index = 0; !manualConsumables && index < appliedItems.length; index += 1) {
         const line = appliedItems[index];
         const itemId = Number(line.inventory_item_id || 0);
         const stockItem = stockById.get(itemId);
@@ -3438,6 +3463,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         };
       }
       const servicesWithStock = serviceChargeLines.map((serviceLine) => {
+        if (manualConsumables) return serviceLine;
         const consumed = deductTreatmentSupplies({
           consultation,
           line: serviceLine,
@@ -3667,6 +3693,7 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
           consultation_doctor_name: String(consultation.doctor_name || ""),
           issued_by_user_id: Number(req.auth?.id || 0) || null,
           issued_by_role: String(req.auth?.role || ""),
+          manual_consumables: manualConsumables,
         },
       });
 

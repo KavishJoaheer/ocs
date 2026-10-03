@@ -106,6 +106,16 @@ function normalizeBillingItems(items) {
           : {}),
         ...(item?.is_consultation_fee ? {is_consultation_fee:true} : {}),
         ...(item?.is_service_charge ? {is_service_charge:true} : {}),
+        ...(item?.cost_only_consumable ? {cost_only_consumable:true} : {}),
+        ...(["medical_service", "drug", "consumable"].includes(String(item?.billing_category || ""))
+          ? { billing_category: String(item.billing_category) }
+          : {}),
+        ...(String(item?.inventory_folder_name || "").trim()
+          ? { inventory_folder_name: String(item.inventory_folder_name).trim().slice(0, 200) }
+          : {}),
+        ...(isValidCurrencyAmount(item?.cost_amount)
+          ? { cost_amount: Number(item.cost_amount) }
+          : {}),
         ...(Number(item?.service_catalog_item_id) > 0
           ? { service_catalog_item_id: Number(item.service_catalog_item_id) }
           : {}),

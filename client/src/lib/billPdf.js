@@ -2,6 +2,13 @@ import { jsPDF } from "jspdf";
 import { openInlinePreviewTab, presentFileBlob } from "./fileBlobViewer.js";
 import { formatCurrency, formatDate } from "./format.js";
 
+function billingCategory(item) {
+  if (item.billing_category) return item.billing_category;
+  if (item.is_consultation_fee || item.is_service_charge || !item.inventory_item_id) return "medical_service";
+  if (item.cost_only_consumable || Number(item.amount || 0) === 0) return "consumable";
+  return "drug";
+}
+
 export function buildBillPdf(bill) {
   const doc = new jsPDF();
   let y = 20;
@@ -32,19 +39,42 @@ export function buildBillPdf(bill) {
   const paymentState = bill.payment_state || bill.status || "unpaid";
   writeLine(`Status: ${bill.voided_at || bill.consultation_voided_at ? "VOIDED - historical record only" : paymentState}`);
   y += 3;
-  writeLine("Items", { size: 11, bold: true });
-  (bill.items || []).filter((item) => item.type === "Sale").forEach((item) => {
-    const quantity = Math.max(1, Number(item.quantity || 1));
-    const unitPrice = Number.isFinite(Number(item.unit_price))
-      ? Number(item.unit_price)
-      : Number(item.amount || 0) / quantity;
-    const lineAmount = Number(item.amount || 0);
-    const arithmeticMatches = Math.abs(quantity * unitPrice - lineAmount) < 0.005;
-    const priceText = arithmeticMatches
-      ? `${quantity} × ${formatCurrency(unitPrice)} = ${formatCurrency(lineAmount)}`
-      : `${quantity} unit${quantity === 1 ? "" : "s"} · blended total ${formatCurrency(lineAmount)}`;
-    writeLine(`${item.description || ""} · ${priceText} (${item.type || "Sale"})`, { gap: 6 });
-  });
+  const saleItems = (bill.items || []).filter((item) => item.type === "Sale");
+  const sections = [
+    ["medical_service", "Medical services"],
+    ["drug", "Drugs used"],
+    ["consumable", "Consumables used (internal cost record)"],
+  ];
+  for (const [category, label] of sections) {
+    const lines = saleItems.filter((item) => billingCategory(item) === category);
+    writeLine(label, { size: 11, bold: true });
+    if (!lines.length) {
+      writeLine("None recorded", { gap: 6 });
+      continue;
+    }
+    lines.forEach((item) => {
+      const quantity = Math.max(1, Number(item.quantity || 1));
+      if (category === "consumable") {
+        const costAmount = Number(item.cost_amount || 0);
+        const unitCost = quantity > 0 ? costAmount / quantity : costAmount;
+        writeLine(
+          `${item.description || ""} · ${quantity} × ${formatCurrency(unitCost)} cost = ${formatCurrency(costAmount)} · not charged`,
+          { gap: 6 },
+        );
+        return;
+      }
+      const unitPrice = Number.isFinite(Number(item.unit_price))
+        ? Number(item.unit_price)
+        : Number(item.amount || 0) / quantity;
+      const lineAmount = Number(item.amount || 0);
+      const arithmeticMatches = Math.abs(quantity * unitPrice - lineAmount) < 0.005;
+      const priceText = arithmeticMatches
+        ? `${quantity} × ${formatCurrency(unitPrice)} = ${formatCurrency(lineAmount)}`
+        : `${quantity} unit${quantity === 1 ? "" : "s"} · blended total ${formatCurrency(lineAmount)}`;
+      writeLine(`${item.description || ""} · ${priceText}`, { gap: 6 });
+    });
+    y += 2;
+  }
   y += 3;
   writeLine(`Total: ${formatCurrency(bill.total_amount)}`, { size: 12, bold: true });
   const paymentEntries = Array.isArray(bill.payments) ? bill.payments : [];

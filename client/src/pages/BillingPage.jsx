@@ -91,6 +91,11 @@ const QUICK_WORKFLOW_META = {
 };
 
 const FINANCE_PAGE_SIZE = 40;
+const BILLING_SECTION_LABELS = {
+  medical_service: "Medical service",
+  drug: "Drug used",
+  consumable: "Consumable used",
+};
 
 const BILLING_FIELD = cx(
   formControlClass,
@@ -800,6 +805,10 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               emergency_override: Boolean(item.emergency_override),
               is_consultation_fee: Boolean(item.is_consultation_fee),
               is_service_charge: Boolean(item.is_service_charge || (!item.inventory_item_id && !isVisitFee(item))),
+              cost_only_consumable: Boolean(item.cost_only_consumable),
+              billing_category: item.billing_category || "",
+              inventory_folder_name: item.inventory_folder_name || "",
+              cost_amount: Number(item.cost_amount || 0),
               dispensing_movement_ids: item.dispensing_movement_ids || [],
               wastage_reason: item.wastage_reason || "",
               batch_id: item.batch_id || null,
@@ -949,6 +958,10 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
         emergency_override: Boolean(item.emergency_override),
         is_consultation_fee: Boolean(item.is_consultation_fee),
         is_service_charge: Boolean(item.is_service_charge),
+        cost_only_consumable: Boolean(item.cost_only_consumable),
+        billing_category: item.billing_category || undefined,
+        inventory_folder_name: item.inventory_folder_name || undefined,
+        cost_amount: Number(item.cost_amount || 0),
         dispensing_movement_ids: item.dispensing_movement_ids || [],
         wastage_reason: item.wastage_reason || undefined,
         batch_id: item.batch_id || undefined,
@@ -1254,12 +1267,15 @@ function DescriptionList({
         {hasInventoryRows ? (
           items.map((item, index) => {
             const qty = Number(item.quantity || 0);
+            const isConsumable = item.billing_category === "consumable" || item.cost_only_consumable;
             const unitPrice =
               Number(item.unit_price) ||
               (qty > 0 ? Number(item.amount || 0) / qty : Number(item.amount || 0));
+            const internalUnitCost = qty > 0 ? Number(item.cost_amount || 0) / qty : Number(item.cost_amount || 0);
             const subtotal = item.type === "Wastage" ? 0 : Number(item.amount || 0);
+            const hasAvailability = item.available !== undefined && item.available !== null;
             const available = Number(item.available || 0);
-            const needsOverride = qty > available;
+            const needsOverride = hasAvailability && qty > available;
             const canEditInventoryQty = Boolean(compactMobile && onUpdateInventoryLine && !item.is_manual && !item.dispensing_movement_ids?.length);
 
             if (item.is_manual) {
@@ -1359,14 +1375,15 @@ function DescriptionList({
                   <div>
                     <p className="font-semibold text-slate-900">{item.description}</p>
                     <p className="text-xs text-slate-500">
-                      {item.folder_name || "Inventory"} · Available: {available}
+                      {BILLING_SECTION_LABELS[item.billing_category] || item.folder_name || "Inventory"}
+                      {item.inventory_folder_name ? ` · ${item.inventory_folder_name}` : ""}
                     </p>
                   </div>
                   <p className="text-right text-slate-700">{qty}</p>
-                  <p className="text-right text-slate-700">{formatCurrency(unitPrice)}</p>
-                  <TypeBadge type={item.type || "Sale"} />
+                  <p className="text-right text-slate-700">{formatCurrency(isConsumable ? internalUnitCost : unitPrice)}</p>
+                  {isConsumable ? <span className="text-xs font-semibold text-teal-700">Cost only</span> : <TypeBadge type={item.type || "Sale"} />}
                   <p className={`text-right font-semibold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                    {formatCurrency(subtotal)}
+                    {isConsumable ? `${formatCurrency(item.cost_amount || 0)} cost` : formatCurrency(subtotal)}
                   </p>
                   <button
                     type="button"
@@ -1383,9 +1400,15 @@ function DescriptionList({
                       <div className="min-w-0">
                         <p className="font-semibold text-slate-900">{item.description}</p>
                         <p className="text-xs text-slate-500">
-                          {item.dispensing_movement_ids?.length ? "Already dispensed · Original quantity and price" : `${item.folder_name || "Inventory"} · Stock ${available}`}
+                          {isConsumable
+                            ? `${BILLING_SECTION_LABELS.consumable} · ${item.inventory_folder_name || item.folder_name || "Inventory"} · not charged`
+                            : item.dispensing_movement_ids?.length
+                              ? "Already dispensed · Original quantity and price"
+                              : hasAvailability
+                                ? `${BILLING_SECTION_LABELS[item.billing_category] || item.folder_name || "Inventory"} · Stock ${available}`
+                                : BILLING_SECTION_LABELS[item.billing_category] || item.folder_name || "Inventory"}
                         </p>
-                        {available <= 0 ? (
+                        {hasAvailability && available <= 0 ? (
                           <p className="mt-1 text-xs font-bold text-rose-600">Out of stock</p>
                         ) : needsOverride ? (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
@@ -1426,14 +1449,14 @@ function DescriptionList({
                       <div className="space-y-1">
                         <span className="text-xs font-semibold text-slate-500">Unit</span>
                         <div className="flex min-h-12 items-center rounded-2xl border border-slate-100 bg-slate-50 px-3 text-sm font-semibold text-slate-800">
-                          {formatCurrency(unitPrice)}
+                          {formatCurrency(isConsumable ? internalUnitCost : unitPrice)}
                         </div>
                       </div>
                     </div>
                     <div className="flex min-h-12 items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2">
-                      <TypeBadge type={item.type || "Sale"} />
+                      {isConsumable ? <span className="text-xs font-semibold text-teal-700">Internal cost</span> : <TypeBadge type={item.type || "Sale"} />}
                       <p className={`text-sm font-bold ${item.type === "Wastage" ? "text-slate-400 line-through" : "text-slate-900"}`}>
-                        {formatCurrency(subtotal)}
+                        {isConsumable ? `${formatCurrency(item.cost_amount || 0)} cost` : formatCurrency(subtotal)}
                       </p>
                     </div>
                   </div>

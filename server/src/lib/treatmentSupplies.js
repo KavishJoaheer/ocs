@@ -56,6 +56,30 @@ const NG_TUBES = Object.freeze({
   "18": "NGT (18fg x105cm)",
 });
 
+// These are stock consumables used while delivering a drug or medical
+// service. They remain in their operational inventory folders, but billing
+// records them at cost instead of adding their selling price to the invoice.
+const CONSUMABLE_USED_NAMES = Object.freeze([
+  ...Object.values(CANNULAS),
+  ...Object.values(SYRINGES),
+  ...Object.values(CATHETERS),
+  ...Object.values(NG_TUBES),
+  INTRAFIX_NAME,
+  "Urine bag",
+  "Adult Face Mask",
+  "Paediatric Face Mask",
+  "Dulopro nebule",
+  "Pulmicort nebule",
+  "Urine dip stick",
+]);
+const consumableUsedNameKeys = new Set(
+  CONSUMABLE_USED_NAMES.map((itemName) => itemName.trim().toLowerCase()),
+);
+
+function isConsumableUsedName(name) {
+  return consumableUsedNameKeys.has(String(name || "").trim().toLowerCase());
+}
+
 const SUPPLIES = Object.freeze([
   { itemName: "Dulopro nebule", unit: "nebule" },
   { itemName: "Pulmicort nebule", unit: "nebule" },
@@ -225,21 +249,23 @@ const catalogueMetadata = [
   ...SUPPLIES.map((item) => ({
     itemName: item.itemName,
     catalogueKey: stableKey("supply", item.itemName),
-    isCostOnly: false,
+    isCostOnly: isConsumableUsedName(item.itemName),
   })),
   ...SERVICES.map((service) => ({
     itemName: service.itemName,
     catalogueKey: stableKey("service", service.itemName),
     isCostOnly: false,
   })),
-  ...Object.entries(MASKS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:mask:${size}`, isCostOnly: false })),
+  ...Object.entries(MASKS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:mask:${size}`, isCostOnly: true })),
   ...Object.entries(ENEMAS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:enema:${size}`, isCostOnly: false })),
   ...Object.entries(CANNULAS).map(([size, itemName]) => ({ itemName, catalogueKey: `consumable:cannula:${size}`, isCostOnly: true })),
   ...Object.entries(SYRINGES).map(([size, itemName]) => ({ itemName, catalogueKey: `consumable:syringe:${size}`, isCostOnly: true })),
   ...Object.entries(SALINES).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:saline:${size}`, isCostOnly: false })),
-  ...Object.entries(CATHETERS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:catheter:${size}`, isCostOnly: false })),
-  ...Object.entries(NG_TUBES).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:ngt:${size}`, isCostOnly: false })),
+  ...Object.entries(CATHETERS).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:catheter:${size}`, isCostOnly: true })),
+  ...Object.entries(NG_TUBES).map(([size, itemName]) => ({ itemName, catalogueKey: `supply:ngt:${size}`, isCostOnly: true })),
   { itemName: INTRAFIX_NAME, catalogueKey: "consumable:intrafix", isCostOnly: true },
+  { itemName: "Urine bag", catalogueKey: "consumable:urine-bag", isCostOnly: true },
+  { itemName: "Urine dip stick", catalogueKey: "consumable:urine-dip-stick", isCostOnly: true },
 ];
 const metadataByName = new Map(
   catalogueMetadata.map((entry) => [entry.itemName.trim().toLowerCase(), entry]),
@@ -269,9 +295,7 @@ function isUnchargedConsumable(nameOrItem) {
     ? nameOrItem.item_name || nameOrItem.itemName
     : nameOrItem;
   const key = String(name || "").trim().toLowerCase();
-  if (key === INTRAFIX_NAME.toLowerCase()) return true;
-  if (Object.values(CANNULAS).some((itemName) => itemName.toLowerCase() === key)) return true;
-  return Object.values(SYRINGES).some((itemName) => itemName.toLowerCase() === key);
+  return consumableUsedNameKeys.has(key);
 }
 
 function catalogueKeyForName(name) {
@@ -627,6 +651,7 @@ function ensureTreatmentCatalogue(db, { doctorId = null } = {}) {
 
 module.exports = {
   CANNULAS,
+  CONSUMABLE_USED_NAMES,
   DRUG_ADMINISTRATION,
   ENEMAS,
   MASKS,
