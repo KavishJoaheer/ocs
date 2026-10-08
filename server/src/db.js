@@ -113,7 +113,7 @@ function createUsersTable() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       full_name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'doctor', 'operator', 'lab_tech', 'accountant', 'linkham_admin')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'doctor', 'operator', 'tech_operator', 'lab_tech', 'accountant', 'linkham_admin')),
       password_hash TEXT NOT NULL,
       doctor_id INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
@@ -1557,6 +1557,52 @@ function migrateUsersLinkhamAdminRoleIfNeeded() {
   repairUsersForeignKeyReferencesIfNeeded();
 }
 
+function migrateUsersTechOperatorRoleIfNeeded() {
+  const usersTableSql = getUsersTableSql();
+
+  if (!usersTableSql || usersTableSql.includes("'tech_operator'")) {
+    return;
+  }
+
+  db.pragma("foreign_keys = OFF");
+  // Modern SQLite rewrites every child FK and trigger when a table is renamed,
+  // even with foreign keys disabled. Legacy rename mode keeps those references
+  // pointing at `users` while the constrained table itself is rebuilt.
+  db.pragma("legacy_alter_table = ON");
+
+  try {
+    const migrate = db.transaction(() => {
+      db.exec("ALTER TABLE users RENAME TO users_tech_operator_role_legacy");
+
+      createUsersTable();
+
+      const legacyColumns = db
+        .prepare("PRAGMA table_info(users_tech_operator_role_legacy)")
+        .all()
+        .map((column) => column.name);
+      const nextColumns = db
+        .prepare("PRAGMA table_info(users)")
+        .all()
+        .map((column) => column.name);
+      const sharedColumns = legacyColumns.filter((column) => nextColumns.includes(column));
+      const columnList = sharedColumns.join(", ");
+
+      db.exec(`
+        INSERT INTO users (${columnList})
+        SELECT ${columnList}
+        FROM users_tech_operator_role_legacy
+      `);
+
+      db.exec("DROP TABLE users_tech_operator_role_legacy");
+    });
+
+    migrate();
+  } finally {
+    db.pragma("legacy_alter_table = OFF");
+    db.pragma("foreign_keys = ON");
+  }
+}
+
 function repairUsersForeignKeyReferencesIfNeeded() {
   const brokenReference = db
     .prepare(`
@@ -1720,6 +1766,7 @@ function initializeDatabase() {
   migrateUsersSchemaIfNeeded();
   createUsersTable();
   migrateUsersLinkhamAdminRoleIfNeeded();
+  migrateUsersTechOperatorRoleIfNeeded();
   createAuthSessionsTable();
   createLinkhamPolicyRegistryTables();
   createStreamTokensTable();

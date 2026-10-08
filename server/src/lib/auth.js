@@ -26,16 +26,52 @@ function serializeUser(row) {
     return null;
   }
 
+  const storedRole = row.actual_role || row.role;
+  const isReadOnly = storedRole === "tech_operator";
+
   return {
     id: Number(row.id),
     username: row.username,
     full_name: row.full_name,
-    role: row.role,
+    // The training account receives the complete admin-shaped read experience.
+    // Its stored role remains available for the server-side mutation guard.
+    role: isReadOnly ? "admin" : storedRole,
+    ...(isReadOnly
+      ? {
+          actual_role: storedRole,
+          is_read_only: true,
+        }
+      : {}),
     doctor_id: row.doctor_id ? Number(row.doctor_id) : null,
     doctor_name: row.doctor_name || null,
     operation_status: row.operation_status || "active",
     operation_status_updated_at: row.operation_status_updated_at || null,
   };
+}
+
+function enforceReadOnlyAccount(req, res) {
+  if (!req.auth?.is_read_only) {
+    return false;
+  }
+
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    return false;
+  }
+
+  const requestPath = `${req.baseUrl || ""}${req.path || ""}`;
+  const allowedSessionAction =
+    req.method === "POST" &&
+    ["/api/auth/logout", "/api/auth/stream-token"].includes(requestPath);
+
+  if (allowedSessionAction) {
+    return false;
+  }
+
+  res.status(403).json({
+    error: "Training mode is view only. Your practice changes were not saved.",
+    code: "READ_ONLY_TRAINING_ACCOUNT",
+  });
+  return true;
 }
 
 function getSessionUserByToken(token) {
@@ -124,6 +160,9 @@ function requireAuth(req, res, next) {
     // localStorage tokens on their next authenticated request.
     res.cookie(STAFF_SESSION_COOKIE, token, getSessionCookieOptions());
   }
+  if (enforceReadOnlyAccount(req, res)) {
+    return undefined;
+  }
   return next();
 }
 
@@ -151,6 +190,9 @@ function requireAuthFlexible(req, res, next) {
   req.authToken = headerToken || queryToken || cookieToken;
   if (headerToken) {
     res.cookie(STAFF_SESSION_COOKIE, headerToken, getSessionCookieOptions());
+  }
+  if (enforceReadOnlyAccount(req, res)) {
+    return undefined;
   }
   return next();
 }

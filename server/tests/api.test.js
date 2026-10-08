@@ -89,6 +89,7 @@ async function verifyPortalPatientForVisits(reg) {
 
 let adminToken;
 let accountantToken;
+let techOperatorToken;
 
 test("staff admin can log in", async () => {
   const res = await api("POST", "/api/auth/login", {
@@ -119,6 +120,65 @@ test("staff login supports an HttpOnly cookie session", async () => {
   const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
   assert.equal(me.status, 200);
   assert.equal((await me.json()).user.role, "accountant");
+});
+
+test("tech operator can inspect admin workflows but cannot persist changes", async () => {
+  const login = await api("POST", "/api/auth/login", {
+    body: { username: "tech.operator", password: "Welcome@123" },
+  });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  assert.equal(login.data.user.role, "admin");
+  assert.equal(login.data.user.actual_role, "tech_operator");
+  assert.equal(login.data.user.is_read_only, true);
+  techOperatorToken = login.data.token;
+
+  const patientsBefore = Number(
+    db.prepare("SELECT COUNT(*) AS count FROM patients").get().count,
+  );
+  const billsBefore = Number(
+    db.prepare("SELECT COUNT(*) AS count FROM billing").get().count,
+  );
+
+  const patients = await api("GET", "/api/patients", { token: techOperatorToken });
+  assert.equal(patients.status, 200, JSON.stringify(patients.data));
+
+  const teamAccounts = await api("GET", "/api/team-operations/operator", {
+    token: techOperatorToken,
+  });
+  assert.equal(teamAccounts.status, 200, JSON.stringify(teamAccounts.data));
+
+  const patientPractice = await api("POST", "/api/patients", {
+    token: techOperatorToken,
+    body: {
+      first_name: "Training",
+      last_name: "Patient",
+      gender: "M",
+      patient_contact_number: "57000000",
+      address: "Training address",
+      assigned_doctor_id: 1,
+    },
+  });
+  assert.equal(patientPractice.status, 403);
+  assert.equal(patientPractice.data.code, "READ_ONLY_TRAINING_ACCOUNT");
+
+  const billingPractice = await api("POST", "/api/billing", {
+    token: techOperatorToken,
+    body: {},
+  });
+  assert.equal(billingPractice.status, 403);
+  assert.equal(billingPractice.data.code, "READ_ONLY_TRAINING_ACCOUNT");
+
+  assert.equal(
+    Number(db.prepare("SELECT COUNT(*) AS count FROM patients").get().count),
+    patientsBefore,
+  );
+  assert.equal(
+    Number(db.prepare("SELECT COUNT(*) AS count FROM billing").get().count),
+    billsBefore,
+  );
+
+  const logout = await api("POST", "/api/auth/logout", { token: techOperatorToken });
+  assert.equal(logout.status, 204);
 });
 
 test("accountant can use billing patient options but cannot read clinical patient routes", async () => {

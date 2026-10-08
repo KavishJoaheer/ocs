@@ -245,7 +245,7 @@ function AppShell() {
       : pageMeta[location.pathname] || pageMeta["/"];
 
   useEffect(() => {
-    if (!user?.role) {
+    if (!user?.role || user.is_read_only) {
       return undefined;
     }
 
@@ -253,7 +253,7 @@ function AppShell() {
     return listenForPushSubscriptionChanges(() => {
       void syncPushSubscriptionIfGranted();
     });
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.is_read_only, user?.role]);
 
   useEffect(() => {
     if (!user?.role) {
@@ -323,7 +323,20 @@ function AppShell() {
             {user?.role ? (
               <>
                 <AppUpdateBanner />
-                <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
+                {user.is_read_only ? (
+                  <div
+                    className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm"
+                    role="status"
+                  >
+                    <p className="font-bold">Tech operator training mode</p>
+                    <p className="mt-1 leading-6">
+                      You can view every workflow and practise patient registration or billing. No
+                      changes from this account can be saved.
+                    </p>
+                  </div>
+                ) : (
+                  <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
+                )}
               </>
             ) : null}
             <Outlet />

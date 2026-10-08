@@ -510,7 +510,7 @@ function Sidebar() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  {getRoleLabel(user.role)}
+                  {user.is_read_only ? "Tech Operator · View only" : getRoleLabel(user.role)}
                 </p>
                 <p className="text-sm font-semibold text-slate-900">{user.full_name}</p>
                 <p className="text-xs text-[#5b7f8a]">@{user.username}</p>

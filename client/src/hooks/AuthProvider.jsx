@@ -91,7 +91,9 @@ export function AuthProvider({ children }) {
       void prefetchPatientOfflineDirectory(payload.user.id);
     }
 
-    void refreshPushSubscriptionOnLogin(payload.user?.role);
+    if (!payload.user?.is_read_only) {
+      void refreshPushSubscriptionOnLogin(payload.user?.role);
+    }
 
     return payload.user;
   }, []);
@@ -176,7 +178,9 @@ export function AuthProvider({ children }) {
           if (payload.user?.role === "doctor") {
             void prefetchPatientOfflineDirectory(payload.user.id);
           }
-          void refreshPushSubscriptionOnLogin(payload.user?.role);
+          if (!payload.user?.is_read_only) {
+            void refreshPushSubscriptionOnLogin(payload.user?.role);
+          }
         }
       } catch {
         if (!ignore) {

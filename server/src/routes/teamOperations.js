@@ -5,7 +5,13 @@ const { revokeStaffSessionsForUser } = require("../lib/auth");
 
 const router = express.Router();
 
-const SUPPORTED_ROLES = new Set(["doctor", "operator", "accountant", "linkham_admin"]);
+const SUPPORTED_ROLES = new Set([
+  "doctor",
+  "operator",
+  "tech_operator",
+  "accountant",
+  "linkham_admin",
+]);
 const RECENTLY_DELETED_WINDOW_SQL = "-30 days";
 
 function normalizePayload(body, role) {
@@ -220,7 +226,7 @@ function listRecentlyDeletedMembers() {
         0 AS appointment_count,
         0 AS consultation_count
       FROM users
-      WHERE role IN ('operator', 'accountant', 'linkham_admin')
+      WHERE role IN ('operator', 'tech_operator', 'accountant', 'linkham_admin')
         AND deleted_at IS NOT NULL
         AND deleted_at >= datetime('now', ?)
     `,

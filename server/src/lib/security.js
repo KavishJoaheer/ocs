@@ -1,6 +1,14 @@
 const crypto = require("node:crypto");
 
-const USER_ROLES = ["admin", "doctor", "operator", "lab_tech", "accountant", "linkham_admin"];
+const USER_ROLES = [
+  "admin",
+  "doctor",
+  "operator",
+  "tech_operator",
+  "lab_tech",
+  "accountant",
+  "linkham_admin",
+];
 const DEFAULT_SEED_PASSWORD = process.env.SEED_USER_PASSWORD || "Welcome@123";
 const configuredSessionDurationDays = Number(process.env.SESSION_DURATION_DAYS || 7);
 const SESSION_DURATION_DAYS =

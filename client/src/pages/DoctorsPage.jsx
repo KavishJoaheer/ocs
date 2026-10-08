@@ -26,6 +26,13 @@ const roleTabs = [
     description: "Create, edit, enable, disable, or remove operator logins for patient intake and coordination.",
   },
   {
+    role: "tech_operator",
+    label: "Tech operator",
+    title: "Tech operator accounts",
+    description:
+      "Create and manage training logins that can view every workflow but can never save changes.",
+  },
+  {
     role: "accountant",
     label: "Accountant tab",
     title: "Accountant accounts",
@@ -306,7 +313,7 @@ function TeamOperationsPage() {
       <PageHeader
         eyebrow="Admin"
         title="Team operations"
-        description="Create, edit, enable, disable, and remove doctor, operator, accountant, and Linkham Admin accounts from one admin workspace."
+        description="Create, edit, enable, disable, and remove doctor, operator, tech operator, accountant, and Linkham Admin accounts from one admin workspace."
         actions={
           <button
             type="button"

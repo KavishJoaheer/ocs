@@ -1,12 +1,13 @@
 # OCS Medecins Role Capabilities
 
-Current application behavior as implemented in the codebase on `2026-04-14`.
+Current application behavior as implemented in the codebase on `2026-10-07`.
 
 ## Seeded Access
 
 - Admin: `shravan.joaheer` (`Dr Shravan Kumar Joaheer`)
 - Doctors: 15 seeded doctor accounts
 - Operators: 3 seeded operator accounts
+- Tech Operator: `tech.operator` (full-workflow view-only training account)
 - Lab Tech: 1 seeded lab tech account
 - Accountant: 1 seeded accountant account
 - Default seeded password: `Welcome@123`
@@ -56,6 +57,15 @@ Current application behavior as implemented in the codebase on `2026-04-14`.
 | Billing | Yes | No | No | No | Yes |
 | Inventory | Yes | Yes | No | Yes | No |
 | Doctors management | Yes | No | No | No | No |
+
+## Tech Operator
+
+- Receives the complete admin-style workspace for training and process observation.
+- Can open and review all workflows and records available to admin.
+- Can complete the patient registration form as practice; submission confirms that nothing was saved.
+- Can explore billing and other workflows, but every server-side create, update, or delete request is rejected.
+- Cannot permanently change patients, billing, appointments, consultations, inventory, finance, team accounts, or any other operational data.
+- Logout and read-only live updates remain available.
 
 ## Admin
 
