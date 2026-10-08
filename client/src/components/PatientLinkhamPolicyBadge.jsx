@@ -33,10 +33,10 @@ export default function PatientLinkhamPolicyBadge({ patient, className = "" }) {
         ? "No policy · Dispatch blocked"
         : "Verification required";
   const tone = isGreen
-    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    ? "border-emerald-300 bg-emerald-100 text-emerald-900 ring-emerald-100"
     : isRed
-      ? "border-rose-200 bg-rose-50 text-rose-800"
-      : "border-amber-200 bg-amber-50 text-amber-800";
+      ? "border-rose-300 bg-rose-100 text-rose-900 ring-rose-100"
+      : "border-amber-300 bg-amber-100 text-amber-950 ring-amber-100";
   const details = [
     policyNumber ? `Linkham policy ${policyNumber}` : "Linkham policy number missing",
     coverage?.status_reason,
@@ -45,14 +45,14 @@ export default function PatientLinkhamPolicyBadge({ patient, className = "" }) {
 
   return (
     <div
-      className={`animate-fade-in inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-extrabold ${tone} ${className}`.trim()}
+      className={`animate-fade-in inline-flex items-center gap-2 rounded-xl border-2 px-3.5 py-2 text-xs font-black shadow-sm ring-4 ${tone} ${className}`.trim()}
       title={details}
       role="status"
       aria-label={details || label}
     >
-      <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+      <Icon className="size-4.5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
       <span>{label}</span>
-      {policyNumber ? <span className="font-mono font-bold opacity-75">{policyNumber}</span> : null}
+      {policyNumber ? <span className="border-l border-current/20 pl-2 font-mono font-black opacity-80">{policyNumber}</span> : null}
     </div>
   );
 }

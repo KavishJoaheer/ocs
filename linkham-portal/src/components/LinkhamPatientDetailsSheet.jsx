@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { CircleAlert, CircleCheck, CircleHelp, X } from "lucide-react";
 import toast from "react-hot-toast";
 import LoadingState from "./LoadingState.jsx";
 import { api } from "../lib/api.js";
@@ -113,12 +113,29 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
   const coverageStatus = patient?.coverage_status || "needs_policy";
   const coveragePresentation =
     coverageStatus === "green"
-      ? { label: "Green — eligible", className: "bg-emerald-50 text-emerald-700" }
+      ? {
+          label: "Green — eligible",
+          className: "border-emerald-300 bg-emerald-100 text-emerald-900 ring-emerald-100",
+          Icon: CircleCheck,
+        }
       : coverageStatus === "red"
-        ? { label: "Red — not eligible", className: "bg-red-50 text-red-700" }
+        ? {
+            label: "Red — not eligible",
+            className: "border-red-300 bg-red-100 text-red-900 ring-red-100",
+            Icon: CircleAlert,
+          }
         : coverageStatus === "unregistered"
-          ? { label: "Policy not registered", className: "bg-amber-50 text-amber-800" }
-          : { label: "Needs policy number", className: "bg-amber-50 text-amber-800" };
+          ? {
+              label: "Policy not registered",
+              className: "border-amber-300 bg-amber-100 text-amber-950 ring-amber-100",
+              Icon: CircleHelp,
+            }
+          : {
+              label: "Needs policy number",
+              className: "border-amber-300 bg-amber-100 text-amber-950 ring-amber-100",
+              Icon: CircleHelp,
+            };
+  const CoverageIcon = coveragePresentation.Icon;
 
   return (
     <div className="fixed inset-0 z-[var(--z-drawer)] flex justify-end">
@@ -175,8 +192,9 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                       Verification Status
                     </span>
                     <span
-                      className={`mt-0.5 ml-auto w-fit rounded-lg px-2.5 py-1 text-[11px] font-extrabold ${coveragePresentation.className}`}
+                      className={`mt-1 ml-auto inline-flex w-fit items-center gap-2 rounded-xl border-2 px-3.5 py-2 text-sm font-black shadow-sm ring-4 ${coveragePresentation.className}`}
                     >
+                      <CoverageIcon className="size-4 shrink-0" aria-hidden="true" />
                       {coveragePresentation.label}
                     </span>
                   </div>
