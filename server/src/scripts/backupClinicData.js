@@ -12,7 +12,6 @@ const {
   initializeDatabase,
   labReportAttachmentsDir,
   manualInvoiceAttachmentsDir,
-  rosterDir,
 } = require("../db");
 
 function timestampForPath(date = new Date()) {
@@ -199,7 +198,6 @@ async function createVerifiedBackup({
       );
     }
 
-    copyDirectory(rosterDir, path.join(partialDir, "roster"), "roster", files);
     snapshotDb.close();
     snapshotDb = null;
 

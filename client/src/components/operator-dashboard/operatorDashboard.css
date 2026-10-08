@@ -308,45 +308,6 @@
   background: rgba(43, 204, 196, 0.08);
 }
 
-.ocs-cc-utility {
-  display: grid;
-  gap: 0.65rem;
-  border: 1px solid rgba(32, 63, 66, 0.08);
-  border-radius: 20px;
-  background: #ffffff;
-  box-shadow: var(--ocs-cc-card-shadow);
-}
-
-@media (min-width: 768px) {
-  .ocs-cc-utility {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1280px) {
-  .ocs-cc-utility {
-    grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
-  }
-}
-
-.ocs-cc-pdf {
-  border: 1px solid rgba(32, 63, 66, 0.16);
-  background: #203f42;
-  color: #ffffff;
-}
-
-.ocs-cc-pdf:hover:not(:disabled) {
-  background: #1a3538;
-}
-
-.ocs-cc-pdf:disabled {
-  border-color: rgba(32, 63, 66, 0.12);
-  background: #f3f5f4;
-  color: #8a9a9b;
-  cursor: not-allowed;
-  opacity: 1;
-}
-
 .ocs-cc-identity {
   margin-top: 1.25rem;
   border: 1px solid rgba(32, 63, 66, 0.1);

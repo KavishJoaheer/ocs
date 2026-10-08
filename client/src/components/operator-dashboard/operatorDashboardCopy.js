@@ -53,18 +53,6 @@ export function formatLowStockNotice(count) {
   return `${value} items below minimum stock`;
 }
 
-export function formatHealthPlanCount(count) {
-  const value = Number(count || 0);
-  if (value === 1) return "1 subscribed";
-  return `${value} subscribed`;
-}
-
-export function formatHcmUnread(count) {
-  const value = Number(count || 0);
-  if (value === 1) return "1 unread";
-  return `${value} unread`;
-}
-
 export function isOperatorLive(status) {
   return status === "active" || status === "available";
 }

@@ -74,17 +74,6 @@ function getOperatorDashboardMetrics() {
     `)
     .get(weekStart, weekEnd);
 
-  const completedVisitsThisWeekRow = db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM appointments a
-      JOIN patients p ON p.id = a.patient_id
-      WHERE p.deleted_at IS NULL
-        AND a.status = 'completed'
-        AND a.appointment_date BETWEEN ? AND ?
-    `)
-    .get(weekStart, weekEnd);
-
   const unpaidBillsRow = db
     .prepare(`
       SELECT COUNT(*) AS count
@@ -137,16 +126,6 @@ function getOperatorDashboardMetrics() {
         AND p.is_under_review = 1
     `)
     .get(today);
-
-  const activeSubscribersRow = db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM patients p
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'active'
-        AND p.is_subscribed = 1
-    `)
-    .get();
 
   const activeVisitRequestsRow = db
     .prepare(`
@@ -285,7 +264,6 @@ function getOperatorDashboardMetrics() {
       pending_dispatch: Number(pendingDispatchRow?.count || 0),
       total_scheduled: Number(totalScheduledRow?.count || 0),
       this_week: Number(visitsThisWeekRow?.count || 0),
-      completed_this_week: Number(completedVisitsThisWeekRow?.count || 0),
     },
     pending_payment: {
       unpaid_bills_count: Number(unpaidBillsRow?.count || 0),
@@ -297,9 +275,6 @@ function getOperatorDashboardMetrics() {
     long_term_review: {
       active_followup_count: Number(activeFollowupRow?.count || 0),
       overdue_count: Number(activeFollowupRow?.overdue_count || 0),
-    },
-    health_plans: {
-      active_subscribers_count: Number(activeSubscribersRow?.count || 0),
     },
     visit_requests: {
       active_count: Number(activeVisitRequestsRow?.count || 0),

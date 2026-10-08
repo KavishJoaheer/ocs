@@ -540,10 +540,6 @@ function createApp() {
       return res.status(400).json({ error: error.message });
     }
 
-    if (error?.message === "Only PDF roster uploads are allowed.") {
-      return res.status(400).json({ error: error.message });
-    }
-
     const detail = error?.message ? String(error.message).slice(0, 500) : "";
     res.status(500).json({
       error: detail ? `Server error: ${detail}` : "Unexpected server error.",

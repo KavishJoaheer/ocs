@@ -1,7 +1,6 @@
 import {
   Activity,
   BellRing,
-  CalendarClock,
   CalendarDays,
   ClipboardList,
   BookOpen,
@@ -13,7 +12,6 @@ import {
   PieChart,
   RotateCw,
   ShieldCheck,
-  Star,
   Truck,
   UsersRound,
   X,
@@ -59,30 +57,11 @@ const navItems = [
     isActiveWhen: (location) => {
       if (location.pathname !== "/patients") return false;
       const params = new URLSearchParams(location.search);
-      if (params.get("filter") === "subscribed") return false;
       if (params.get("tab") === "under_review" || params.get("filter") === "under_review") {
         return false;
       }
       return true;
     },
-  },
-  {
-    to: "/patients?filter=subscribed",
-    label: "Health plans",
-    icon: Star,
-    roles: ["admin"],
-    isActiveWhen: (location) => {
-      if (location.pathname !== "/patients") return false;
-      return new URLSearchParams(location.search).get("filter") === "subscribed";
-    },
-  },
-  {
-    to: "/doctor/current-week-roster",
-    label: "This week's roster",
-    icon: CalendarClock,
-    roles: ["doctor"],
-    mobileDrawerOnly: true,
-    isActiveWhen: (location) => location.pathname === "/doctor/current-week-roster",
   },
   {
     to: "/doctor/long-term-review",

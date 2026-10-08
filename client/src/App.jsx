@@ -12,9 +12,7 @@ const AccountingPage = lazy(() => import("./pages/AccountingPage.jsx"));
 const BillingWorkspacePage = lazy(() => import("./pages/BillingWorkspacePage.jsx"));
 const ConsultationDetailPage = lazy(() => import("./pages/ConsultationDetailPage.jsx"));
 const ConsultationsPage = lazy(() => import("./pages/ConsultationsPage.jsx"));
-const AdminRosterPage = lazy(() => import("./pages/AdminRosterPage.jsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
-const DoctorWorkspacePage = lazy(() => import("./pages/DoctorWorkspacePage.jsx"));
 const DoctorsPage = lazy(() => import("./pages/DoctorsPage.jsx"));
 const HcmNewsPage = lazy(() => import("./pages/HcmNewsPage.jsx"));
 const PatientCareContentPage = lazy(() => import("./pages/PatientCareContentPage.jsx"));
@@ -41,9 +39,6 @@ function RouteFallback() {
 
 function DoctorAssignedPatientsRedirect() {
   const [params] = useSearchParams();
-  if (params.get("filter") === "subscribed") {
-    return <Navigate to="/patients?filter=subscribed" replace />;
-  }
   if (params.get("tab") === "under_review" || params.get("filter") === "under_review") {
     return <Navigate to="/patients?tab=under_review" replace />;
   }
@@ -91,18 +86,6 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["doctor"]} />}>
             <Route
-              path="/doctor/current-week-roster"
-              element={<DoctorWorkspacePage workspaceKey="current-week-roster" />}
-            />
-            <Route
-              path="/doctor/monthly-roster"
-              element={<DoctorWorkspacePage workspaceKey="monthly-roster" />}
-            />
-            <Route
-              path="/doctor/april-roster"
-              element={<Navigate to="/doctor/monthly-roster" replace />}
-            />
-            <Route
               path="/doctor/hcm-updates"
               element={<Navigate to="/hcm-news" replace />}
             />
@@ -134,18 +117,6 @@ function App() {
             <Route
               path="/operator/billing-status"
               element={<Navigate to="/operator/pending-payment" replace />}
-            />
-            <Route
-              path="/operator/current-week-roster"
-              element={<OperatorWorkspacePage workspaceKey="current-week-roster" />}
-            />
-            <Route
-              path="/operator/monthly-roster"
-              element={<OperatorWorkspacePage workspaceKey="monthly-roster" />}
-            />
-            <Route
-              path="/operator/april-roster"
-              element={<Navigate to="/operator/monthly-roster" replace />}
             />
             <Route
               path="/operator/scheduled-visits"
@@ -185,7 +156,6 @@ function App() {
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin"]} />}>
-            <Route path="/admin/roster" element={<AdminRosterPage />} />
             <Route path="/admin/long-term-review" element={<LongTermReviewQueuePage />} />
           </Route>
 

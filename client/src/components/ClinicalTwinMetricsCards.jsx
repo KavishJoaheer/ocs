@@ -35,21 +35,13 @@ function ClinicalTwinMetricCard({
 function ClinicalTwinMetricsCards({
   role,
   longTermReviewCount,
-  healthPlansCount,
   className,
-  showHealthPlans = true,
 }) {
   const routes = getClinicalTwinMetricRoutes(role);
   const copy = getClinicalTwinMetricCopy(role);
 
   return (
-    <div
-      className={cx(
-        "grid w-full grid-cols-1 gap-4.5",
-        showHealthPlans ? "sm:grid-cols-2" : "",
-        className,
-      )}
-    >
+    <div className={cx("grid w-full grid-cols-1 gap-4.5", className)}>
       <ClinicalTwinMetricCard
         to={routes.longTermReview}
         label="Review appointment"
@@ -58,15 +50,6 @@ function ClinicalTwinMetricsCards({
         accent="amber"
         highlightBorder
       />
-      {showHealthPlans ? (
-        <ClinicalTwinMetricCard
-          to={routes.healthPlans}
-          label="Health plans"
-          value={healthPlansCount}
-          subtext={copy.healthPlans}
-          accent="teal"
-        />
-      ) : null}
     </div>
   );
 }

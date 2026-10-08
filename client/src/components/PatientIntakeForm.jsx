@@ -165,27 +165,6 @@ const DESKTOP_TEXTAREA = cx(
   "min-h-[2.75rem] resize-y py-2 leading-relaxed",
 );
 
-function SubscriptionPlanField({ checked, onChange, className }) {
-  return (
-    <label
-      className={cx(
-        "flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-400/40",
-        checked && "border-teal-200/80 bg-teal-50/40",
-        className,
-      )}
-    >
-      <input
-        type="checkbox"
-        name="is_subscribed"
-        checked={checked}
-        onChange={onChange}
-        className="size-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-      />
-      <span className="text-sm font-semibold text-slate-700">On Active Subscription Plan</span>
-    </label>
-  );
-}
-
 function PatientFormModal({
   open,
   layout = "modal",
@@ -508,8 +487,6 @@ function PatientFormModal({
                     <option value="F">F</option>
                   </select>
                 </label>
-
-                <SubscriptionPlanField checked={form.is_subscribed} onChange={handleChange} />
 
                 <label className="block">
                   <span className={MOBILE_FIELD_LABEL}>Status</span>
@@ -913,12 +890,6 @@ function PatientFormModal({
                   <option value="discharged">Discharged</option>
                 </select>
               </label>
-
-              <SubscriptionPlanField
-                checked={form.is_subscribed}
-                onChange={handleChange}
-                className="md:col-span-2"
-              />
 
               {canSelectAssignedDoctor ? (
                 <label className="space-y-2 md:col-span-2">

@@ -100,6 +100,14 @@ test("staff admin can log in", async () => {
   adminToken = res.data.token;
 });
 
+test("retired roster endpoints are no longer available", async () => {
+  const metadata = await api("GET", "/api/dashboard/roster", { token: adminToken });
+  assert.equal(metadata.status, 404, JSON.stringify(metadata.data));
+
+  const file = await api("GET", "/api/dashboard/roster/file", { token: adminToken });
+  assert.equal(file.status, 404, JSON.stringify(file.data));
+});
+
 test("staff login supports an HttpOnly cookie session", async () => {
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -1977,7 +1985,6 @@ test("operator dashboard metrics include visit requests and this-week unpaid", a
   assert.ok(Array.isArray(metrics.data.visit_requests?.unassigned));
   assert.equal(typeof metrics.data.pending_payment?.unpaid_this_week_count, "number");
   assert.equal(typeof metrics.data.scheduled_visits?.this_week, "number");
-  assert.equal(typeof metrics.data.scheduled_visits?.completed_this_week, "number");
   assert.equal(typeof metrics.data.insurance_claims?.pending_count, "number");
   assert.equal(typeof metrics.data.coverage?.doctors_this_week, "number");
   assert.equal(typeof metrics.data.coverage?.available_now_count, "number");

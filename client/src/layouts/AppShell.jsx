@@ -45,18 +45,6 @@ const pageMeta = {
     label: "Appointments",
     helper: "Coordinate home visit schedules in calendar and list form without losing context.",
   },
-  "/doctor/current-week-roster": {
-    label: "Current week roster",
-    helper: "Review this week's doctor visits and move directly into patient or consultation records.",
-  },
-  "/doctor/monthly-roster": {
-    label: "Monthly roster",
-    helper: "See the full monthly roster for the doctor dashboard in one filtered workspace.",
-  },
-  "/doctor/april-roster": {
-    label: "Monthly roster",
-    helper: "See the full monthly roster for the doctor dashboard in one filtered workspace.",
-  },
   "/doctor/hcm-updates": {
     label: "HCM updates",
     helper: "Track doctor activity, consultation saves, and payment-related movement from one feed.",
@@ -92,18 +80,6 @@ const pageMeta = {
   "/doctor/long-term-review": {
     label: "Review appointments",
     helper: "Practice-wide chronic care follow-up queue.",
-  },
-  "/operator/current-week-roster": {
-    label: "This week's coverage",
-    helper: "This week's visits and which doctors are available for emergency coverage.",
-  },
-  "/operator/monthly-roster": {
-    label: "Current month roster",
-    helper: "See the full monthly doctor schedule from the operator coordination workspace.",
-  },
-  "/operator/april-roster": {
-    label: "Current month roster",
-    helper: "See the full monthly doctor schedule from the operator coordination workspace.",
   },
   "/operator/scheduled-visits": {
     label: "Scheduled visits",

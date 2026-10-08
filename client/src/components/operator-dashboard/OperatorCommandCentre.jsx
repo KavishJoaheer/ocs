@@ -1,13 +1,9 @@
 import dayjs from "dayjs";
 import {
   ArrowUpRight,
-  BellRing,
-  CalendarCheck,
   CalendarClock,
-  CalendarDays,
   Package,
   ReceiptText,
-  Star,
   UserPlus,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -15,8 +11,6 @@ import HcmBulletinBanner from "../HcmBulletinBanner.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
 import { cx } from "../../lib/utils.js";
 import {
-  formatHealthPlanCount,
-  formatHcmUnread,
   formatReviewCardSupport,
   getOperatorDisplayName,
   getTimeOfDayGreeting,
@@ -273,66 +267,6 @@ function OperatorOperationalPulse({ counts, lowStockAlert }) {
   );
 }
 
-function OperatorUtilityBar({
-  counts,
-  monthLabel,
-  rosterMeta,
-  onOpenRosterPdf,
-  hcmUnreadCount = 0,
-}) {
-  const hasRoster = Boolean(rosterMeta?.has_roster);
-
-  return (
-    <div className="ocs-cc-utility p-3">
-      <div className="flex min-w-0 items-center gap-3 px-2 py-1.5">
-        <CalendarDays className="size-4 shrink-0 text-[#5f7476]" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[#203f42]">{monthLabel} roster</p>
-          <Link
-            to="/operator/monthly-roster"
-            className="text-xs font-semibold text-[#1a7f7a] hover:text-[#203f42]"
-          >
-            Open roster
-          </Link>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenRosterPdf}
-          disabled={!hasRoster}
-          className="ocs-cc-pdf shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold"
-          title={hasRoster ? "Download roster PDF" : "Roster PDF is not uploaded yet"}
-        >
-          PDF
-        </button>
-      </div>
-
-      <Link
-        to="/patients?filter=subscribed"
-        className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#f3f7f4]"
-      >
-        <Star className="size-4 shrink-0 text-[#5f7476]" aria-hidden="true" />
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#203f42]">Health plans</p>
-        <span className="shrink-0 text-xs font-semibold text-[#5f7476]">
-          {formatHealthPlanCount(counts.healthPlans)}
-        </span>
-      </Link>
-
-      {hcmUnreadCount > 0 ? (
-        <Link
-          to="/hcm-news"
-          className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#f3f7f4]"
-        >
-          <BellRing className="size-4 shrink-0 text-[#5f7476]" aria-hidden="true" />
-          <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#203f42]">HCM</p>
-          <span className="shrink-0 text-xs font-semibold text-[#5f7476]">
-            {formatHcmUnread(hcmUnreadCount)}
-          </span>
-        </Link>
-      ) : null}
-    </div>
-  );
-}
-
 export default function OperatorCommandCentre({
   user,
   counts,
@@ -340,16 +274,11 @@ export default function OperatorCommandCentre({
   onStatusChange,
   isSavingStatus,
   latestHcmPost = null,
-  rosterMeta = null,
-  onOpenRosterPdf,
-  hcmUnreadCount = 0,
   lowStockAlert = null,
 }) {
   const firstName = getOperatorDisplayName(user);
   const greeting = getTimeOfDayGreeting();
-  const monthLabel = dayjs().format("MMMM");
   const reviews = Number(counts.reviews || 0);
-  const completedVisitsThisWeek = Number(counts.completedVisitsThisWeek || 0);
 
   return (
     <div className="ocs-cc space-y-4">
@@ -386,7 +315,7 @@ export default function OperatorCommandCentre({
         </div>
       </section>
 
-      <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <OperatorWorkflowCard
           action="Start intake"
           icon={UserPlus}
@@ -394,14 +323,6 @@ export default function OperatorCommandCentre({
           title="Add a patient"
           to="/patients/add"
           variant="create"
-        />
-        <OperatorWorkflowCard
-          action="View week"
-          icon={CalendarCheck}
-          support="This week · since Monday"
-          title="Visits completed"
-          to="/operator/current-week-roster"
-          value={completedVisitsThisWeek}
         />
         <OperatorWorkflowCard
           action="Review now"
@@ -422,13 +343,6 @@ export default function OperatorCommandCentre({
         <OperatorOperationalPulse counts={counts} lowStockAlert={lowStockAlert} />
       </div>
 
-      <OperatorUtilityBar
-        counts={counts}
-        hcmUnreadCount={hcmUnreadCount}
-        monthLabel={monthLabel}
-        onOpenRosterPdf={onOpenRosterPdf}
-        rosterMeta={rosterMeta}
-      />
     </div>
   );
 }

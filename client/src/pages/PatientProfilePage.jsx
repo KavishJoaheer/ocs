@@ -79,7 +79,6 @@ import {
   formatDate,
   formatPaymentMethod,
 } from "../lib/format.js";
-import { isPatientSubscribed } from "../lib/patientSubscription.js";
 import {
   defaultReviewDueDateInputValue,
   formatScheduledReviewDate,
@@ -87,20 +86,6 @@ import {
 } from "../lib/patientReview.js";
 import { cx } from "../lib/utils.js";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
-
-function HealthPlanBadge({ className, compact = false }) {
-  return (
-    <span
-      className={cx(
-        "inline-flex w-fit items-center rounded-full border border-[#e6ebd9]/70 bg-[#404a42] font-bold uppercase tracking-widest text-[#f4f6f0] shadow-sm",
-        compact ? "px-2 py-0.5 text-[10px]" : "ml-3 px-2.5 py-1 text-xs tracking-wide",
-        className,
-      )}
-    >
-      ★ HEALTH PLAN
-    </span>
-  );
-}
 
 function LongTermReviewAlertBanner({ note, dueDate, actions }) {
   const trimmed = String(note || "").trim();
@@ -2055,11 +2040,6 @@ function PatientProfilePage() {
                   )}
                   <PatientLinkhamPolicyBadge patient={data.patient} />
                 </div>
-                {isPatientSubscribed(data.patient) ? (
-                  <div className="mt-0.5">
-                    <HealthPlanBadge className="ml-0" compact />
-                  </div>
-                ) : null}
                 <span className="text-xs text-ocs-grey">
                   📍 {profileAddressLabel} • Age: {profileAgeLabel}
                 </span>
@@ -2100,9 +2080,6 @@ function PatientProfilePage() {
                   📍 {profileAddressLabel} • Age: {profileAgeLabel}
                 </span>
               </div>
-              {isPatientSubscribed(data.patient) ? (
-                <HealthPlanBadge className="ml-0" />
-              ) : null}
             </div>
           }
           actions={(

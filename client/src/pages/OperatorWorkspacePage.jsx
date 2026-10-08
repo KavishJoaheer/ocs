@@ -17,20 +17,6 @@ import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { formatCurrency, formatDate, formatDateTime } from "../lib/format.js";
 const workspaceMeta = {
-  "current-week-roster": {
-    eyebrow: "Weekly coverage",
-    title: () => "This week's coverage",
-    description:
-      "This week's visits across the doctor team, plus who is available for emergency coverage.",
-    icon: CalendarClock,
-  },
-  "monthly-roster": {
-    eyebrow: "Operator roster",
-    title: (data) => `${data?.periods?.monthLabel || "Current month"} roster`,
-    description:
-      "See the full monthly visit roster across all doctors from the operator coordination desk.",
-    icon: ClipboardList,
-  },
   "scheduled-visits": {
     eyebrow: "Visit planner",
     title: () => "Scheduled visits",
@@ -62,99 +48,6 @@ function MetricCard({ icon: Icon, label, value, description, accent }) {
           <Icon className="size-6 text-white" />
         </div>
       </div>
-    </div>
-  );
-}
-
-const COVERAGE_GROUPS = [
-  {
-    key: "available",
-    label: "Available now",
-    stateLabel: "Available",
-    empty: "No doctor is free for an emergency visit right now.",
-    cardClass: "border-l-4 border-[#1a7f4b] bg-[rgba(26,127,75,0.07)]",
-    stateClass: "text-[#1a7f4b]",
-  },
-  {
-    key: "on_visit",
-    label: "On a visit",
-    stateLabel: "Active visit",
-    empty: "No doctor is currently with a patient.",
-    cardClass: "border-l-4 border-[#d97706] bg-[rgba(217,119,6,0.08)]",
-    stateClass: "text-[#b45309]",
-  },
-  {
-    key: "unavailable",
-    label: "Unavailable",
-    stateLabel: "Unavailable",
-    empty: "No signed-in doctor is marked unavailable.",
-    cardClass: "border-l-4 border-[#8b5cf6] bg-[rgba(139,92,246,0.07)]",
-    stateClass: "text-[#6d28d9]",
-  },
-  {
-    key: "offline",
-    label: "Offline",
-    stateLabel: "Offline",
-    empty: "Every doctor is signed in.",
-    cardClass: "border-l-4 border-slate-300 bg-slate-50",
-    stateClass: "text-slate-500",
-  },
-];
-
-function coverageStatus(doctor) {
-  const derived = String(doctor?.coverage_status || "").toLowerCase();
-  if (["available", "on_visit", "unavailable", "offline"].includes(derived)) {
-    return derived;
-  }
-  const status = String(doctor?.operation_status || "offline").toLowerCase();
-  if (status === "available") return "available";
-  if (status === "active") return "unavailable";
-  return "offline";
-}
-
-function CoverageDoctorRoster({ doctors }) {
-  if (!doctors.length) {
-    return (
-      <EmptyState
-        title="No doctor coverage yet"
-        description="Doctor availability appears here when doctors set their operation status."
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {COVERAGE_GROUPS.map((group) => {
-        const rows = doctors.filter((doctor) => coverageStatus(doctor) === group.key);
-        return (
-          <section
-            key={group.key}
-            className={group.key === "offline" ? "lg:col-span-2" : undefined}
-          >
-            <div className="mb-2 flex items-baseline justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-800">{group.label}</h3>
-              <span className="text-xs font-bold tabular-nums text-slate-500">{rows.length}</span>
-            </div>
-            {rows.length ? (
-              <div className={group.key === "offline" ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
-                {rows.map((doctor) => (
-                  <div key={doctor.id} className={`rounded-2xl px-4 py-3 ${group.cardClass}`}>
-                    <p className={`text-[11px] font-bold uppercase tracking-wide ${group.stateClass}`}>
-                      {group.stateLabel}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{doctor.full_name}</p>
-                    <p className="text-xs text-slate-500">{doctor.specialization || "Doctor"}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
-                {group.empty}
-              </p>
-            )}
-          </section>
-        );
-      })}
     </div>
   );
 }
@@ -285,7 +178,7 @@ function PendingPaymentsList({ bills, onRecordPayment }) {
     return (
       <EmptyState
         title="No pending payment"
-        description="All consultation-linked bills are currently settled across the doctor roster."
+        description="All consultation-linked bills are currently settled across the doctor team."
       />
     );
   }
@@ -423,7 +316,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
     );
   }
 
-  const monthLabel = data.periods?.monthLabel || "this month";
   const sharedActions = (
     <>
       <Link
@@ -443,105 +335,6 @@ function OperatorWorkspacePage({ workspaceKey }) {
 
   let metrics = [];
   let content = null;
-
-  if (workspaceKey === "current-week-roster") {
-    const availableDoctors = (data.doctorStatuses || []).filter(
-      (doctor) => coverageStatus(doctor) === "available",
-    );
-    metrics = [
-      {
-        icon: CalendarClock,
-        label: "Week visits",
-        value: data.summary.currentWeekRosterCount,
-        description: `${formatDate(data.periods.weekStart)} to ${formatDate(data.periods.weekEnd)}`,
-        accent: "bg-[#2d8f98]",
-      },
-      {
-        icon: ClipboardList,
-        label: "Scheduled",
-        value: data.currentWeekRoster.filter((appointment) => appointment.status === "scheduled").length,
-        description: "Visits still on the live calendar this week.",
-        accent: "bg-[#41c8c6]",
-      },
-      {
-        icon: UsersRound,
-        label: "Available now",
-        value: availableDoctors.length,
-        description: "Doctors currently free to accept an emergency visit.",
-        accent: "bg-[#1a7f4b]",
-      },
-    ];
-
-    content = (
-      <div className="space-y-6">
-        <SectionCard
-          actions={sharedActions}
-          subtitle="Who can take an emergency visit right now."
-          title="Doctor coverage"
-        >
-          <CoverageDoctorRoster doctors={data.doctorStatuses || []} />
-        </SectionCard>
-        <SectionCard
-          subtitle="Every scheduled visit this week, across the doctor team."
-          title="This week's visits"
-        >
-          <AppointmentQueueList
-            appointments={data.currentWeekRoster}
-            emptyDescription="No visits are currently scheduled for this week."
-            emptyTitle="No visits this week"
-          />
-        </SectionCard>
-        <div className="flex justify-end">
-          <Link
-            className="rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white"
-            to="/visit-requests"
-          >
-            Open dispatch board
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (workspaceKey === "monthly-roster") {
-    metrics = [
-      {
-        icon: ClipboardList,
-        label: `${monthLabel} roster`,
-        value: data.summary.currentMonthRosterCount,
-        description: `Every rostered visit for ${monthLabel}.`,
-        accent: "bg-gradient-to-br from-sky-500 to-blue-600",
-      },
-      {
-        icon: CalendarClock,
-        label: "Scheduled",
-        value: data.currentMonthRoster.filter((appointment) => appointment.status === "scheduled").length,
-        description: `Visits still on the shared calendar in ${monthLabel}.`,
-        accent: "bg-gradient-to-br from-cyan-500 to-sky-600",
-      },
-      {
-        icon: UsersRound,
-        label: "Doctors involved",
-        value: new Set(data.currentMonthRoster.map((appointment) => appointment.doctor_id)).size,
-        description: `Doctors appearing in the ${monthLabel} roster.`,
-        accent: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      },
-    ];
-
-    content = (
-      <SectionCard
-        actions={sharedActions}
-        subtitle={`The shared monthly doctor schedule for ${monthLabel}.`}
-        title={`${monthLabel} roster details`}
-      >
-        <AppointmentQueueList
-          appointments={data.currentMonthRoster}
-          emptyDescription={`No visits have been added to the ${monthLabel} roster yet.`}
-          emptyTitle={`No rostered visits in ${monthLabel}`}
-        />
-      </SectionCard>
-    );
-  }
 
   if (workspaceKey === "scheduled-visits") {
     metrics = [
@@ -578,7 +371,7 @@ function OperatorWorkspacePage({ workspaceKey }) {
       >
         <AppointmentQueueList
           appointments={data.scheduledVisits}
-          emptyDescription="There are no future scheduled visits across the doctor roster right now."
+          emptyDescription="There are no future scheduled visits across the doctor schedule right now."
           emptyTitle="No scheduled visits"
         />
       </SectionCard>

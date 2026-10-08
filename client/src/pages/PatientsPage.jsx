@@ -40,7 +40,6 @@ import {
   formatDate,
 } from "../lib/format.js";
 import { canBillPatientForUser } from "../lib/access.js";
-import { isPatientSubscribed } from "../lib/patientSubscription.js";
 import {
   formatReviewDueShort,
   formatReviewTimelineDate,
@@ -56,36 +55,7 @@ function displayText(value, fallback = "Not recorded") {
 
 function PatientCareNumber({ patient, className }) {
   const identifier = displayText(patient.patient_identifier);
-
-  if (!isPatientSubscribed(patient)) {
-    return <span className={className}>{identifier}</span>;
-  }
-
-  return (
-    <span className={className}>
-      {identifier}
-      <span className="ml-1 font-semibold text-teal-600" title="Health plan subscriber">
-        {" "}
-        ★
-      </span>
-    </span>
-  );
-}
-
-function PatientHealthPlanInlineBadge({ onDark = false } = {}) {
-  return (
-    <span
-      className={cx(
-        "ml-2 inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-semibold",
-        onDark
-          ? "border border-white/10 bg-white/15 text-[#e6f0f0]"
-          : "bg-teal-50 text-teal-700",
-      )}
-      title="Health plan subscriber"
-    >
-      ★
-    </span>
-  );
+  return <span className={className}>{identifier}</span>;
 }
 
 function PortalAccountBadge({ patient, onDark = false, desktop = false, mobile = false }) {
@@ -300,7 +270,6 @@ function PatientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const subscriberFilterActive = searchParams.get("filter") === "subscribed";
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
@@ -478,10 +447,6 @@ function PatientsPage() {
         url += `&doctorId=${doctorIdFilter}`;
       }
 
-      if (subscriberFilterActive) {
-        url += "&subscribed=1";
-      }
-
       if (myAssignedFilterActive && user.role === "doctor" && user.doctor_id) {
         url += "&filter=my_assigned";
         url += `&doctorId=${user.doctor_id}`;
@@ -579,7 +544,6 @@ function PatientsPage() {
     page,
     statusFilter,
     doctorIdFilter,
-    subscriberFilterActive,
     myAssignedFilterActive,
     user.doctor_id,
     user.role,
@@ -716,13 +680,6 @@ function PatientsPage() {
     }
   }
 
-  function clearSubscriberFilter() {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("filter");
-    setSearchParams(nextParams, { replace: true });
-    setPage(1);
-  }
-
   function clearMyAssignedFilter() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("filter");
@@ -759,28 +716,14 @@ function PatientsPage() {
     </label>
   );
 
-  const subscriberFilterBadge = subscriberFilterActive ? (
-    <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
-      <span>Active filter: Subscribers</span>
-      <button
-        type="button"
-        onClick={clearSubscriberFilter}
-        className="inline-flex size-6 items-center justify-center rounded-full text-teal-700 transition hover:bg-teal-100"
-        aria-label="Clear subscriber filter"
-      >
-        <X className="size-3.5" />
-      </button>
-    </span>
-  ) : null;
-
   const myAssignedFilterBadge = myAssignedFilterActive ? (
     <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-semibold text-slate-700">
-      <span>Filter Active: My Care Roster</span>
+      <span>Filter Active: My Patients</span>
       <button
         type="button"
         onClick={clearMyAssignedFilter}
         className="inline-flex size-6 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
-        aria-label="Clear my care roster filter"
+        aria-label="Clear my patients filter"
       >
         <X className="size-3.5" />
       </button>
@@ -961,7 +904,6 @@ function PatientsPage() {
                   {searchField}
                   {statusFilters}
                 </div>
-                {subscriberFilterBadge}
                 {myAssignedFilterBadge}
 
                 {isRecentlyDeletedView ? (
@@ -984,7 +926,6 @@ function PatientsPage() {
                     }}
                   />
                 ) : null}
-                {subscriberFilterBadge}
                 {myAssignedFilterBadge}
               </div>
             )}
@@ -1014,7 +955,6 @@ function PatientsPage() {
                                 <span className="text-base font-bold text-slate-700">
                                   {patient.full_name}
                                 </span>
-                                {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
                                 <PortalAccountBadge patient={patient} mobile />
                               </p>
                               {dueLabel ? (
@@ -1259,9 +1199,6 @@ function PatientsPage() {
                                         <span className="truncate font-semibold leading-tight text-slate-950">
                                           {patient.full_name}
                                         </span>
-                                        {isPatientSubscribed(patient) ? (
-                                          <PatientHealthPlanInlineBadge />
-                                        ) : null}
                                         <PortalAccountBadge patient={patient} desktop />
                                       </p>
                                       <p className="truncate text-xs text-slate-500">
@@ -1308,7 +1245,6 @@ function PatientsPage() {
                                       <span className="font-semibold leading-snug text-slate-950">
                                         {patient.full_name}
                                       </span>
-                                      {isPatientSubscribed(patient) ? <PatientHealthPlanInlineBadge /> : null}
                                       <PortalAccountBadge patient={patient} desktop />
                                     </p>
                                     {dueShort ? (

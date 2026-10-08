@@ -40,11 +40,6 @@ import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetric
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
-import {
-  closePreviewTab,
-  openInlinePreviewTab,
-  presentFileBlob,
-} from "../lib/fileBlobViewer.js";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
@@ -209,8 +204,6 @@ function getOperatorBoardCounts(metrics) {
     reviews: Number(metrics?.long_term_review?.active_followup_count ?? 0),
     overdueReviews: Number(metrics?.long_term_review?.overdue_count ?? 0),
     unpaidThisWeek: Number(metrics?.pending_payment?.unpaid_this_week_count ?? 0),
-    completedVisitsThisWeek: Number(metrics?.scheduled_visits?.completed_this_week ?? 0),
-    healthPlans: Number(metrics?.health_plans?.active_subscribers_count ?? 0),
     doctorsThisWeek: Number(metrics?.coverage?.doctors_this_week ?? 0),
     availableNow: Number(
       metrics?.coverage?.available_now_count ?? metrics?.coverage?.on_call_count ?? 0,
@@ -398,8 +391,6 @@ function MobileLauncher({
         <ClinicalTwinMetricsCards
           role={user.role}
           longTermReviewCount={clinicalCounts.longTermReviewCount}
-          healthPlansCount={clinicalCounts.healthPlansCount}
-          showHealthPlans={user.role !== "admin"}
           className="mt-5"
         />
       ) : null}
@@ -1002,8 +993,6 @@ function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
 }
 
 function DoctorDashboardTwinPanels({
-  monthLabel,
-  onOpenRosterPdf,
   lowStockAlert,
   visitsToday = [],
   nextScheduledVisit = null,
@@ -1021,22 +1010,12 @@ function DoctorDashboardTwinPanels({
             <span className="text-sm font-semibold text-slate-800">
               {hasTodayVisits ? "Today’s visits" : "Next scheduled visit"}
             </span>
-            {hasTodayVisits ? (
-              <button
-                type="button"
-                onClick={onOpenRosterPdf}
-                className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
-              >
-                {monthLabel} roster
-              </button>
-            ) : (
-              <Link
-                to="/appointments"
-                className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
-              >
-                View calendar
-              </Link>
-            )}
+            <Link
+              to="/appointments"
+              className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
+            >
+              View calendar
+            </Link>
           </div>
           <ul className="mt-3 divide-y divide-slate-100">
             {displayedVisits.map((visit) => {
@@ -1134,11 +1113,9 @@ function DoctorDashboardView({
   dashboard,
   onStatusChange,
   isSavingStatus,
-  onOpenRosterPdf,
   lowStockAlert,
   latestHcmPost = null,
 }) {
-  const monthLabel = dayjs().format("MMMM");
   const liveVisitRequests = dashboard?.liveVisitRequests?.visit_requests || [];
   const liveVisitRequestCount = Number(
     dashboard?.liveVisitRequests?.active_count ?? liveVisitRequests.length,
@@ -1174,9 +1151,7 @@ function DoctorDashboardView({
 
       <DoctorDashboardTwinPanels
         lowStockAlert={lowStockAlert}
-        monthLabel={monthLabel}
         nextScheduledVisit={getDoctorNextScheduledVisit(dashboard)}
-        onOpenRosterPdf={onOpenRosterPdf}
         visitsToday={getDoctorVisitsToday(dashboard)}
       />
     </section>
@@ -1190,23 +1165,17 @@ function OperatorDashboardView({
   onStatusChange,
   isSavingStatus,
   latestHcmPost = null,
-  rosterMeta = null,
-  onOpenRosterPdf,
-  hcmUnreadCount = 0,
 }) {
   const counts = getOperatorBoardCounts(operatorMetrics);
 
   return (
     <OperatorCommandCentre
       counts={counts}
-      hcmUnreadCount={hcmUnreadCount}
       isSavingStatus={isSavingStatus}
       latestHcmPost={latestHcmPost}
       lowStockAlert={dashboard?.ocs_low_stock_alert}
-      onOpenRosterPdf={onOpenRosterPdf}
       onStatusChange={onStatusChange}
       operatorMetrics={operatorMetrics}
-      rosterMeta={rosterMeta}
       user={user}
     />
   );
@@ -1412,12 +1381,11 @@ function AdminMetricCard({ to, label, value, variant }) {
   );
 }
 
-function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
+function AdminDashboardView({ dashboard }) {
   const counts = resolveClinicalTwinCounts("admin", { dashboard });
   const visitsToday = getAdminVisitsToday(dashboard);
   const unpaidCount = Number(dashboard?.summary?.pendingBills ?? 0);
   const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
-  const monthLabel = dayjs().format("MMMM");
   const visibleVisits = visitsToday.slice(0, 8);
 
   return (
@@ -1526,36 +1494,6 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
             </div>
           </Link>
 
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Tools</p>
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-800">{monthLabel} roster</p>
-                  <Link to="/admin/roster" className="text-xs font-semibold text-slate-400 hover:text-ocs-slate">
-                    Open roster
-                  </Link>
-                </div>
-                <button
-                  type="button"
-                  onClick={onOpenRosterPdf}
-                  disabled={!rosterMeta?.has_roster}
-                  className="shrink-0 rounded-xl bg-ocs-teal px-3 py-2 text-xs font-semibold text-white transition hover:bg-ocs-teal/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Download PDF
-                </button>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-                <p className="text-sm font-medium text-slate-800">Health plans</p>
-                <Link
-                  to="/patients?filter=subscribed"
-                  className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-200"
-                >
-                  {counts.healthPlansCount} subscribed
-                </Link>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1564,13 +1502,12 @@ function AdminDashboardView({ dashboard, rosterMeta, onOpenRosterPdf }) {
 
 
 function DashboardPage() {
-  const { user, updateUser, hcmUnreadCount } = useAuth();
+  const { user, updateUser } = useAuth();
   const isMobile = useIsMobile();
   const isOperator = user.role === "operator";
   const { metrics: operatorMetrics } = useOperatorDashboardMetrics(isOperator);
   const [dashboard, setDashboard] = useState(null);
   const [latestHcmPost, setLatestHcmPost] = useState(null);
-  const [rosterMeta, setRosterMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
 
@@ -1581,11 +1518,8 @@ function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [data, rosterData, doctorWorkspace, liveVisitRequests] = await Promise.all([
+        const [data, doctorWorkspace, liveVisitRequests] = await Promise.all([
           api.get("/dashboard"),
-          ["admin", "doctor", "operator"].includes(user.role)
-            ? api.get("/dashboard/roster")
-            : Promise.resolve(null),
           user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
           user.role === "doctor"
             ? api.get("/visit-requests?status=active").catch(() => null)
@@ -1621,7 +1555,6 @@ function DashboardPage() {
 
         if (!ignore) {
           setDashboard(merged);
-          setRosterMeta(rosterData);
           setLatestHcmPost(bulletinPost);
         }
       } catch (error) {
@@ -1641,32 +1574,6 @@ function DashboardPage() {
       ignore = true;
     };
   }, [user.role, refreshKey]);
-
-  async function handleOpenRosterPdf() {
-    if (!rosterMeta?.has_roster) {
-      toast.error("Roster PDF is not uploaded yet.");
-      return;
-    }
-
-    const previewTab = openInlinePreviewTab();
-
-    try {
-      const file = await api.getBlob("/dashboard/roster/file");
-      const mode = presentFileBlob({
-        blob: file.blob,
-        filename: file.filename || "roster.pdf",
-        mimeType: file.contentType || "application/pdf",
-        previewTab,
-      });
-
-      if (mode === "download") {
-        toast.success("Roster saved to your device. Open it from your downloads.");
-      }
-    } catch (error) {
-      closePreviewTab(previewTab);
-      toast.error(error.message);
-    }
-  }
 
   async function handleStatusChange(nextStatus) {
     if (isSavingStatus || user.operation_status === nextStatus) {
@@ -1706,7 +1613,6 @@ function DashboardPage() {
         dashboard={dashboard}
         operatorMetrics={operatorMetrics}
         latestHcmPost={latestHcmPost}
-        onOpenRosterPdf={handleOpenRosterPdf}
       />
     );
   }
@@ -1718,7 +1624,6 @@ function DashboardPage() {
         isSavingStatus={isSavingStatus}
         latestHcmPost={latestHcmPost}
         lowStockAlert={dashboard.doctor_low_stock_alert}
-        onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
         user={user}
       />
@@ -1729,13 +1634,10 @@ function DashboardPage() {
     return (
       <OperatorDashboardView
         dashboard={dashboard}
-        hcmUnreadCount={hcmUnreadCount}
         isSavingStatus={isSavingStatus}
         latestHcmPost={latestHcmPost}
-        onOpenRosterPdf={handleOpenRosterPdf}
         onStatusChange={handleStatusChange}
         operatorMetrics={operatorMetrics}
-        rosterMeta={rosterMeta}
         user={user}
       />
     );
@@ -1763,13 +1665,7 @@ function DashboardPage() {
     );
   }
 
-  return (
-    <AdminDashboardView
-      dashboard={dashboard}
-      onOpenRosterPdf={handleOpenRosterPdf}
-      rosterMeta={rosterMeta}
-    />
-  );
+  return <AdminDashboardView dashboard={dashboard} />;
 }
 
 export default DashboardPage;

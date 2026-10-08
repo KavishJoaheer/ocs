@@ -1000,10 +1000,6 @@ router.get("/", (req, res) => {
   const underReview =
     String(req.query.underReview ?? "").trim() === "1" ||
     String(req.query.underReview ?? "").trim().toLowerCase() === "true";
-  const subscribed =
-    String(req.query.subscribed ?? "").trim() === "1" ||
-    String(req.query.subscribed ?? "").trim().toLowerCase() === "true" ||
-    String(req.query.filter ?? "").trim() === "subscribed";
   const pendingApproval =
     String(req.query.pendingApproval ?? "").trim() === "1" ||
     String(req.query.pendingApproval ?? "").trim().toLowerCase() === "true";
@@ -1040,11 +1036,9 @@ router.get("/", (req, res) => {
     doctorId,
     operatorUserId,
     underReview: underReview ? 1 : 0,
-    subscribed: subscribed ? 1 : 0,
     pendingApproval: pendingApproval ? 1 : 0,
   };
   const reviewFilterSql = "AND (@underReview = 0 OR p.is_under_review = 1)";
-  const subscribedFilterSql = "AND (@subscribed = 0 OR p.is_subscribed = 1)";
   const pendingApprovalFilterSql =
     "AND (@pendingApproval = 0 OR (p.link_status IN ('pending_review', 'self_registered') AND EXISTS (SELECT 1 FROM patient_users pu WHERE pu.patient_id = p.id)))";
   const linkhamFilterSql = getLinkhamPatientFilterSql(req.auth?.role);
@@ -1085,7 +1079,6 @@ router.get("/", (req, res) => {
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
-        ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
     `)
@@ -1138,7 +1131,6 @@ router.get("/", (req, res) => {
         AND (@status = '' OR p.status = @status)
         AND (@doctorId IS NULL OR p.assigned_doctor_id = @doctorId)
         ${reviewFilterSql}
-        ${subscribedFilterSql}
         ${pendingApprovalFilterSql}
         ${linkhamFilterSql}
       GROUP BY p.id, d.full_name, d.specialization

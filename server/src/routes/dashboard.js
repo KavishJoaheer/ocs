@@ -1,8 +1,5 @@
-const fs = require("fs");
-const path = require("path");
 const express = require("express");
-const multer = require("multer");
-const { db, rosterDir } = require("../db");
+const { db } = require("../db");
 const { notifyDoctorLowStockSummary, notifyOcsLowStockSubscribers } = require("../lib/push");
 const { serializeUser } = require("../lib/auth");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
@@ -35,23 +32,6 @@ const router = express.Router();
 const DEFAULT_OPERATOR_ACCESS_HOURS = 24;
 const OPERATION_STATUSES = new Set(["available", "active", "offline"]);
 const REPORT_PERIODS = new Set(["daily", "weekly", "monthly", "annual"]);
-const CURRENT_ROSTER_FILE_NAME = "current_roster.pdf";
-const CURRENT_ROSTER_PATH = path.join(rosterDir, CURRENT_ROSTER_FILE_NAME);
-
-const rosterUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-    files: 1,
-  },
-  fileFilter(_req, file, callback) {
-    if (String(file.mimetype || "").toLowerCase() !== "application/pdf") {
-      callback(new Error("Only PDF roster uploads are allowed."));
-      return;
-    }
-    callback(null, true);
-  },
-});
 
 function normalizeSqlDateTime(value) {
   const parsed = new Date(value);
@@ -86,21 +66,6 @@ function parseAnchorDate(value) {
 
 function getReferenceDate(value) {
   return parseAnchorDate(value) || parseAnchorDate(getTodayLocal()) || new Date();
-}
-
-function getCurrentWeekRange() {
-  const start = new Date(getReferenceDate(getTodayLocal()));
-  const weekday = start.getDay();
-  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
-  start.setDate(start.getDate() + mondayOffset);
-
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-
-  return {
-    weekStart: formatLocalSqlDate(start),
-    weekEnd: formatLocalSqlDate(end),
-  };
 }
 
 function getCurrentMonthRange() {
@@ -551,23 +516,6 @@ function getCurrentUserRow(userId) {
     .get(userId);
 }
 
-function getRosterMeta() {
-  if (!fs.existsSync(CURRENT_ROSTER_PATH)) {
-    return {
-      has_roster: false,
-      file_name: CURRENT_ROSTER_FILE_NAME,
-      updated_at: null,
-    };
-  }
-
-  const stats = fs.statSync(CURRENT_ROSTER_PATH);
-  return {
-    has_roster: true,
-    file_name: CURRENT_ROSTER_FILE_NAME,
-    updated_at: stats.mtime.toISOString(),
-  };
-}
-
 function getDoctorStatuses() {
   return db
     .prepare(`
@@ -714,7 +662,6 @@ function getDoctorLowStockAlert(doctorId) {
 
 function getDoctorWorkspacePayload(doctorId) {
   const today = getTodayLocal();
-  const { weekStart, weekEnd } = getCurrentWeekRange();
   const { monthStart, monthEnd, monthLabel } = getCurrentMonthRange();
 
   const doctor = db
@@ -743,22 +690,6 @@ function getDoctorWorkspacePayload(doctorId) {
     WHERE a.doctor_id = ?
       AND p.deleted_at IS NULL
   `;
-
-  const currentWeekRoster = db
-    .prepare(`
-      ${appointmentSelect}
-        AND a.appointment_date BETWEEN ? AND ?
-      ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    `)
-    .all(doctorId, weekStart, weekEnd);
-
-  const currentMonthRoster = db
-    .prepare(`
-      ${appointmentSelect}
-        AND a.appointment_date BETWEEN ? AND ?
-      ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    `)
-    .all(doctorId, monthStart, monthEnd);
 
   const scheduledVisits = db
     .prepare(`
@@ -813,7 +744,6 @@ function getDoctorWorkspacePayload(doctorId) {
         p.date_of_birth,
         p.created_at,
         p.is_under_review,
-        p.is_subscribed,
         p.review_due_date,
         MAX(c.consultation_date) AS last_consultation_date
       FROM patients p
@@ -831,17 +761,12 @@ function getDoctorWorkspacePayload(doctorId) {
         p.date_of_birth,
         p.created_at,
         p.is_under_review,
-        p.is_subscribed,
         p.review_due_date
       ORDER BY p.full_name ASC
     `)
     .all(doctorId);
 
   const longTermReviewAssignedCount = getLongTermReviewCount({ caseloadDoctorId: doctorId });
-  const subscribedAssignedCount = assignedPatients.filter(
-    (patient) => Number(patient.is_subscribed) === 1,
-  ).length;
-
   const monthConsultations = db
     .prepare(`
       SELECT
@@ -945,36 +870,23 @@ function getDoctorWorkspacePayload(doctorId) {
     doctor,
     periods: {
       today,
-      weekStart,
-      weekEnd,
       monthStart,
       monthEnd,
       monthLabel,
     },
     summary: {
-      currentWeekRosterCount: currentWeekRoster.length,
-      currentMonthRosterCount: currentMonthRoster.length,
       scheduledVisitsCount: scheduledVisits.length,
       pendingPaymentsCount: pendingPayments.length,
       pendingPaymentAmount: Number(pendingPaymentAmount.toFixed(2)),
       assignedPatientsCount: assignedPatients.length,
       patientsSeenThisMonthCount: patientsSeenThisMonth.length,
-      completedAppointmentsThisMonth: currentMonthRoster.filter(
-        (appointment) => appointment.status === "completed",
-      ).length,
-      cancelledAppointmentsThisMonth: currentMonthRoster.filter(
-        (appointment) => appointment.status === "cancelled",
-      ).length,
       activeAssignedPatientsCount: assignedPatients.filter((patient) => patient.status === "active")
         .length,
       dischargedAssignedPatientsCount: assignedPatients.filter(
         (patient) => patient.status === "discharged",
       ).length,
       longTermReviewAssignedCount,
-      subscribedAssignedCount,
     },
-    currentWeekRoster,
-    currentMonthRoster,
     scheduledVisits,
     pendingPayments,
     assignedPatients,
@@ -986,8 +898,6 @@ function getDoctorWorkspacePayload(doctorId) {
 
 function getOperatorWorkspacePayload() {
   const today = getTodayLocal();
-  const { weekStart, weekEnd } = getCurrentWeekRange();
-  const { monthStart, monthEnd, monthLabel } = getCurrentMonthRange();
 
   const appointmentSelect = `
     SELECT
@@ -1010,22 +920,6 @@ function getOperatorWorkspacePayload() {
     LEFT JOIN consultations c ON c.appointment_id = a.id
     WHERE p.deleted_at IS NULL
   `;
-
-  const currentWeekRoster = db
-    .prepare(`
-      ${appointmentSelect}
-        AND a.appointment_date BETWEEN ? AND ?
-      ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    `)
-    .all(weekStart, weekEnd);
-
-  const currentMonthRoster = db
-    .prepare(`
-      ${appointmentSelect}
-        AND a.appointment_date BETWEEN ? AND ?
-      ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    `)
-    .all(monthStart, monthEnd);
 
   const scheduledVisits = db
     .prepare(`
@@ -1080,22 +974,10 @@ function getOperatorWorkspacePayload() {
 
   const longTermReview = getGlobalLongTermReviewPatients();
 
-  const reviewAppointmentsThisMonth = currentMonthRoster;
   const pendingPaymentAmount = pendingPayments.reduce(
     (total, bill) => total + toNumber(bill.payment_balance_amount, bill.total_amount),
     0,
   );
-
-  const activeSubscriptionPatientsRow = db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM patients
-      WHERE deleted_at IS NULL
-        AND status = 'active'
-        AND is_subscribed = 1
-    `)
-    .get();
-  const activeSubscriptionPatientsCount = Number(activeSubscriptionPatientsRow?.count || 0);
 
   const pendingDispatchRow = db
     .prepare(`
@@ -1126,45 +1008,19 @@ function getOperatorWorkspacePayload() {
   return {
     periods: {
       today,
-      weekStart,
-      weekEnd,
-      monthStart,
-      monthEnd,
-      monthLabel,
     },
     summary: {
-      currentWeekRosterCount: currentWeekRoster.length,
-      currentMonthRosterCount: currentMonthRoster.length,
       scheduledVisitsCount: scheduledVisits.length,
       pendingPaymentsCount: pendingPayments.length,
       pendingPaymentAmount: Number(pendingPaymentAmount.toFixed(2)),
       longTermReviewCount: longTermReview.length,
-      reviewAppointmentsCount: reviewAppointmentsThisMonth.length,
-      activeSubscriptionPatientsCount,
       pendingDispatchCount,
       scheduledTodayCount,
     },
-    currentWeekRoster,
-    currentMonthRoster,
     scheduledVisits,
     pendingPayments,
     longTermReview,
-    reviewAppointmentsThisMonth,
-    doctorStatuses: getDoctorStatuses(),
   };
-}
-
-function getActiveSubscriptionPatientsCount() {
-  const row = db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM patients
-      WHERE deleted_at IS NULL
-        AND status = 'active'
-        AND is_subscribed = 1
-    `)
-    .get();
-  return Number(row?.count || 0);
 }
 
 router.get("/", (_req, res) => {
@@ -1362,7 +1218,6 @@ router.get("/", (_req, res) => {
     longTermReviewCount: getLongTermReviewCount({
       caseloadDoctorId: doctorCaseloadId > 0 ? doctorCaseloadId : null,
     }),
-    activeSubscriptionPatientsCount: getActiveSubscriptionPatientsCount(),
   };
 
   if (includeGlobalFinancials) {
@@ -1378,42 +1233,6 @@ router.get("/", (_req, res) => {
     doctor_low_stock_alert: doctorLowStockAlert,
     ocs_low_stock_alert: ocsLowStockAlert,
   });
-});
-
-router.get("/roster", (req, res) => {
-  if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "You do not have permission to access the roster." });
-  }
-  res.json(getRosterMeta());
-});
-
-router.post("/roster", rosterUpload.single("roster"), (req, res) => {
-  if (req.auth.role !== "admin") {
-    return res.status(403).json({ error: "Only admin can upload the roster PDF." });
-  }
-
-  if (!req.file) {
-    return res.status(400).json({ error: "Roster PDF file is required." });
-  }
-
-  fs.mkdirSync(rosterDir, { recursive: true });
-  fs.writeFileSync(CURRENT_ROSTER_PATH, req.file.buffer);
-  res.status(201).json(getRosterMeta());
-});
-
-router.get("/roster/file", (req, res) => {
-  if (!["admin", "doctor", "operator"].includes(req.auth.role)) {
-    return res.status(403).json({ error: "You do not have permission to access the roster PDF." });
-  }
-
-  if (!fs.existsSync(CURRENT_ROSTER_PATH)) {
-    return res.status(404).json({ error: "Current roster PDF has not been uploaded yet." });
-  }
-
-  res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("X-File-Name", encodeURIComponent(CURRENT_ROSTER_FILE_NAME));
-  res.setHeader("Content-Disposition", `inline; filename="${CURRENT_ROSTER_FILE_NAME}"`);
-  res.sendFile(CURRENT_ROSTER_PATH);
 });
 
 router.get("/doctor-workspace", (req, res) => {
