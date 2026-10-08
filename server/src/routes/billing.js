@@ -55,6 +55,7 @@ const {
 } = require("../lib/treatmentSupplies");
 
 const { operationFor } = require("../lib/operationReceipts");
+const { snapshotBillingLinkhamCoverage } = require("../lib/linkhamCoverageWorkflow");
 const {
   CONSULTATION_FEES,
   MAX_CONSULTATION_FEE,
@@ -139,6 +140,22 @@ function paymentSummaryForBill(billId, totalAmount) {
   const receivedAmount = roundCurrency(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
   const balanceAmount = roundCurrency(Math.max(0, Number(totalAmount || 0) - receivedAmount));
   const lastPayment = payments.filter((payment) => payment.entry_type === "payment").at(-1) || null;
+  const allocation = db.prepare(`
+    SELECT linkham_coverage_status_snapshot, linkham_patient_share_amount, linkham_share_amount
+    FROM billing WHERE id = ?
+  `).get(billId);
+  const linkhamPaymentReceived = roundCurrency(payments
+    .filter((payment) => String(payment.operation_id || "").startsWith("linkham-settlement:"))
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
+  const patientPaymentReceived = roundCurrency(Math.max(0, receivedAmount - linkhamPaymentReceived));
+  const isLinkhamAllocation = allocation?.linkham_coverage_status_snapshot === "green"
+    && Number.isFinite(Number(allocation.linkham_patient_share_amount));
+  const patientResponsibility = isLinkhamAllocation
+    ? roundCurrency(allocation.linkham_patient_share_amount)
+    : roundCurrency(totalAmount);
+  const linkhamResponsibility = isLinkhamAllocation
+    ? roundCurrency(allocation.linkham_share_amount)
+    : 0;
   return {
     payments,
     payment_received_amount: receivedAmount,
@@ -148,6 +165,12 @@ function paymentSummaryForBill(billId, totalAmount) {
     payment_reversal_count: payments.filter((payment) => payment.entry_type === "reversal").length,
     last_payment_method: lastPayment?.payment_method || null,
     last_payment_date: lastPayment?.payment_date || null,
+    patient_responsibility_amount: patientResponsibility,
+    patient_payment_received_amount: patientPaymentReceived,
+    patient_payment_balance_amount: roundCurrency(Math.max(0, patientResponsibility - patientPaymentReceived)),
+    linkham_responsibility_amount: linkhamResponsibility,
+    linkham_payment_received_amount: linkhamPaymentReceived,
+    linkham_payment_balance_amount: roundCurrency(Math.max(0, linkhamResponsibility - linkhamPaymentReceived)),
   };
 }
 function syncBillingPaymentSummary(billId, actor, changeReason = "") {
@@ -314,7 +337,7 @@ function ensureActivityHistoryTable() {
 }
 
 function notifyLinkhamBillingIfNeeded(patientId, userId) {
-  if (String(process.env.LINKHAM_BILLING_ENABLED || "").trim().toLowerCase() !== "true") {
+  if (String(process.env.LINKHAM_BILLING_ENABLED || "true").trim().toLowerCase() === "false") {
     return;
   }
   const pid = Number(patientId || 0);
@@ -2806,6 +2829,7 @@ router.patch("/quick/operator-queue/:consultationId/status", (req, res) => {
           String(req.auth.role || "operator"),
           bill.id,
         );
+        snapshotBillingLinkhamCoverage(bill.id, req.auth.id);
       }
       const updated = db.prepare(`
       UPDATE billing_lite_submissions
@@ -3575,6 +3599,8 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
         bill.id,
       );
 
+      const linkhamAllocation = snapshotBillingLinkhamCoverage(bill.id, req.auth.id);
+
       const issuedBill = parseBillingRow(
         db.prepare("SELECT * FROM billing WHERE id = ? AND voided_at IS NULL").get(bill.id),
       );
@@ -3582,7 +3608,9 @@ router.post("/quick/visits/:consultationId/capture", (req, res) => {
       if (recordPaymentNow) {
         issuedPaymentTransaction = recordPaymentTransaction({
           bill: issuedBill,
-          amount: issuedBill.total_amount,
+          amount: linkhamAllocation.eligible
+            ? linkhamAllocation.patientShare
+            : issuedBill.total_amount,
           paymentMethod,
           paymentDate,
           externalReference: paymentReference,
@@ -4193,6 +4221,12 @@ router.post("/:id/refunds", (req, res) => {
         WHERE b.id = ?
       `).get(billId);
       if (!bill) throw Object.assign(new Error("Invoice not found."), { status: 404 });
+      if (["approved", "settled"].includes(String(bill.linkham_claim_status || ""))) {
+        throw Object.assign(
+          new Error("This invoice is locked to an approved Linkham claim. Correct it through the Linkham settlement workflow."),
+          { status: 409, extra: { code: "LINKHAM_CLAIM_LOCKED" } },
+        );
+      }
       if (bill.status !== "paid" || bill.voided_at || bill.consultation_voided_at) {
         throw Object.assign(new Error("Credit notes can only be issued against an active paid invoice."), { status: 409 });
       }
@@ -5244,11 +5278,14 @@ function createBillingFixtureForTests(req, res) {
         null,
         createdId,
       );
+      const linkhamAllocation = snapshotBillingLinkhamCoverage(createdId, req.auth.id);
       if (status === "paid") {
         const createdBill = db.prepare("SELECT * FROM billing WHERE id = ?").get(createdId);
         recordPaymentTransaction({
           bill: createdBill,
-          amount: createdBill.total_amount,
+          amount: linkhamAllocation.eligible
+            ? linkhamAllocation.patientShare
+            : createdBill.total_amount,
           paymentMethod,
           paymentDate,
           externalReference: req.body.payment_reference,
@@ -5496,7 +5533,11 @@ router.patch("/:id/pay", (req, res) => {
     ? db.prepare("SELECT * FROM billing_payment_transactions WHERE operation_id = ?").get(requestedOperationId)
     : null;
   const requestedAmount = req.body.amount == null || req.body.amount === ""
-    ? replay ? Number(replay.amount) : existing.payment_balance_amount
+    ? replay
+      ? Number(replay.amount)
+      : existing.linkham_coverage_status_snapshot === "green"
+        ? existing.patient_payment_balance_amount
+        : existing.payment_balance_amount
     : Number(req.body.amount);
   const requestedReference = normalizeSourceReference(req.body.external_reference);
   if (replay) {
@@ -5525,6 +5566,16 @@ router.patch("/:id/pay", (req, res) => {
   }
   if (Number(req.body.expected_version) !== Number(existing.row_version)) {
     return res.status(409).json({ error: "This bill changed elsewhere. Refresh before recording payment." });
+  }
+
+  if (
+    existing.linkham_coverage_status_snapshot === "green"
+    && Number(requestedAmount) > Number(existing.patient_payment_balance_amount || 0) + 0.000001
+  ) {
+    return res.status(409).json({
+      error: `The patient is responsible for only Rs ${Number(existing.patient_payment_balance_amount || 0).toFixed(2)}. Linkham's 80% must be settled from the insurer portal.`,
+      code: "LINKHAM_PATIENT_SHARE_EXCEEDED",
+    });
   }
 
   const amount = requestedAmount;
@@ -5625,6 +5676,12 @@ router.post("/:id/payments/:paymentId/reverse", (req, res) => {
   }
   const payment = db.prepare("SELECT * FROM billing_payment_transactions WHERE id = ? AND billing_id = ?").get(paymentId, billId);
   if (!payment) return res.status(404).json({ error: "Payment transaction not found for this invoice." });
+  if (String(payment.operation_id || "").startsWith("linkham-settlement:")) {
+    return res.status(409).json({
+      error: "A Linkham remittance is locked to its approved claim. Correct it through the Linkham settlement workflow.",
+      code: "LINKHAM_SETTLEMENT_LOCKED",
+    });
+  }
   if (payment.payment_method !== "cash" && externalReference.length < 3) {
     return res.status(400).json({ error: "Enter the provider reversal reference for this non-cash payment." });
   }

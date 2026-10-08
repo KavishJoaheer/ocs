@@ -4,12 +4,25 @@ import toast from "react-hot-toast";
 import LinkhamClaimSummarySheet from "../../components/LinkhamClaimSummarySheet.jsx";
 import LinkhamClaimsLedger from "../../components/LinkhamClaimsLedger.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
+import Modal from "../../components/Modal.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
 import { LINKHAM_CLAIMS_EVENT, LINKHAM_PATIENTS_EVENT } from "../../lib/inventorySync.js";
 import { downloadLinkhamStatementPdf } from "../../lib/linkhamExports.js";
+import { formatRupees } from "../../lib/format.js";
 
 const STATUS_VALUES = new Set(["pending", "flagged", "approved", "settled"]);
+
+function mauritiusToday() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Indian/Mauritius",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
 
 export default function LinkhamClaimsClearancePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,6 +41,11 @@ export default function LinkhamClaimsClearancePage() {
   const [batchApproving, setBatchApproving] = useState(false);
   const [batchSettling, setBatchSettling] = useState(false);
   const [selectedClaimId, setSelectedClaimId] = useState(null);
+  const [settlementTarget, setSettlementTarget] = useState(null);
+  const [settlementForm, setSettlementForm] = useState({
+    payment_date: mauritiusToday(),
+    remittance_reference: "",
+  });
 
   function updateParams(next) {
     const params = new URLSearchParams(searchParams);
@@ -109,14 +127,8 @@ export default function LinkhamClaimsClearancePage() {
   }
 
   async function handleSettleClaim(claim) {
-    setSettlingClaimId(claim.id);
-    try {
-      await api.patch(`/linkham/claims/${claim.id}/settle`, {});
-      toast.success(`Marked paid to OCS for ${claim.patient_name}.`);
-      await reloadClaims();
-    } finally {
-      setSettlingClaimId(null);
-    }
+    setSettlementTarget({ type: "claim", claim });
+    setSettlementForm({ payment_date: mauritiusToday(), remittance_reference: "" });
   }
 
   async function handleToggleDispute(claim, payload) {
@@ -146,12 +158,43 @@ export default function LinkhamClaimsClearancePage() {
   }
 
   async function handleSettleApprovedBatch() {
-    setBatchSettling(true);
+    setSettlementTarget({ type: "batch" });
+    setSettlementForm({ payment_date: mauritiusToday(), remittance_reference: "" });
+  }
+
+  async function submitSettlement(event) {
+    event.preventDefault();
+    const reference = settlementForm.remittance_reference.trim();
+    if (reference.length < 3) {
+      toast.error("Enter the Linkham bank transfer or remittance reference.");
+      return;
+    }
+    const isBatch = settlementTarget?.type === "batch";
+    if (isBatch) setBatchSettling(true);
+    else setSettlingClaimId(settlementTarget?.claim?.id || null);
     try {
-      const result = await api.patch("/linkham/claims/batch-settle-approved", { month });
-      toast.success(`Marked ${result?.settledCount || 0} claims paid to OCS.`);
+      if (isBatch) {
+        const result = await api.patch("/linkham/claims/batch-settle-approved", {
+          month,
+          ...settlementForm,
+          remittance_reference: reference,
+        });
+        toast.success(`Recorded Linkham payment for ${result?.settledCount || 0} claims.`);
+      } else {
+        const claim = settlementTarget?.claim;
+        await api.patch(`/linkham/claims/${claim.id}/settle`, {
+          amount: claim.linkham_share_amount,
+          ...settlementForm,
+          remittance_reference: reference,
+        });
+        toast.success(`Recorded Linkham payment for ${claim.patient_name}.`);
+      }
+      setSettlementTarget(null);
       await reloadClaims();
+    } catch (error) {
+      toast.error(error.message || "Could not record the Linkham payment.");
     } finally {
+      setSettlingClaimId(null);
       setBatchSettling(false);
     }
   }
@@ -214,6 +257,55 @@ export default function LinkhamClaimsClearancePage() {
         claimId={selectedClaimId}
         onClose={() => setSelectedClaimId(null)}
       />
+
+      <Modal
+        open={Boolean(settlementTarget)}
+        onClose={() => {
+          if (!settlingClaimId && !batchSettling) setSettlementTarget(null);
+        }}
+        title="Record Linkham payment to OCS"
+        description={settlementTarget?.type === "batch"
+          ? `Approved claims in this filter · ${formatRupees(ledger.approvedShareTotal || 0)}`
+          : settlementTarget?.claim
+            ? `${settlementTarget.claim.patient_name} · ${formatRupees(settlementTarget.claim.linkham_share_amount)}`
+            : ""}
+        size="md"
+      >
+        <form className="space-y-4" onSubmit={submitSettlement}>
+          <label className="block text-sm font-bold text-gray-700">
+            Payment date
+            <input
+              required
+              type="date"
+              max={mauritiusToday()}
+              value={settlementForm.payment_date}
+              onChange={(event) => setSettlementForm((current) => ({ ...current, payment_date: event.target.value }))}
+              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2"
+            />
+          </label>
+          <label className="block text-sm font-bold text-gray-700">
+            Bank transfer or remittance reference
+            <input
+              required
+              minLength={3}
+              maxLength={120}
+              value={settlementForm.remittance_reference}
+              onChange={(event) => setSettlementForm((current) => ({ ...current, remittance_reference: event.target.value }))}
+              placeholder="Example: LKH-OCT-2026-001"
+              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2"
+            />
+          </label>
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-900">
+            This records an immutable insurer payment against the OCS invoice balance and keeps the reference on the month-end statement.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setSettlementTarget(null)} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-bold text-gray-600">Cancel</button>
+            <button disabled={Boolean(settlingClaimId) || batchSettling} className="rounded-xl bg-[#065a60] px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+              {settlingClaimId || batchSettling ? "Recording…" : "Confirm payment"}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

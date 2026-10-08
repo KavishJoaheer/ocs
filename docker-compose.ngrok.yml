@@ -10,6 +10,7 @@ services:
       PORT: 3001
       DB_PATH: /data/clinic.db
       TZ: ${TZ:-Indian/Mauritius}
+      LINKHAM_BILLING_ENABLED: ${LINKHAM_BILLING_ENABLED:-true}
     ports:
       - "${APP_PORT:-8080}:3001"
     volumes:

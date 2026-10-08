@@ -27,6 +27,9 @@ function validatePolicyInput(input = {}) {
     return "Enter a valid 14-character Mauritius ID number.";
   }
   if (!coverageStatus) return "Coverage status must be green or red.";
+  if (coverageStatus === "red" && String(input.status_reason || "").trim().length < 3) {
+    return "A reason is required when a policy is red-flagged.";
+  }
   return null;
 }
 
@@ -46,6 +49,7 @@ function formatPolicy(row) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     updated_by_name: String(row.updated_by_name || "").trim(),
+    policy_version: Number(row.row_version || 1),
   };
 }
 
@@ -192,7 +196,8 @@ function updateLinkhamPolicy(policyId, input, actorUserId) {
     db.prepare(`
       UPDATE linkham_policies
       SET policy_number = ?, national_id = ?, holder_name = ?, coverage_status = ?,
-          status_reason = ?, updated_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+          status_reason = ?, updated_by_user_id = ?, updated_at = CURRENT_TIMESTAMP,
+          row_version = row_version + 1
       WHERE id = ?
     `).run(
       policyNumber,
@@ -214,7 +219,7 @@ function updateLinkhamPolicy(policyId, input, actorUserId) {
     return getLinkhamPolicyById(policyId);
   });
 
-  return { policy: update() };
+  return { policy: update(), previous_policy: existing };
 }
 
 function verifyLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = null, audit = true } = {}) {
@@ -268,9 +273,11 @@ function verifyLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = n
     allowed: outcome === "green",
     coverage_status: outcome,
     policy_number: formatted.policy_number,
+    national_id: formatted.national_id,
     holder_name: formatted.holder_name,
     status_reason: formatted.status_reason,
     updated_at: formatted.updated_at,
+    policy_version: formatted.policy_version,
   };
 }
 

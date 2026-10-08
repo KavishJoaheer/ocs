@@ -496,7 +496,12 @@ function BillingStatusFields({
 function PaymentConfirmation({ bill, busy, onClose, onConfirm }) {
   const [method, setMethod] = useState('');
   const [date, setDate] = useState(billingPageTodayInputValue());
-  const balance = Math.max(0, Number(bill.payment_balance_amount ?? bill.total_amount ?? 0));
+  const isLinkhamSplit = bill.linkham_coverage_status_snapshot === "green";
+  const balance = Math.max(0, Number(
+    isLinkhamSplit
+      ? bill.patient_payment_balance_amount
+      : bill.payment_balance_amount ?? bill.total_amount ?? 0,
+  ));
   const [amount, setAmount] = useState(balance ? balance.toFixed(2) : "");
   const [externalReference, setExternalReference] = useState("");
   const [operationId] = useState(() => crypto.randomUUID());
@@ -507,7 +512,8 @@ function PaymentConfirmation({ bill, busy, onClose, onConfirm }) {
   return <Modal open onClose={onClose} title={`Record payment · ${billReference(bill)}`} size="md">
     <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!busy && valid) onConfirm({ amount: amountNumber, payment_method: method, payment_date: date, external_reference: externalReference.trim() || null, operation_id: operationId }); }}>
       <p className="text-sm">{bill.patient_name} · {formatDate(bill.consultation_date)}</p>
-      <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Outstanding balance</p><p className="text-2xl font-bold">{formatCurrency(balance)}</p></div>
+      <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{isLinkhamSplit ? "Patient balance (20%)" : "Outstanding balance"}</p><p className="text-2xl font-bold">{formatCurrency(balance)}</p></div>
+      {isLinkhamSplit ? <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-semibold text-sky-900">Linkham is responsible for {formatCurrency(bill.linkham_responsibility_amount || 0)}. Record only the patient share here; the insurer portal settles the 80% balance.</p> : null}
       <label className="block text-sm font-semibold">Amount received<input required type="number" min="0.01" max={balance} step="0.01" className={BILLING_FIELD} value={amount} onChange={event => {setAmount(event.target.value);setConfirmed(false);}} /></label>
       <label className="block text-sm font-semibold">Payment method<select required className={BILLING_FIELD} value={method} onChange={event => {setMethod(event.target.value);setConfirmed(false);}}>
         <option value="">Select method</option>{PAYMENT_METHOD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -1024,12 +1030,13 @@ function EditBillingModal({ open, bill, stale = false, onClose, onSubmit, onVoid
               {payments.map((payment) => {
                 const reversal = payment.entry_type === "reversal";
                 const alreadyReversed = reversal || reversedPaymentIds.has(Number(payment.payment_transaction_id));
+                const linkhamSettlement = String(payment.operation_id || "").startsWith("linkham-settlement:");
                 return (
                   <div key={payment.id} className={cx("flex flex-wrap items-start justify-between gap-3 border-t pt-2 text-sm", reversal ? "border-rose-200 text-rose-950" : "border-emerald-200 text-emerald-950")}>
                     <div><span className="font-bold">{reversal ? "Reversal · " : ""}{formatDate(payment.payment_date)} · {formatPaymentMethod(payment.payment_method)}</span><p className={cx("text-xs", reversal ? "text-rose-800" : "text-emerald-800")}>{payment.reason || payment.external_reference || "Cash / migrated record"} · {payment.recorded_by_name || "Legacy staff record"}</p></div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold">{formatCurrency(payment.amount)}</span>
-                      {!alreadyReversed && ["admin", "accountant", "operator"].includes(user?.role) ? <button type="button" onClick={() => setReversalPayment(payment)} className="min-h-9 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800">Reverse</button> : null}
+                      {!alreadyReversed && !linkhamSettlement && ["admin", "accountant", "operator"].includes(user?.role) ? <button type="button" onClick={() => setReversalPayment(payment)} className="min-h-9 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800">Reverse</button> : null}
                     </div>
                   </div>
                 );
@@ -3238,7 +3245,10 @@ function BillingPage() {
         ...payload,
         expected_version: bill.row_version,
       });
-      toast.success(Number(payload.amount) < Number(bill.payment_balance_amount ?? bill.total_amount) ? "Partial payment recorded." : "Payment recorded.");
+      const responsibility = bill.linkham_coverage_status_snapshot === "green"
+        ? Number(bill.patient_payment_balance_amount || 0)
+        : Number(bill.payment_balance_amount ?? bill.total_amount);
+      toast.success(Number(payload.amount) < responsibility ? "Partial payment recorded." : bill.linkham_coverage_status_snapshot === "green" ? "Patient 20% share recorded." : "Payment recorded.");
       setPaymentBill(null);
       await loadData();
     } catch (error) {

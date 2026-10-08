@@ -177,6 +177,12 @@ function createLinkhamPolicyRegistryTables() {
     CREATE INDEX IF NOT EXISTS idx_linkham_policy_audit_created_at
       ON linkham_policy_audit_log(created_at DESC);
   `);
+
+  addColumnIfMissing(
+    "linkham_policies",
+    "row_version",
+    "ALTER TABLE linkham_policies ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
+  );
 }
 
 function createStreamTokensTable() {
@@ -562,6 +568,28 @@ function ensureVisitRequestDependentColumn() {
     return;
   }
   db.exec("ALTER TABLE visit_requests ADD COLUMN dependent_patient_id INTEGER");
+}
+
+function ensureVisitRequestCoverageColumns() {
+  const additions = [
+    ["coverage_status_snapshot", "TEXT"],
+    ["coverage_policy_number_snapshot", "TEXT NOT NULL DEFAULT ''"],
+    ["coverage_national_id_snapshot", "TEXT NOT NULL DEFAULT ''"],
+    ["coverage_holder_name_snapshot", "TEXT NOT NULL DEFAULT ''"],
+    ["coverage_reason_snapshot", "TEXT NOT NULL DEFAULT ''"],
+    ["coverage_verified_at", "TEXT"],
+    ["coverage_policy_updated_at", "TEXT"],
+    ["coverage_policy_version", "INTEGER"],
+    ["coverage_verified_by_user_id", "INTEGER"],
+  ];
+
+  additions.forEach(([name, type]) => {
+    addColumnIfMissing(
+      "visit_requests",
+      name,
+      `ALTER TABLE visit_requests ADD COLUMN ${name} ${type}`,
+    );
+  });
 }
 
 function createAppointmentChangeRequestsTable() {
@@ -1791,6 +1819,7 @@ function initializeDatabase() {
   migrateVisitRequestsConsultationStatusIfNeeded();
   ensureVisitRequestAppointmentColumn();
   ensureVisitRequestDependentColumn();
+  ensureVisitRequestCoverageColumns();
   createAppointmentChangeRequestsTable();
   createPatientPasswordResetTokensTable();
   createRestockRequestsTable();

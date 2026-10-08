@@ -229,6 +229,7 @@ export function startInventoryRealtimeSync(user) {
       /* fall through to invalidation */
     }
     notifyLinkhamPatientsUpdated();
+    notifyPatientsLiveUpdated();
   });
 
   source.addEventListener("long_term_review_change", (message) => {

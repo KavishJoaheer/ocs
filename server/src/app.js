@@ -333,7 +333,7 @@ function createApp() {
     authorizeRoles("admin"),
     teamOperationsRouter,
   );
-  if (String(process.env.LINKHAM_BILLING_ENABLED || "").trim().toLowerCase() === "true") {
+  if (String(process.env.LINKHAM_BILLING_ENABLED || "true").trim().toLowerCase() !== "false") {
     app.use(
       "/api/linkham",
       requireAuth,

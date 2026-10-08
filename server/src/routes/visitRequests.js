@@ -13,6 +13,10 @@ const {
   serializeVisitRequest,
   getVisitRequestById,
 } = require("../lib/visitRequests");
+const {
+  requirePatientLinkhamCoverage,
+  snapshotVisitCoverage,
+} = require("../lib/linkhamCoverageWorkflow");
 
 const router = express.Router();
 
@@ -215,6 +219,12 @@ router.patch("/:id", (req, res) => {
   }
 
   const completingNow = String(req.body.status || "").trim().toLowerCase() === "completed";
+  const requestedStatus = String(req.body.status || "").trim().toLowerCase();
+  const assigningDoctor = req.body.assigned_doctor_id !== undefined
+    && req.body.assigned_doctor_id !== null
+    && req.body.assigned_doctor_id !== "";
+  const requiresFreshCoverage = ["assigned", "en_route"].includes(requestedStatus)
+    || (assigningDoctor && ["pending", "acknowledged", "assigned"].includes(existing.status));
   const conversionDoctorId = Number(
     req.body.assigned_doctor_id !== undefined
       ? req.body.assigned_doctor_id
@@ -238,7 +248,17 @@ router.patch("/:id", (req, res) => {
   let converted = { appointmentId: existing.appointment_id || null, consultationId: null };
 
   const applyUpdate = db.transaction(() => {
+    let dispatchCoverage = null;
+    if (requiresFreshCoverage) {
+      dispatchCoverage = requirePatientLinkhamCoverage(existing.patient_id, {
+        actorUserId: req.auth.id,
+        audit: true,
+      });
+    }
     db.prepare(`UPDATE visit_requests SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    if (dispatchCoverage?.is_linkham) {
+      snapshotVisitCoverage(requestId, dispatchCoverage, req.auth.id);
+    }
 
     if (!completingNow) {
       return converted;
@@ -302,7 +322,14 @@ router.patch("/:id", (req, res) => {
     return { appointmentId, consultationId: Number(consultation.id) };
   });
 
-  converted = applyUpdate();
+  try {
+    converted = applyUpdate();
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      error: error.message,
+      ...(error.extra || {}),
+    });
+  }
 
   const updated = getVisitRequestById(requestId);
   const notifyDoctorIds = [existing.assigned_doctor_id, updated.assigned_doctor_id]

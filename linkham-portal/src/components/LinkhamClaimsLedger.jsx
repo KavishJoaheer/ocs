@@ -82,7 +82,7 @@ export default function LinkhamClaimsLedger({
         <div>
           <h3 className="text-sm font-extrabold text-gray-800">Linkham 80% corporate claims</h3>
           <p className="mt-0.5 text-xs text-gray-400">
-            Flag with a reason without blocking a clean batch. Mark approved claims paid once the transfer to OCS has gone out.
+            Flag with a reason without blocking a clean batch. Record the bank remittance when approved claims are transferred to OCS.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -129,7 +129,7 @@ export default function LinkhamClaimsLedger({
               }}
               className="rounded-xl bg-[#065a60] px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {batchSettling ? "Saving..." : `Mark approved paid to OCS · ${formatRupees(approvedShareTotal)}`}
+              {batchSettling ? "Saving..." : `Record approved payment · ${formatRupees(approvedShareTotal)}`}
             </button>
           ) : null}
         </div>
@@ -273,8 +273,8 @@ export default function LinkhamClaimsLedger({
                         ) : null}
 
                         {isSettled ? (
-                          <span className="rounded-lg border border-emerald-200/60 bg-emerald-50/80 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
-                            Paid to OCS
+                          <span className="rounded-lg border border-emerald-200/60 bg-emerald-50/80 px-3 py-1.5 text-xs font-extrabold text-emerald-700" title={claim.settlement_reference || ""}>
+                            Paid to OCS{claim.settlement_reference ? ` · ${claim.settlement_reference}` : ""}
                           </span>
                         ) : isApproved ? (
                           <button
@@ -289,7 +289,7 @@ export default function LinkhamClaimsLedger({
                             }}
                             className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-extrabold text-[#065a60]"
                           >
-                            {settlingClaimId === claim.id ? "Saving..." : "Mark paid to OCS"}
+                            {settlingClaimId === claim.id ? "Saving..." : "Record payment"}
                           </button>
                         ) : isFlagged ? (
                           <span className="rounded-lg border border-amber-200/60 bg-amber-50 px-3 py-1.5 text-xs font-extrabold text-amber-700">

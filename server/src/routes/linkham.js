@@ -28,6 +28,28 @@ const {
 
 const router = express.Router();
 
+function publishPolicyCoverageChange(policy, changedByUserId = null, previousPolicy = null) {
+  publishLinkhamPatientsChange({ changedByUserId });
+  if (!policy) return;
+  const patientIds = new Set();
+  [policy, previousPolicy].filter(Boolean).forEach((candidate) => {
+    db.prepare(`
+      SELECT id
+      FROM patients
+      WHERE deleted_at IS NULL
+        AND lower(trim(insurance_provider)) = 'linkham'
+        AND (
+          upper(trim(insurance_policy_number)) = upper(trim(?))
+          OR upper(trim(patient_id_number)) = upper(trim(?))
+        )
+    `).all(candidate.policy_number || "", candidate.national_id || "")
+      .forEach(({ id }) => patientIds.add(Number(id)));
+  });
+  patientIds.forEach((id) => {
+    publishPatientDataChange(Number(id), { reason: "insurance_coverage", changedByUserId });
+  });
+}
+
 function publishPatientBillingChangeForClaim(claim) {
   const billingId = Number(claim?.id || 0);
   if (!billingId) {
@@ -127,7 +149,7 @@ router.post("/policies", (req, res) => {
     return res.status(status).json({ error: result.message, code: result.error });
   }
 
-  publishLinkhamPatientsChange({ changedByUserId: req.auth.id });
+  publishPolicyCoverageChange(result.policy, req.auth.id);
   res.status(201).json({ policy: result.policy });
 });
 
@@ -138,7 +160,7 @@ router.put("/policies/:id", (req, res) => {
     return res.status(status).json({ error: result.message, code: result.error });
   }
 
-  publishLinkhamPatientsChange({ changedByUserId: req.auth.id });
+  publishPolicyCoverageChange(result.policy, req.auth.id, result.previous_policy);
   res.json({ policy: result.policy });
 });
 
@@ -207,9 +229,16 @@ router.patch("/claims/batch-approve-clean", (req, res) => {
 });
 
 router.patch("/claims/batch-settle-approved", (req, res) => {
-  const result = settleLinkhamApprovedClaimsBatch(req.auth.id, {
-    month: req.body?.month || req.query.month || "",
-  });
+  let result;
+  try {
+    result = settleLinkhamApprovedClaimsBatch(req.auth.id, {
+      month: req.body?.month || req.query.month || "",
+      payment_date: req.body?.payment_date,
+      remittance_reference: req.body?.remittance_reference,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
 
   publishLinkhamClaimsChange({
     changedByUserId: req.auth.id,
@@ -249,7 +278,16 @@ router.patch("/claims/:id/approve", (req, res) => {
 });
 
 router.patch("/claims/:id/settle", (req, res) => {
-  const updated = settleLinkhamClaim(req.params.id, req.auth.id);
+  let updated;
+  try {
+    updated = settleLinkhamClaim(req.params.id, req.auth.id, {
+      amount: req.body?.amount,
+      payment_date: req.body?.payment_date,
+      remittance_reference: req.body?.remittance_reference,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message, ...(error.extra || {}) });
+  }
 
   if (!updated) {
     return res.status(404).json({ error: "Claim not found or cannot be marked paid to OCS." });

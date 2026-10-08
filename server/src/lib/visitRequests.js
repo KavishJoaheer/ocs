@@ -1,4 +1,5 @@
 const { db } = require("../db");
+const { getPatientLinkhamCoverage } = require("./linkhamCoverageWorkflow");
 
 // Statuses that mean the request is still live (not yet closed out). These are
 // what the patient portal treats as an "active visit" and what the staff inbox
@@ -62,6 +63,21 @@ function serializeVisitRequest(row, { includeStaffNotes = true } = {}) {
     updated_at: row.updated_at || null,
   };
 
+  if (String(row.insurance_provider || "").trim().toLowerCase() === "linkham") {
+    payload.insurance_coverage = getPatientLinkhamCoverage(row.patient_id, { audit: false });
+    payload.dispatch_authorization = row.coverage_verified_at
+      ? {
+          coverage_status: row.coverage_status_snapshot || "",
+          policy_number: row.coverage_policy_number_snapshot || "",
+          holder_name: row.coverage_holder_name_snapshot || "",
+          status_reason: row.coverage_reason_snapshot || "",
+          verified_at: row.coverage_verified_at,
+          policy_updated_at: row.coverage_policy_updated_at || null,
+          policy_version: row.coverage_policy_version || null,
+        }
+      : null;
+  }
+
   if (includeStaffNotes) {
     payload.staff_notes = row.staff_notes || "";
   }
@@ -75,6 +91,9 @@ const VISIT_REQUEST_SELECT = `
     p.full_name AS patient_name,
     p.patient_identifier AS patient_identifier,
     p.patient_contact_number AS patient_contact_number,
+    p.insurance_provider AS insurance_provider,
+    p.insurance_policy_number AS insurance_policy_number,
+    p.patient_id_number AS patient_id_number,
     dep.full_name AS dependent_name,
     d.full_name AS doctor_name
   FROM visit_requests v

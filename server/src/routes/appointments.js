@@ -3,6 +3,7 @@ const { db } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { getDoctorCaseloadFilterSql } = require("../lib/patientAccess");
 const { notifyStaffAppointmentMutation } = require("../lib/appointmentNotifications");
+const { requirePatientLinkhamCoverage } = require("../lib/linkhamCoverageWorkflow");
 
 const router = express.Router();
 const validStatuses = new Set(["scheduled", "completed", "cancelled"]);
@@ -98,6 +99,14 @@ router.post("/", (req, res) => {
     return res.status(400).json({ error: "Patient or doctor record does not exist." });
   }
 
+  if (String(req.body.status ?? "scheduled").trim() !== "cancelled") {
+    try {
+      requirePatientLinkhamCoverage(patient.id, { actorUserId: req.auth.id, audit: true });
+    } catch (error) {
+      return res.status(error.status || 409).json({ error: error.message, ...(error.extra || {}) });
+    }
+  }
+
   const result = db
     .prepare(`
       INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
@@ -139,6 +148,14 @@ router.put("/:id", (req, res) => {
     return res.status(400).json({ error: "Patient or doctor record does not exist." });
   }
 
+  if (String(req.body.status ?? "scheduled").trim() !== "cancelled") {
+    try {
+      requirePatientLinkhamCoverage(patient.id, { actorUserId: req.auth.id, audit: true });
+    } catch (error) {
+      return res.status(error.status || 409).json({ error: error.message, ...(error.extra || {}) });
+    }
+  }
+
   db.prepare(`
     UPDATE appointments
     SET patient_id = ?, doctor_id = ?, appointment_date = ?, appointment_time = ?, status = ?
@@ -177,6 +194,16 @@ router.patch("/:id/status", (req, res) => {
     Number(existing.doctor_id) !== Number(req.auth.doctor_id)
   ) {
     return res.status(403).json({ error: "You can only update your own appointments." });
+  }
+
+  // Eligibility is a dispatch-time gate. Once the doctor has already seen the
+  // patient, a later insurer change must not block completion of that record.
+  if (status === "scheduled") {
+    try {
+      requirePatientLinkhamCoverage(existing.patient_id, { actorUserId: req.auth.id, audit: true });
+    } catch (error) {
+      return res.status(error.status || 409).json({ error: error.message, ...(error.extra || {}) });
+    }
   }
 
   db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, appointmentId);

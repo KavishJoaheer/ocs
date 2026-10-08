@@ -18,6 +18,7 @@ const {
   normalizePolicyNumber,
   verifyLinkhamPolicyCoverage,
 } = require("../lib/linkhamPolicyRegistry");
+const { getPatientLinkhamCoverage } = require("../lib/linkhamCoverageWorkflow");
 const {
   buildPatientLocationFieldFromTags,
   sanitizeLocationTagsForSave,
@@ -1318,11 +1319,19 @@ router.get("/:id", (req, res) => {
   const operatorAccess = getPatientOperatorAccess(patientId);
   const operatorOptions = req.auth.role === "admin" ? getOperatorOptions() : [];
 
-  res.json({
-    patient: formatPatientRecord({
+  const formattedPatient = formatPatientRecord({
       ...patient,
       location_tags: getPatientLocationTags(patientId),
-    }, req.auth),
+    }, req.auth);
+  if (isLinkhamInsuranceProvider(patient.insurance_provider)) {
+    formattedPatient.linkham_coverage = getPatientLinkhamCoverage(patientId, {
+      actorUserId: req.auth.id,
+      audit: false,
+    });
+  }
+
+  res.json({
+    patient: formattedPatient,
     appointments,
     consultations: visibleConsultations,
     bills,

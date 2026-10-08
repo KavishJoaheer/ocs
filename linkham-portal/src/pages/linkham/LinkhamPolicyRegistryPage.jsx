@@ -178,8 +178,10 @@ export default function LinkhamPolicyRegistryPage() {
             </div>
           </div>
           <label className="space-y-1.5 md:col-span-2 xl:col-span-3">
-            <span className="text-xs font-bold text-gray-600">Status note</span>
+            <span className="text-xs font-bold text-gray-600">Status note{form.coverage_status === "red" ? " *" : ""}</span>
             <input
+              required={form.coverage_status === "red"}
+              minLength={form.coverage_status === "red" ? 3 : undefined}
               value={form.status_reason}
               onChange={(event) => setForm((current) => ({ ...current, status_reason: event.target.value }))}
               placeholder={form.coverage_status === "red" ? "Reason the policy holder is not eligible" : "Optional coverage note"}

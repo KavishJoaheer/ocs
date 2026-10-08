@@ -8,6 +8,9 @@ import {
   GripVertical,
   Timer,
   LockKeyhole,
+  CircleAlert,
+  CircleCheck,
+  CircleHelp,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -127,6 +130,35 @@ function UrgencyBadge({ urgency }) {
   );
 }
 
+function InsuranceCoverageBadge({ request }) {
+  const coverage = request?.insurance_coverage;
+  if (!coverage?.is_linkham) return null;
+  const status = String(coverage.coverage_status || "").toLowerCase();
+  const allowed = coverage.allowed === true && status === "green";
+  const blocked = !allowed;
+  const Icon = allowed ? CircleCheck : status === "red" ? CircleAlert : CircleHelp;
+  const label = allowed ? "Linkham green" : status === "red" ? "Linkham red" : "Linkham check required";
+  const details = [coverage.policy_number, coverage.status_reason, coverage.updated_at]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-extrabold",
+        allowed
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-rose-200 bg-rose-50 text-rose-700",
+      )}
+      title={details}
+      role="status"
+    >
+      <Icon className="size-3" />
+      {label}
+      {blocked ? " · dispatch blocked" : ""}
+    </span>
+  );
+}
+
 // SQLite timestamps come back as "YYYY-MM-DD HH:MM:SS" in UTC with no zone.
 function parseTimestamp(value) {
   if (!value) return null;
@@ -206,6 +238,8 @@ function BoardCard({
 
   const escalate = request.status === "pending" || request.status === "acknowledged";
   const advance = nextStatus(request.status, { isDoctor });
+  const coverageBlocked = request?.insurance_coverage?.is_linkham
+    && request.insurance_coverage.allowed !== true;
 
   function update(payload) {
     return onUpdate(request.id, payload).catch((error) => {
@@ -240,6 +274,7 @@ function BoardCard({
           <p className="mt-1 line-clamp-1 text-xs text-slate-500">
             {request.reason || "No reason provided"}
           </p>
+          <div className="mt-1.5"><InsuranceCoverageBadge request={request} /></div>
           <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{request.address || "No address"}</span>
@@ -259,6 +294,7 @@ function BoardCard({
                   : {}),
               })
             }
+            disabled={coverageBlocked}
             className="w-full rounded-lg border border-[rgba(65,200,198,0.25)] bg-white px-2 py-1.5 text-xs text-slate-900 outline-none focus:border-[#2d8f98]"
           >
             <option value="">Unassigned</option>
@@ -308,7 +344,8 @@ function BoardCard({
           <button
             type="button"
             onClick={() => update({ status: advance })}
-            className="w-full rounded-lg bg-[#2d8f98] px-2 py-1.5 text-xs font-semibold text-white transition hover:brightness-105 active:scale-95"
+            disabled={coverageBlocked && ["assigned", "en_route"].includes(request.status)}
+            className="w-full rounded-lg bg-[#2d8f98] px-2 py-1.5 text-xs font-semibold text-white transition hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:brightness-100"
           >
             {advanceActionLabel(request.status, advance)}
           </button>
@@ -480,6 +517,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true, 
           <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-gray-400">
             {request.patient_identifier || "—"} · Requested {formatRequestDate(request.created_at)}
           </p>
+          <div className="mt-2"><InsuranceCoverageBadge request={request} /></div>
         </div>
         {request.patient_contact_number ? (
           <a
