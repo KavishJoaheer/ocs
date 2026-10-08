@@ -7,12 +7,10 @@ import {
   CircleDollarSign,
   Clock3,
   FileWarning,
-  ShieldAlert,
   ShieldCheck,
   WalletCards,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import LinkhamBudgetExposureGauge from "../../components/LinkhamBudgetExposureGauge.jsx";
 import LinkhamQuickPolicyLookup from "../../components/LinkhamQuickPolicyLookup.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import { api } from "../../lib/api.js";
@@ -33,21 +31,19 @@ function ActionMetric({ to, label, value, hint, icon, tone = "slate" }) {
     <Link
       to={to}
       className={cx(
-        "group flex min-h-[132px] flex-col justify-between rounded-2xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md",
+        "group flex min-w-0 items-center gap-3 rounded-2xl border p-3.5 transition hover:-translate-y-0.5 hover:shadow-md",
         METRIC_TONES[tone],
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="grid size-9 place-items-center rounded-xl bg-white/75 shadow-sm">
-          <MetricIcon className="size-4.5" strokeWidth={2.2} />
-        </span>
-        <ArrowUpRight className="size-4 opacity-35 transition group-hover:opacity-80" />
+      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/75 shadow-sm">
+        <MetricIcon className="size-4.5" strokeWidth={2.2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-lg font-black tabular-nums tracking-tight">{value}</p>
+        <p className="text-[11px] font-black">{label}</p>
+        <p className="truncate text-[9px] font-semibold opacity-55">{hint}</p>
       </div>
-      <div className="mt-4">
-        <p className="text-2xl font-black tabular-nums tracking-tight">{value}</p>
-        <p className="mt-1 text-xs font-black">{label}</p>
-        <p className="mt-0.5 text-[10px] font-semibold opacity-55">{hint}</p>
-      </div>
+      <ArrowUpRight className="size-3.5 shrink-0 opacity-25 transition group-hover:opacity-80" />
     </Link>
   );
 }
@@ -71,29 +67,6 @@ function WorkItem({ to, eyebrow, title, detail, tone = "amber", ageDays = null }
       </div>
       <ArrowUpRight className="mt-3 size-3.5 shrink-0 text-slate-300 transition group-hover:text-[#065a60]" />
     </Link>
-  );
-}
-
-function SettlementStage({ number, label, value, detail, active = false }) {
-  return (
-    <div className="relative flex gap-3 pb-5 last:pb-0">
-      <div className="relative flex shrink-0 flex-col items-center">
-        <span className={cx(
-          "grid size-7 place-items-center rounded-full text-[11px] font-black",
-          active ? "bg-[#065a60] text-white" : "bg-slate-100 text-slate-500",
-        )}>
-          {number}
-        </span>
-        <span className="absolute top-8 h-[calc(100%-1.5rem)] w-px bg-slate-100 last:hidden" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-xs font-black text-slate-700">{label}</p>
-          <p className="text-sm font-black tabular-nums text-slate-950">{value}</p>
-        </div>
-        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{detail}</p>
-      </div>
-    </div>
   );
 }
 
@@ -183,7 +156,7 @@ export default function LinkhamDashboardPage() {
       detail: patient.case_number,
       tone: "amber",
     }));
-    return items.slice(0, 7);
+    return items.slice(0, 5);
   }, [metrics]);
 
   if (loading) return <LoadingState label="Loading Linkham work queue" />;
@@ -200,7 +173,7 @@ export default function LinkhamDashboardPage() {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#065a60]">Linkham command centre</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-[#14213d]">Today’s coverage work</h1>
-          <p className="mt-1 text-xs font-medium text-slate-500">Decisions, exceptions, and month-end settlement in one focused view.</p>
+          <p className="mt-1 text-xs font-medium text-slate-500">Verify eligibility and clear the work that matters today.</p>
         </div>
         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400">
           <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.10)]" />
@@ -255,7 +228,7 @@ export default function LinkhamDashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.45fr)]">
         <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
@@ -273,75 +246,35 @@ export default function LinkhamDashboardPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <section className="flex flex-col rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-black text-slate-900">Month-end settlement</h2>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-400">{metrics?.currentMonthName || "Current month"} payment path</p>
+              <p className="mt-0.5 text-[11px] font-medium text-slate-400">{metrics?.currentMonthName || "Current month"}</p>
             </div>
-            <ShieldCheck className="size-5 text-[#065a60]" />
+            <span className="grid size-9 place-items-center rounded-xl bg-[#065a60]/8 text-[#065a60]">
+              <ShieldCheck className="size-4.5" />
+            </span>
           </div>
-          <div className="mt-4">
-            <SettlementStage number="1" label="Awaiting review" value={metrics?.pendingCleanCount || 0} detail={formatRupees(metrics?.outstandingCleanEightyLedger || 0)} active={Number(metrics?.pendingCleanCount || 0) > 0} />
-            <SettlementStage number="2" label="Flagged exceptions" value={metrics?.flaggedClaimsCount || 0} detail="Needs clinic clarification" active={Number(metrics?.flaggedClaimsCount || 0) > 0} />
-            <SettlementStage number="3" label="Approved to pay" value={metrics?.approvedAwaitingPaymentCount || 0} detail={formatRupees(metrics?.approvedAwaitingPaymentAmount || 0)} active={Number(metrics?.approvedAwaitingPaymentCount || 0) > 0} />
-            <SettlementStage number="4" label="Paid to OCS" value={metrics?.settledThisMonthCount || 0} detail={formatRupees(metrics?.settledThisMonthAmount || 0)} />
+          <div className="mt-5 rounded-2xl bg-[#065a60] p-4 text-white">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Ready for payment</p>
+            <p className="mt-1 text-2xl font-black tabular-nums tracking-tight">{formatRupees(metrics?.approvedAwaitingPaymentAmount || 0)}</p>
+            <p className="mt-1 text-[10px] font-semibold text-white/60">
+              {metrics?.approvedAwaitingPaymentCount || 0} approved claim{Number(metrics?.approvedAwaitingPaymentCount || 0) === 1 ? "" : "s"}
+            </p>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <Link to="/linkham/claims-clearance?status=pending" className="rounded-xl border border-slate-200 px-3 py-2.5 text-center text-[11px] font-black text-slate-700">Review claims</Link>
-            <Link to="/linkham/claims-clearance?status=approved" className="rounded-xl bg-[#065a60] px-3 py-2.5 text-center text-[11px] font-black text-white">Record payment</Link>
+          <div className="mt-4 flex items-center justify-between gap-3 text-[10px] font-bold text-slate-400">
+            <span>{metrics?.pendingCleanCount || 0} awaiting review</span>
+            <span>{metrics?.flaggedClaimsCount || 0} flagged</span>
           </div>
-        </section>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-sm font-black text-slate-900">Recent policy decisions</h2>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-400">Who changed what and when.</p>
-            </div>
-            <Link to="/linkham/policies" className="text-[11px] font-black text-[#065a60]">Registry</Link>
-          </div>
-          <div className="mt-2 divide-y divide-slate-100">
-            {(metrics?.recentPolicyActivity || []).slice(0, 6).map((activity) => (
-              <Link key={activity.id} to={`/linkham/policies?search=${encodeURIComponent(activity.policy_number)}`} className="flex items-center gap-3 py-3">
-                <span className={cx("grid size-8 shrink-0 place-items-center rounded-xl", activity.coverage_status === "red" ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700")}>
-                  {activity.coverage_status === "red" ? <ShieldAlert className="size-4" /> : <ShieldCheck className="size-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-black text-slate-800">{activity.holder_name}</p>
-                  <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">{activity.policy_number} · {activity.previous_coverage_status && activity.previous_coverage_status !== activity.coverage_status ? `${activity.previous_coverage_status} → ` : ""}{activity.coverage_status}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-slate-500">{formatActivityTime(activity.created_at)}</p>
-                  <p className="mt-0.5 max-w-28 truncate text-[9px] font-semibold text-slate-300">{activity.actor_name}</p>
-                </div>
-              </Link>
-            ))}
-            {!metrics?.recentPolicyActivity?.length ? <p className="py-6 text-xs font-medium text-slate-400">No policy changes recorded yet.</p> : null}
-          </div>
-        </section>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Insured clients</p>
-              <p className="mt-2 text-2xl font-black text-slate-900">{metrics?.totalInsuredClients || 0}</p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">{metrics?.greenPolicyCount || 0} green policies</p>
-            </div>
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Seen this month</p>
-              <p className="mt-2 text-2xl font-black text-slate-900">{metrics?.monthlySeenPatientsCount || 0}</p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-400">Distinct Linkham patients</p>
-            </div>
-          </div>
-          <LinkhamBudgetExposureGauge exposure={budgetExposure} />
-          <Link to="/linkham/reports" className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white px-5 py-4 text-xs font-black text-slate-700 shadow-sm">
-            Open analytics and monthly statements
-            <ArrowUpRight className="size-4 text-[#065a60]" />
+          <Link
+            to="/linkham/claims-clearance?status=approved"
+            className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-3.5 py-3 text-[11px] font-black text-slate-700 transition hover:border-[#065a60]/30 hover:text-[#065a60]"
+          >
+            Open settlement
+            <ArrowUpRight className="size-3.5" />
           </Link>
-        </div>
+        </section>
       </div>
     </div>
   );
