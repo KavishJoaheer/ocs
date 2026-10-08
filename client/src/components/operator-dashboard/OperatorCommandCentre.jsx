@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import HcmBulletinBanner from "../HcmBulletinBanner.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
 import { cx } from "../../lib/utils.js";
+import OperatorPolicyVerifier from "./OperatorPolicyVerifier.jsx";
 import {
   formatReviewCardSupport,
   getOperatorDisplayName,
@@ -335,6 +336,8 @@ export default function OperatorCommandCentre({
           variant={reviews > 0 ? "amber" : "default"}
         />
       </section>
+
+      <OperatorPolicyVerifier />
 
       {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
 

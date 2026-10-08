@@ -41,6 +41,7 @@ import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
+import OperatorPolicyVerifier from "../components/operator-dashboard/OperatorPolicyVerifier.jsx";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
@@ -254,6 +255,8 @@ function OperatorMobileLauncher({
           count={counts.reviews}
         />
       </div>
+
+      <OperatorPolicyVerifier className="mt-5" />
 
       <div className="mt-6 flex flex-1 flex-col gap-3.5 overflow-y-auto">
         {listCards.map((card) => {
