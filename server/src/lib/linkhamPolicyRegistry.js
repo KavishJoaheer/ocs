@@ -281,10 +281,98 @@ function verifyLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = n
   };
 }
 
+function lookupLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = null } = {}) {
+  const normalizedPolicyNumber = normalizePolicyNumber(policyNumber);
+  const normalizedNationalId = normalizeNationalId(nationalId);
+
+  if (normalizedPolicyNumber && normalizedNationalId) {
+    return [
+      verifyLinkhamPolicyCoverage({
+        policyNumber: normalizedPolicyNumber,
+        nationalId: normalizedNationalId,
+        actorUserId,
+      }),
+    ];
+  }
+
+  if (!normalizedPolicyNumber && !normalizedNationalId) {
+    recordPolicyAudit({
+      action: "verified",
+      outcome: "identifier_required",
+      actorUserId,
+    });
+    return [{ matched: false, allowed: false, coverage_status: "identifier_required" }];
+  }
+
+  if (normalizedNationalId && !parseMauritianID(normalizedNationalId)) {
+    recordPolicyAudit({
+      action: "verified",
+      outcome: "invalid_identity",
+      nationalId: normalizedNationalId,
+      actorUserId,
+    });
+    return [{
+      matched: false,
+      allowed: false,
+      coverage_status: "invalid_identity",
+      national_id: normalizedNationalId,
+    }];
+  }
+
+  const policies = normalizedPolicyNumber
+    ? db
+        .prepare(`${POLICY_SELECT} WHERE lp.policy_number = ? COLLATE NOCASE`)
+        .all(normalizedPolicyNumber)
+    : db
+        .prepare(`${POLICY_SELECT} WHERE lp.national_id = ? COLLATE NOCASE ORDER BY lp.updated_at DESC, lp.id DESC`)
+        .all(normalizedNationalId);
+
+  if (!policies.length) {
+    recordPolicyAudit({
+      action: "verified",
+      outcome: "not_found",
+      policyNumber: normalizedPolicyNumber,
+      nationalId: normalizedNationalId,
+      actorUserId,
+    });
+    return [{
+      matched: false,
+      allowed: false,
+      coverage_status: "not_found",
+      policy_number: normalizedPolicyNumber,
+      national_id: normalizedNationalId,
+    }];
+  }
+
+  return policies.map((row) => {
+    const policy = formatPolicy(row);
+    recordPolicyAudit({
+      policyId: policy.id,
+      action: "verified",
+      outcome: policy.coverage_status,
+      policyNumber: normalizedPolicyNumber,
+      nationalId: normalizedNationalId,
+      actorUserId,
+    });
+    return {
+      matched: true,
+      allowed: policy.coverage_status === "green",
+      coverage_status: policy.coverage_status,
+      policy_number: policy.policy_number,
+      national_id: policy.national_id,
+      holder_name: policy.holder_name,
+      status_reason: policy.status_reason,
+      updated_at: policy.updated_at,
+      policy_version: policy.policy_version,
+    };
+  });
+}
+
 module.exports = {
   createLinkhamPolicy,
   getLinkhamPolicyById,
   listLinkhamPolicies,
+  lookupLinkhamPolicyCoverage,
   normalizeCoverageStatus,
   normalizeNationalId,
   normalizePolicyNumber,

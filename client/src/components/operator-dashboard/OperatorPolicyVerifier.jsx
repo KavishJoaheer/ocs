@@ -33,7 +33,8 @@ function getCoveragePresentation(coverage) {
     invalid_identity: "Enter a valid 14-character Mauritius ID",
     national_id_required: "Mauritius ID is required",
     policy_required: "Policy number is required",
-    not_found: "Policy not found in the Linkham register",
+    identifier_required: "Enter a policy number or Mauritius ID",
+    not_found: "No matching policy found in the Linkham register",
   };
 
   return {
@@ -47,16 +48,16 @@ export default function OperatorPolicyVerifier({ className = "" }) {
   const [policyNumber, setPolicyNumber] = useState("");
   const [nationalId, setNationalId] = useState("");
   const [state, setState] = useState("idle");
-  const [coverage, setCoverage] = useState(null);
+  const [coverages, setCoverages] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const canVerify = Boolean(policyNumber.trim() && nationalId.trim());
+  const canVerify = Boolean(policyNumber.trim() || nationalId.trim());
 
   function updateField(setter, value) {
     setter(value);
     if (state !== "idle") {
       setState("idle");
-      setCoverage(null);
+      setCoverages([]);
       setErrorMessage("");
     }
   }
@@ -66,25 +67,21 @@ export default function OperatorPolicyVerifier({ className = "" }) {
     if (!canVerify || state === "checking") return;
 
     setState("checking");
-    setCoverage(null);
+    setCoverages([]);
     setErrorMessage("");
 
     try {
-      const params = new URLSearchParams({
-        policy_number: policyNumber.trim(),
-        national_id: nationalId.trim(),
-      });
-      const data = await api.get(`/patients/insurance/coverage?${params.toString()}`);
-      setCoverage(data?.coverage || null);
+      const params = new URLSearchParams();
+      if (policyNumber.trim()) params.set("policy_number", policyNumber.trim());
+      if (nationalId.trim()) params.set("national_id", nationalId.trim());
+      const data = await api.get(`/patients/insurance/policy-lookup?${params.toString()}`);
+      setCoverages(Array.isArray(data?.coverages) ? data.coverages : []);
       setState("complete");
     } catch (error) {
       setErrorMessage(error.message || "Policy verification is temporarily unavailable.");
       setState("error");
     }
   }
-
-  const presentation = state === "complete" ? getCoveragePresentation(coverage) : null;
-  const ResultIcon = presentation?.Icon;
 
   return (
     <section
@@ -106,7 +103,7 @@ export default function OperatorPolicyVerifier({ className = "" }) {
             Quick policy verification
           </h2>
           <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">
-            Check the live Linkham flag before dispatching a doctor.
+            Enter either identifier. Use both to confirm they belong to the same policy.
           </p>
         </div>
       </div>
@@ -118,7 +115,7 @@ export default function OperatorPolicyVerifier({ className = "" }) {
             type="text"
             value={policyNumber}
             onChange={(event) => updateField(setPolicyNumber, event.target.value)}
-            placeholder="Policy number"
+            placeholder="Policy number (optional)"
             autoComplete="off"
             autoCapitalize="characters"
             className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
@@ -130,7 +127,7 @@ export default function OperatorPolicyVerifier({ className = "" }) {
             type="text"
             value={nationalId}
             onChange={(event) => updateField(setNationalId, event.target.value)}
-            placeholder="Mauritius ID number"
+            placeholder="Mauritius ID (optional)"
             maxLength={14}
             autoComplete="off"
             autoCapitalize="characters"
@@ -151,26 +148,33 @@ export default function OperatorPolicyVerifier({ className = "" }) {
         </button>
       </form>
 
-      {presentation ? (
-        <div
-          className={cx("mt-3 rounded-xl border-2 px-3.5 py-3", presentation.tone)}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center gap-2 text-sm font-black">
-            <ResultIcon className="size-5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
-            <span>{presentation.label}</span>
-          </div>
-          {coverage?.matched ? (
-            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
-              <span>Policy holder: {coverage.holder_name || "Not recorded"}</span>
-              <span>Policy: {coverage.policy_number}</span>
-              <span>ID: {coverage.national_id}</span>
-            </div>
-          ) : null}
-          {coverage?.status_reason ? (
-            <p className="mt-1.5 text-xs font-bold">Reason: {coverage.status_reason}</p>
-          ) : null}
+      {state === "complete" ? (
+        <div className="mt-3 space-y-2" role="status" aria-live="polite">
+          {coverages.map((coverage, index) => {
+            const presentation = getCoveragePresentation(coverage);
+            const ResultIcon = presentation.Icon;
+            return (
+              <div
+                key={`${coverage.policy_number || "lookup"}-${coverage.national_id || "unknown"}-${index}`}
+                className={cx("rounded-xl border-2 px-3.5 py-3", presentation.tone)}
+              >
+                <div className="flex items-center gap-2 text-sm font-black">
+                  <ResultIcon className="size-5 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+                  <span>{presentation.label}</span>
+                </div>
+                {coverage.matched ? (
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold">
+                    <span>Policy holder: {coverage.holder_name || "Not recorded"}</span>
+                    <span>Policy: {coverage.policy_number}</span>
+                    <span>ID: {coverage.national_id}</span>
+                  </div>
+                ) : null}
+                {coverage.status_reason ? (
+                  <p className="mt-1.5 text-xs font-bold">Reason: {coverage.status_reason}</p>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : state === "error" ? (
         <div

@@ -15,6 +15,7 @@ const {
   resolveInsuranceProviderFromTags,
 } = require("../lib/insuranceProvider");
 const {
+  lookupLinkhamPolicyCoverage,
   normalizePolicyNumber,
   verifyLinkhamPolicyCoverage,
 } = require("../lib/linkhamPolicyRegistry");
@@ -991,6 +992,15 @@ router.get("/insurance/coverage", (req, res) => {
     actorUserId: req.auth.id,
   });
   res.json({ coverage });
+});
+
+router.get("/insurance/policy-lookup", (req, res) => {
+  const coverages = lookupLinkhamPolicyCoverage({
+    policyNumber: req.query.policy_number,
+    nationalId: req.query.national_id,
+    actorUserId: req.auth.id,
+  });
+  res.json({ coverages });
 });
 
 router.get("/", (req, res) => {

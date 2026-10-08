@@ -308,6 +308,25 @@ test("insurer policy flags are matched against both policy number and Mauritius 
   assert.equal(green.data.coverage.allowed, true);
   assert.equal(green.data.coverage.holder_name, "Jean Policyholder");
 
+  const byPolicyNumber = await api(
+    "GET",
+    "/api/patients/insurance/policy-lookup?policy_number=12345",
+    { token: operatorToken },
+  );
+  assert.equal(byPolicyNumber.status, 200, JSON.stringify(byPolicyNumber.data));
+  assert.equal(byPolicyNumber.data.coverages.length, 1);
+  assert.equal(byPolicyNumber.data.coverages[0].national_id, "J0605914619061");
+  assert.equal(byPolicyNumber.data.coverages[0].coverage_status, "green");
+
+  const byNationalId = await api(
+    "GET",
+    "/api/patients/insurance/policy-lookup?national_id=J0605914619061",
+    { token: operatorToken },
+  );
+  assert.equal(byNationalId.status, 200, JSON.stringify(byNationalId.data));
+  assert.ok(byNationalId.data.coverages.some((coverage) => coverage.policy_number === "12345"));
+  assert.ok(byNationalId.data.coverages.every((coverage) => coverage.national_id === "J0605914619061"));
+
   const mismatch = await api(
     "GET",
     "/api/patients/insurance/coverage?policy_number=12345&national_id=J0705914619062",
