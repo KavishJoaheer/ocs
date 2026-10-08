@@ -385,6 +385,12 @@ function formatLinkhamClientRow(row) {
   const ageFromDob = calculateAgeFromDateOfBirth(row.date_of_birth);
   const ageFromNic = parseMauritianNicAge(row.national_id);
 
+  const hasPolicy = hasPolicyNumber(row.insurance_policy_number);
+  const registeredCoverageStatus = String(row.registered_coverage_status || "").trim();
+  const coverageStatus = !hasPolicy
+    ? "needs_policy"
+    : registeredCoverageStatus || "unregistered";
+
   return {
     id: Number(row.id),
     case_number: row.case_number || `PT-${row.id}`,
@@ -396,8 +402,11 @@ function formatLinkhamClientRow(row) {
     patient_contact_number: row.patient_contact_number || "",
     insurance_provider: row.insurance_provider || "",
     insurance_policy_number: row.insurance_policy_number || "",
-    has_policy_number: hasPolicyNumber(row.insurance_policy_number),
-    coverage_status: hasPolicyNumber(row.insurance_policy_number) ? "verified" : "needs_policy",
+    has_policy_number: hasPolicy,
+    coverage_status: coverageStatus,
+    coverage_allowed: coverageStatus === "green",
+    coverage_status_reason: String(row.coverage_status_reason || "").trim(),
+    policy_holder_name: String(row.policy_holder_name || "").trim(),
     status: row.status || "active",
     created_at: row.created_at,
     age: ageFromDob ?? ageFromNic,
@@ -945,6 +954,27 @@ function listLinkhamPatients({ search = "", missingPolicy = false } = {}) {
         p.patient_contact_number,
         p.insurance_provider,
         p.insurance_policy_number,
+        (
+          SELECT lp.coverage_status
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS registered_coverage_status,
+        (
+          SELECT lp.status_reason
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS coverage_status_reason,
+        (
+          SELECT lp.holder_name
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS policy_holder_name,
         p.status,
         p.created_at,
         (
@@ -1044,6 +1074,27 @@ function getLinkhamPatientById(patientId) {
         p.patient_contact_number,
         p.insurance_provider,
         p.insurance_policy_number,
+        (
+          SELECT lp.coverage_status
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS registered_coverage_status,
+        (
+          SELECT lp.status_reason
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS coverage_status_reason,
+        (
+          SELECT lp.holder_name
+          FROM linkham_policies lp
+          WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+            AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          LIMIT 1
+        ) AS policy_holder_name,
         p.status,
         p.created_at,
         (

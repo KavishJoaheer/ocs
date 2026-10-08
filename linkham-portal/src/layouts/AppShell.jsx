@@ -132,6 +132,10 @@ const pageMeta = {
     label: "Insured clients",
     helper: "Read-only Linkham client directory without internal clinical notes.",
   },
+  "/linkham/policies": {
+    label: "Policy registry",
+    helper: "Manage policy-to-Mauritius-ID eligibility for OCS verification.",
+  },
   "/linkham/claims-clearance": {
     label: "Claims clearance",
     helper: "Review and approve the 80/20 split-billing corporate ledger.",

@@ -596,6 +596,7 @@ function PatientFormModal({
                     tags={form.location_tags}
                     insuranceProvider={form.insurance_provider}
                     insurancePolicyNumber={form.insurance_policy_number}
+                    patientNationalId={form.patient_id_number}
                     onInsuranceChange={(update) =>
                       setForm((current) => syncInsuranceSelection(current, update))
                     }
@@ -994,6 +995,7 @@ function PatientFormModal({
                     tags={form.location_tags}
                     insuranceProvider={form.insurance_provider}
                     insurancePolicyNumber={form.insurance_policy_number}
+                    patientNationalId={form.patient_id_number}
                     onInsuranceChange={(update) =>
                       setForm((current) => syncInsuranceSelection(current, update))
                     }

@@ -9,6 +9,7 @@ import { cx } from "../lib/utils.js";
 const linkhamNavItems = [
   { id: "dashboard", to: "/linkham/dashboard", label: "Dashboard", end: true },
   { id: "insured_patients", to: "/linkham/patients", label: "Insured Patient" },
+  { id: "policies", to: "/linkham/policies", label: "Policy Registry" },
   { id: "claims_clearance", to: "/linkham/claims-clearance", label: "Claims Clearance" },
   { id: "reports", to: "/linkham/reports", label: "Report" },
 ];
@@ -48,6 +49,13 @@ function LinkhamNavIcon({ id, active }) {
         <svg {...iconProps}>
           <rect x="2" y="5" width="20" height="14" rx="2" />
           <line x1="2" y1="10" x2="22" y2="10" />
+        </svg>
+      );
+    case "policies":
+      return (
+        <svg {...iconProps}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+          <path d="m9 12 2 2 4-4" />
         </svg>
       );
     case "reports":

@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Search, X, MapPin } from "lucide-react";
+import { CheckCircle2, LoaderCircle, MapPin, Search, ShieldAlert, X } from "lucide-react";
 import { MAURITIUS_LOCATION_OPTIONS } from "../lib/mauritiusLocations.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { isLinkhamInsuranceProvider } from "../lib/insuranceProvider.js";
+import { api } from "../lib/api.js";
 
 const CLINICS = ["Anahita Residence", "Anahita Hotel", "Four Seasons", "Radisson Blu Poste Lafayette", "Radisson Blu Azuri", "Azuri Residence", "Crystal Beach", "Medic World", "OCS Santé Flacq", "OCS Médecin PL"];
 const INSURANCE = ["Linkham", "NIC", "Swan", "MUA", "Eagle", "Jubilee", "Alliance Sanlam"];
@@ -110,12 +111,64 @@ export default function PatientLocationTags({
   readOnly = false,
   insuranceProvider = "",
   insurancePolicyNumber = "",
+  patientNationalId = "",
   onInsuranceChange,
 }) {
   const isMobile = useIsMobile();
   const [locationType, setLocationType] = useState("village");
   const [selectedTown, setSelectedTown] = useState("");
   const [overlayTarget, setOverlayTarget] = useState(null);
+  const [coverageCheck, setCoverageCheck] = useState(null);
+
+  const coverageKey = `${String(insurancePolicyNumber || "").trim().toUpperCase()}::${String(
+    patientNationalId || "",
+  )
+    .trim()
+    .toUpperCase()}`;
+
+  useEffect(() => {
+    if (
+      !isLinkhamInsuranceProvider(insuranceProvider) ||
+      !String(insurancePolicyNumber || "").trim() ||
+      !String(patientNationalId || "").trim()
+    ) {
+      return undefined;
+    }
+
+    let ignore = false;
+    const timer = window.setTimeout(async () => {
+      setCoverageCheck({ key: coverageKey, state: "checking", coverage: null });
+      try {
+        const params = new URLSearchParams({
+          policy_number: String(insurancePolicyNumber || "").trim(),
+          national_id: String(patientNationalId || "").trim(),
+        });
+        const data = await api.get(`/patients/insurance/coverage?${params.toString()}`);
+        if (!ignore) {
+          setCoverageCheck({
+            key: coverageKey,
+            state: "complete",
+            coverage: data?.coverage || null,
+          });
+        }
+      } catch (error) {
+        if (!ignore) {
+          setCoverageCheck({
+            key: coverageKey,
+            state: "error",
+            message: error.message || "Coverage verification is temporarily unavailable.",
+          });
+        }
+      }
+    }, 350);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timer);
+    };
+  }, [coverageKey, insurancePolicyNumber, insuranceProvider, patientNationalId]);
+
+  const currentCoverageCheck = coverageCheck?.key === coverageKey ? coverageCheck : null;
 
   const selectedTownSuburbs = useMemo(() => TOWNS[selectedTown] || [], [selectedTown]);
 
@@ -219,6 +272,54 @@ export default function PatientLocationTags({
                   }
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-800 outline-none transition focus:border-[#557373]"
                 />
+                {!String(insurancePolicyNumber || "").trim() ? (
+                  <p className="px-1 text-[11px] font-medium text-gray-500">
+                    Enter the policy number to check eligibility.
+                  </p>
+                ) : !String(patientNationalId || "").trim() ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                    Enter the patient&apos;s Mauritius ID number to verify this policy.
+                  </div>
+                ) : !currentCoverageCheck || currentCoverageCheck.state === "checking" ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-800">
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                    Checking the insurance portal…
+                  </div>
+                ) : currentCoverageCheck.state === "error" ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                    {currentCoverageCheck.message}
+                  </div>
+                ) : currentCoverageCheck.coverage?.coverage_status === "green" ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                    <div className="flex items-center gap-2 text-[11px] font-extrabold">
+                      <CheckCircle2 className="size-4" />
+                      Green flag — eligible for OCS services
+                    </div>
+                    {currentCoverageCheck.coverage.holder_name ? (
+                      <p className="mt-1 text-[11px] font-semibold">
+                        Policy holder: {currentCoverageCheck.coverage.holder_name}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-red-800">
+                    <div className="flex items-center gap-2 text-[11px] font-extrabold">
+                      <ShieldAlert className="size-4" />
+                      {currentCoverageCheck.coverage?.coverage_status === "red"
+                        ? "Red flag — not eligible for OCS services"
+                        : currentCoverageCheck.coverage?.coverage_status === "identity_mismatch"
+                          ? "Policy and Mauritius ID do not match"
+                          : currentCoverageCheck.coverage?.coverage_status === "invalid_identity"
+                            ? "Invalid Mauritius ID number"
+                            : "Policy not found in the insurance portal"}
+                    </div>
+                    {currentCoverageCheck.coverage?.status_reason ? (
+                      <p className="mt-1 text-[11px] font-semibold">
+                        {currentCoverageCheck.coverage.status_reason}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

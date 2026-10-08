@@ -18,6 +18,7 @@ const { db } = require("../src/db");
 let server;
 let baseUrl;
 let linkhamToken;
+let operatorToken;
 let fixture;
 
 before(async () => {
@@ -33,6 +34,11 @@ before(async () => {
   });
   assert.equal(login.status, 200, JSON.stringify(login.data));
   linkhamToken = login.data.token;
+  const operatorLogin = await api("POST", "/api/auth/login", {
+    body: { username: "operator01", password: "Welcome@123" },
+  });
+  assert.equal(operatorLogin.status, 200, JSON.stringify(operatorLogin.data));
+  operatorToken = operatorLogin.data.token;
   fixture = seedLinkhamVisit();
 });
 
@@ -260,6 +266,106 @@ test("insured directory search matches OCS number", async () => {
   );
   assert.equal(response.status, 200, JSON.stringify(response.data));
   assert.ok(response.data.patients.some((row) => row.id === fixture.patientId));
+});
+
+test("insurer policy flags are matched against both policy number and Mauritius ID", async () => {
+  const created = await api("POST", "/api/linkham/policies", {
+    token: linkhamToken,
+    body: {
+      policy_number: "12345",
+      national_id: "J0605914619061",
+      holder_name: "Jean Policyholder",
+      coverage_status: "green",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.policy.coverage_status, "green");
+
+  const green = await api(
+    "GET",
+    "/api/patients/insurance/coverage?policy_number=12345&national_id=J0605914619061",
+    { token: operatorToken },
+  );
+  assert.equal(green.status, 200, JSON.stringify(green.data));
+  assert.equal(green.data.coverage.allowed, true);
+  assert.equal(green.data.coverage.holder_name, "Jean Policyholder");
+
+  const mismatch = await api(
+    "GET",
+    "/api/patients/insurance/coverage?policy_number=12345&national_id=J0705914619062",
+    { token: operatorToken },
+  );
+  assert.equal(mismatch.status, 200, JSON.stringify(mismatch.data));
+  assert.equal(mismatch.data.coverage.coverage_status, "identity_mismatch");
+  assert.equal(mismatch.data.coverage.holder_name, undefined);
+
+  const updated = await api("PUT", `/api/linkham/policies/${created.data.policy.id}`, {
+    token: linkhamToken,
+    body: {
+      ...created.data.policy,
+      coverage_status: "red",
+      status_reason: "Coverage suspended",
+    },
+  });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+
+  const red = await api(
+    "GET",
+    "/api/patients/insurance/coverage?policy_number=12345&national_id=J0605914619061",
+    { token: operatorToken },
+  );
+  assert.equal(red.data.coverage.allowed, false);
+  assert.equal(red.data.coverage.coverage_status, "red");
+  assert.equal(red.data.coverage.status_reason, "Coverage suspended");
+
+  const doctorId = Number(db.prepare("SELECT id FROM doctors WHERE is_active = 1 LIMIT 1").get().id);
+  const patientPayload = {
+    first_name: "Jean",
+    last_name: "Policyholder",
+    patient_id_number: "J0605914619061",
+    date_of_birth: "1991-05-06",
+    gender: "M",
+    assigned_doctor_id: doctorId,
+    patient_contact_number: "59001234",
+    address: "Flacq",
+    location: "Flacq",
+    location_tags: [
+      { category: "Village", name: "Flacq" },
+      { category: "Insurance", name: "Linkham" },
+    ],
+    insurance_provider: "Linkham",
+    insurance_policy_number: "12345",
+    status: "active",
+  };
+  const blockedPatient = await api("POST", "/api/patients", {
+    token: operatorToken,
+    body: patientPayload,
+  });
+  assert.equal(blockedPatient.status, 409, JSON.stringify(blockedPatient.data));
+  assert.equal(blockedPatient.data.code, "INSURANCE_COVERAGE_NOT_ALLOWED");
+
+  const restored = await api("PUT", `/api/linkham/policies/${created.data.policy.id}`, {
+    token: linkhamToken,
+    body: {
+      ...updated.data.policy,
+      coverage_status: "green",
+      status_reason: "",
+    },
+  });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+
+  const allowedPatient = await api("POST", "/api/patients", {
+    token: operatorToken,
+    body: patientPayload,
+  });
+  assert.equal(allowedPatient.status, 201, JSON.stringify(allowedPatient.data));
+  assert.equal(allowedPatient.data.insurance_policy_number, "12345");
+
+  const auditCount = Number(
+    db.prepare("SELECT COUNT(*) AS count FROM linkham_policy_audit_log WHERE policy_id = ?")
+      .get(created.data.policy.id)?.count || 0,
+  );
+  assert.ok(auditCount >= 7);
 });
 
 test("flag requires a reason, then approve and settle keep an audit trail", async () => {

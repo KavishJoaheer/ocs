@@ -110,6 +110,15 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
   const policyNumberLabel = patient?.insurance_policy_number?.trim()
     ? patient.insurance_policy_number
     : "MISSING POLICY ID";
+  const coverageStatus = patient?.coverage_status || "needs_policy";
+  const coveragePresentation =
+    coverageStatus === "green"
+      ? { label: "Green — eligible", className: "bg-emerald-50 text-emerald-700" }
+      : coverageStatus === "red"
+        ? { label: "Red — not eligible", className: "bg-red-50 text-red-700" }
+        : coverageStatus === "unregistered"
+          ? { label: "Policy not registered", className: "bg-amber-50 text-amber-800" }
+          : { label: "Needs policy number", className: "bg-amber-50 text-amber-800" };
 
   return (
     <div className="fixed inset-0 z-[var(--z-drawer)] flex justify-end">
@@ -166,16 +175,17 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                       Verification Status
                     </span>
                     <span
-                      className={
-                        patient.has_policy_number
-                          ? "mt-0.5 ml-auto w-fit rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700"
-                          : "mt-0.5 ml-auto w-fit rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-800"
-                      }
+                      className={`mt-0.5 ml-auto w-fit rounded-lg px-2.5 py-1 text-[11px] font-extrabold ${coveragePresentation.className}`}
                     >
-                      {patient.has_policy_number ? "Verified covered" : "Needs policy number"}
+                      {coveragePresentation.label}
                     </span>
                   </div>
                 </div>
+                {patient.coverage_status_reason ? (
+                  <p className="text-xs font-semibold text-gray-600">
+                    {patient.coverage_status_reason}
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-6 border-t border-gray-100 pt-4">

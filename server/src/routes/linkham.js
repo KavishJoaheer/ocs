@@ -1,6 +1,10 @@
 const express = require("express");
 const { db } = require("../db");
-const { publishLinkhamClaimsChange, publishPatientDataChange } = require("../lib/inventoryRealtime");
+const {
+  publishLinkhamClaimsChange,
+  publishLinkhamPatientsChange,
+  publishPatientDataChange,
+} = require("../lib/inventoryRealtime");
 const {
   approveLinkhamClaim,
   approveLinkhamCleanClaimsBatch,
@@ -16,6 +20,11 @@ const {
   settleLinkhamClaim,
   summarizeLinkhamClaimsLedger,
 } = require("../lib/linkhamPortal");
+const {
+  createLinkhamPolicy,
+  listLinkhamPolicies,
+  updateLinkhamPolicy,
+} = require("../lib/linkhamPolicyRegistry");
 
 const router = express.Router();
 
@@ -100,6 +109,37 @@ router.get("/reports", (req, res) => {
       claimsTimeFilter: req.query.claimsFilter,
     }),
   );
+});
+
+router.get("/policies", (req, res) => {
+  res.json({
+    policies: listLinkhamPolicies({
+      search: req.query.search,
+      status: req.query.status,
+    }),
+  });
+});
+
+router.post("/policies", (req, res) => {
+  const result = createLinkhamPolicy(req.body, req.auth.id);
+  if (result.error) {
+    const status = result.error === "duplicate" ? 409 : 400;
+    return res.status(status).json({ error: result.message, code: result.error });
+  }
+
+  publishLinkhamPatientsChange({ changedByUserId: req.auth.id });
+  res.status(201).json({ policy: result.policy });
+});
+
+router.put("/policies/:id", (req, res) => {
+  const result = updateLinkhamPolicy(req.params.id, req.body, req.auth.id);
+  if (result.error) {
+    const status = result.error === "not_found" ? 404 : result.error === "duplicate" ? 409 : 400;
+    return res.status(status).json({ error: result.message, code: result.error });
+  }
+
+  publishLinkhamPatientsChange({ changedByUserId: req.auth.id });
+  res.json({ policy: result.policy });
 });
 
 router.get("/patients", (req, res) => {

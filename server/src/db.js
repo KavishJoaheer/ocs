@@ -140,6 +140,45 @@ function createAuthSessionsTable() {
   `);
 }
 
+function createLinkhamPolicyRegistryTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS linkham_policies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      policy_number TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      national_id TEXT NOT NULL COLLATE NOCASE,
+      holder_name TEXT NOT NULL DEFAULT '',
+      coverage_status TEXT NOT NULL CHECK (coverage_status IN ('green', 'red')),
+      status_reason TEXT NOT NULL DEFAULT '',
+      created_by_user_id INTEGER,
+      updated_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS linkham_policy_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      policy_id INTEGER,
+      action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'verified')),
+      outcome TEXT NOT NULL DEFAULT '',
+      policy_number TEXT NOT NULL DEFAULT '',
+      national_id TEXT NOT NULL DEFAULT '',
+      actor_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (policy_id) REFERENCES linkham_policies(id) ON DELETE SET NULL,
+      FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_linkham_policies_national_id
+      ON linkham_policies(national_id COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_linkham_policies_coverage_status
+      ON linkham_policies(coverage_status);
+    CREATE INDEX IF NOT EXISTS idx_linkham_policy_audit_created_at
+      ON linkham_policy_audit_log(created_at DESC);
+  `);
+}
+
 function createStreamTokensTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS stream_tokens (
@@ -1682,6 +1721,7 @@ function initializeDatabase() {
   createUsersTable();
   migrateUsersLinkhamAdminRoleIfNeeded();
   createAuthSessionsTable();
+  createLinkhamPolicyRegistryTables();
   createStreamTokensTable();
   createUserPushSubscriptionsTable();
   createLabReportsTable();

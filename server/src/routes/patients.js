@@ -15,6 +15,10 @@ const {
   resolveInsuranceProviderFromTags,
 } = require("../lib/insuranceProvider");
 const {
+  normalizePolicyNumber,
+  verifyLinkhamPolicyCoverage,
+} = require("../lib/linkhamPolicyRegistry");
+const {
   buildPatientLocationFieldFromTags,
   sanitizeLocationTagsForSave,
 } = require("../lib/locationTags.js");
@@ -238,7 +242,7 @@ function normalizePatientPayload(body) {
       if (!isLinkhamInsuranceProvider(provider)) {
         return "";
       }
-      return String(body.insurance_policy_number ?? "").trim();
+      return normalizePolicyNumber(body.insurance_policy_number);
     })(),
   };
 }
@@ -396,6 +400,41 @@ function validatePatientPayload(
   }
 
   return null;
+}
+
+function validateLinkhamPatientCoverage(payload, actorUserId) {
+  if (!isLinkhamInsuranceProvider(payload.insurance_provider)) {
+    return null;
+  }
+
+  const coverage = verifyLinkhamPolicyCoverage({
+    policyNumber: payload.insurance_policy_number,
+    nationalId: payload.patient_id_number,
+    actorUserId,
+  });
+
+  if (coverage.allowed) {
+    return null;
+  }
+
+  const messages = {
+    national_id_required:
+      "Mauritius ID number is required to verify this Linkham policy.",
+    invalid_identity:
+      "Enter a valid 14-character Mauritius ID number to verify this Linkham policy.",
+    not_found:
+      "This policy number is not registered in the Linkham insurance portal.",
+    identity_mismatch:
+      "The policy number does not match this patient's Mauritius ID number.",
+    red:
+      coverage.status_reason ||
+      "This policy is red-flagged and is not eligible for OCS services.",
+  };
+
+  return {
+    error: messages[coverage.coverage_status] || "This Linkham policy could not be verified.",
+    coverage,
+  };
 }
 
 function getAssignedDoctorById(doctorId) {
@@ -942,6 +981,15 @@ router.get("/options", (req, res) => {
     .all();
 
   res.json(patients);
+});
+
+router.get("/insurance/coverage", (req, res) => {
+  const coverage = verifyLinkhamPolicyCoverage({
+    policyNumber: req.query.policy_number,
+    nationalId: req.query.national_id,
+    actorUserId: req.auth.id,
+  });
+  res.json({ coverage });
 });
 
 router.get("/", (req, res) => {
@@ -1575,6 +1623,15 @@ router.post("/", (req, res) => {
     return res.status(400).json({ error: validationError });
   }
 
+  const coverageValidation = validateLinkhamPatientCoverage(payload, req.auth.id);
+  if (coverageValidation) {
+    return res.status(409).json({
+      error: coverageValidation.error,
+      code: "INSURANCE_COVERAGE_NOT_ALLOWED",
+      coverage: coverageValidation.coverage,
+    });
+  }
+
   const { assignedDoctorId, error } = resolveAssignedDoctorIdForCreate(payload, req.auth);
 
   if (error) {
@@ -1722,6 +1779,15 @@ router.put("/:id", (req, res) => {
 
   if (validationError) {
     return res.status(400).json({ error: validationError });
+  }
+
+  const coverageValidation = validateLinkhamPatientCoverage(payload, req.auth.id);
+  if (coverageValidation) {
+    return res.status(409).json({
+      error: coverageValidation.error,
+      code: "INSURANCE_COVERAGE_NOT_ALLOWED",
+      coverage: coverageValidation.coverage,
+    });
   }
 
   const {

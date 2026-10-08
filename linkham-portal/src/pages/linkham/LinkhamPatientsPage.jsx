@@ -22,6 +22,19 @@ function matchesSearch(client, query) {
     .some((value) => value.includes(needle));
 }
 
+function coverageBadge(client) {
+  if (client.coverage_status === "green") {
+    return { label: "Green — eligible", className: "border-emerald-200 bg-emerald-50 text-emerald-800" };
+  }
+  if (client.coverage_status === "red") {
+    return { label: "Red — not eligible", className: "border-red-200 bg-red-50 text-red-800" };
+  }
+  if (client.coverage_status === "unregistered") {
+    return { label: "Policy not registered", className: "border-amber-200 bg-amber-50 text-amber-800" };
+  }
+  return { label: "Needs policy number", className: "border-amber-200 bg-amber-50 text-amber-800" };
+}
+
 export default function LinkhamPatientsPage() {
   const { patients, loading, error } = useLinkhamPatients();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -109,14 +122,13 @@ export default function LinkhamPatientsPage() {
                     {client.case_number}
                   </span>
                   {client.has_policy_number ? (
-                    <span className="shrink-0 rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-extrabold text-amber-800">
+                    <span className="shrink-0 rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-[10px] font-extrabold text-gray-700">
                       Policy: {client.insurance_policy_number}
                     </span>
-                  ) : (
-                    <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">
-                      Needs policy number
-                    </span>
-                  )}
+                  ) : null}
+                  <span className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-extrabold ${coverageBadge(client).className}`}>
+                    {coverageBadge(client).label}
+                  </span>
                 </div>
                 <p className="text-xs font-medium text-gray-400">
                   {formatClientAddress(client)}
