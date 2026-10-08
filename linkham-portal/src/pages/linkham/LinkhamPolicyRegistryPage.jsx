@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Pencil, Plus, ShieldAlert, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import EmptyState from "../../components/EmptyState.jsx";
+import LinkhamPolicyImportPanel from "../../components/LinkhamPolicyImportPanel.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
@@ -21,12 +23,13 @@ function statusClasses(status) {
 }
 
 export default function LinkhamPolicyRegistryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [statusFilter, setStatusFilter] = useState("all");
 
   async function loadPolicies() {
@@ -45,6 +48,13 @@ export default function LinkhamPolicyRegistryPage() {
     void loadPolicies();
   }, []);
 
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("edit"));
+    if (!requestedId || requestedId === editingId || !policies.length) return;
+    const policy = policies.find((item) => Number(item.id) === requestedId);
+    if (policy) startEdit(policy);
+  }, [editingId, policies, searchParams]);
+
   const visiblePolicies = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return policies.filter((policy) => {
@@ -59,6 +69,11 @@ export default function LinkhamPolicyRegistryPage() {
   function resetForm() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    if (searchParams.has("edit")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("edit");
+      setSearchParams(next, { replace: true });
+    }
   }
 
   function startEdit(policy) {
@@ -101,6 +116,8 @@ export default function LinkhamPolicyRegistryPage() {
         description="Maintain the policy number, Mauritius ID and OCS eligibility flag used by operators during patient registration."
       />
 
+      <LinkhamPolicyImportPanel onImported={loadPolicies} />
+
       <form
         onSubmit={handleSubmit}
         className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
@@ -111,7 +128,7 @@ export default function LinkhamPolicyRegistryPage() {
               {editingId ? "Edit policy" : "Add insured policy"}
             </p>
             <p className="mt-1 text-xs text-gray-500">
-              Operators must enter the same policy and Mauritius ID combination to receive a green result.
+              OCS can verify by either identifier; both together provide an additional identity match check.
             </p>
           </div>
           {editingId ? (
@@ -203,7 +220,14 @@ export default function LinkhamPolicyRegistryPage() {
         <input
           type="search"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearch(value);
+            const next = new URLSearchParams(searchParams);
+            if (value.trim()) next.set("search", value);
+            else next.delete("search");
+            setSearchParams(next, { replace: true });
+          }}
           placeholder="Search policy, Mauritius ID, or holder"
           className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium md:max-w-md"
         />

@@ -75,7 +75,7 @@ function getLinkhamPolicyById(policyId) {
   );
 }
 
-function listLinkhamPolicies({ search = "", status = "all" } = {}) {
+function listLinkhamPolicies({ search = "", status = "all", limit = 0 } = {}) {
   const term = String(search || "").trim().toLowerCase();
   const normalizedStatus = normalizeCoverageStatus(status);
   const filters = [];
@@ -99,23 +99,37 @@ function listLinkhamPolicies({ search = "", status = "all" } = {}) {
     params.status = normalizedStatus;
     filters.push("lp.coverage_status = @status");
   }
+  const normalizedLimit = Math.max(0, Math.min(Number(limit || 0), 5000));
+  if (normalizedLimit) {
+    params.limit = normalizedLimit;
+  }
 
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const limitClause = normalizedLimit ? "LIMIT @limit" : "";
   return db
-    .prepare(`${POLICY_SELECT} ${where} ORDER BY lp.updated_at DESC, lp.id DESC`)
+    .prepare(`${POLICY_SELECT} ${where} ORDER BY lp.updated_at DESC, lp.id DESC ${limitClause}`)
     .all(params)
     .map(formatPolicy);
 }
 
-function recordPolicyAudit({ policyId = null, action, outcome = "", policyNumber = "", nationalId = "", actorUserId = null }) {
+function recordPolicyAudit({
+  policyId = null,
+  action,
+  outcome = "",
+  previousOutcome = "",
+  policyNumber = "",
+  nationalId = "",
+  actorUserId = null,
+}) {
   db.prepare(`
     INSERT INTO linkham_policy_audit_log (
-      policy_id, action, outcome, policy_number, national_id, actor_user_id
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      policy_id, action, outcome, previous_outcome, policy_number, national_id, actor_user_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     policyId ? Number(policyId) : null,
     action,
     String(outcome || ""),
+    String(previousOutcome || ""),
     normalizePolicyNumber(policyNumber),
     normalizeNationalId(nationalId),
     actorUserId ? Number(actorUserId) : null,
@@ -212,6 +226,7 @@ function updateLinkhamPolicy(policyId, input, actorUserId) {
       policyId,
       action: "updated",
       outcome: coverageStatus,
+      previousOutcome: existing.coverage_status,
       policyNumber,
       nationalId,
       actorUserId,
@@ -220,6 +235,150 @@ function updateLinkhamPolicy(policyId, input, actorUserId) {
   });
 
   return { policy: update(), previous_policy: existing };
+}
+
+function importLinkhamPolicies(rows, actorUserId) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { error: "validation", message: "Add at least one policy row to import.", errors: [] };
+  }
+  if (rows.length > 5000) {
+    return {
+      error: "validation",
+      message: "A single import can contain a maximum of 5,000 policies.",
+      errors: [],
+    };
+  }
+
+  const seenPolicyNumbers = new Map();
+  const prepared = [];
+  const errors = [];
+
+  rows.forEach((row, index) => {
+    const rowNumber = Number(row?.row_number || index + 2);
+    const input = {
+      policy_number: row?.policy_number,
+      national_id: row?.national_id,
+      holder_name: row?.holder_name,
+      coverage_status: row?.coverage_status,
+      status_reason: row?.status_reason,
+    };
+    const message = validatePolicyInput(input);
+    const policyNumber = normalizePolicyNumber(input.policy_number);
+
+    if (message) {
+      errors.push({ row_number: rowNumber, policy_number: policyNumber, message });
+      return;
+    }
+    if (seenPolicyNumbers.has(policyNumber)) {
+      errors.push({
+        row_number: rowNumber,
+        policy_number: policyNumber,
+        message: `Duplicate policy number in rows ${seenPolicyNumbers.get(policyNumber)} and ${rowNumber}.`,
+      });
+      return;
+    }
+
+    seenPolicyNumbers.set(policyNumber, rowNumber);
+    prepared.push({
+      rowNumber,
+      policy_number: policyNumber,
+      national_id: normalizeNationalId(input.national_id),
+      holder_name: String(input.holder_name || "").trim(),
+      coverage_status: normalizeCoverageStatus(input.coverage_status),
+      status_reason: String(input.status_reason || "").trim(),
+    });
+  });
+
+  if (errors.length) {
+    return {
+      error: "validation",
+      message: `${errors.length} policy row${errors.length === 1 ? " needs" : "s need"} attention before import.`,
+      errors,
+    };
+  }
+
+  const runImport = db.transaction(() => {
+    let createdCount = 0;
+    let updatedCount = 0;
+    let unchangedCount = 0;
+    const changes = [];
+
+    prepared.forEach((row) => {
+      const existing = db
+        .prepare(`${POLICY_SELECT} WHERE lp.policy_number = ? COLLATE NOCASE`)
+        .get(row.policy_number);
+
+      if (!existing) {
+        const result = db.prepare(`
+          INSERT INTO linkham_policies (
+            policy_number, national_id, holder_name, coverage_status, status_reason,
+            created_by_user_id, updated_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          row.policy_number,
+          row.national_id,
+          row.holder_name,
+          row.coverage_status,
+          row.status_reason,
+          Number(actorUserId),
+          Number(actorUserId),
+        );
+        const policy = getLinkhamPolicyById(result.lastInsertRowid);
+        recordPolicyAudit({
+          policyId: policy.id,
+          action: "created",
+          outcome: policy.coverage_status,
+          policyNumber: policy.policy_number,
+          nationalId: policy.national_id,
+          actorUserId,
+        });
+        createdCount += 1;
+        changes.push({ policy, previous_policy: null });
+        return;
+      }
+
+      const previousPolicy = formatPolicy(existing);
+      const unchanged =
+        previousPolicy.national_id === row.national_id &&
+        previousPolicy.holder_name === row.holder_name &&
+        previousPolicy.coverage_status === row.coverage_status &&
+        previousPolicy.status_reason === row.status_reason;
+      if (unchanged) {
+        unchangedCount += 1;
+        return;
+      }
+
+      db.prepare(`
+        UPDATE linkham_policies
+        SET national_id = ?, holder_name = ?, coverage_status = ?, status_reason = ?,
+            updated_by_user_id = ?, updated_at = CURRENT_TIMESTAMP, row_version = row_version + 1
+        WHERE id = ?
+      `).run(
+        row.national_id,
+        row.holder_name,
+        row.coverage_status,
+        row.status_reason,
+        Number(actorUserId),
+        previousPolicy.id,
+      );
+      const policy = getLinkhamPolicyById(previousPolicy.id);
+      recordPolicyAudit({
+        policyId: policy.id,
+        action: "updated",
+        outcome: policy.coverage_status,
+        previousOutcome: previousPolicy.coverage_status,
+        policyNumber: policy.policy_number,
+        nationalId: policy.national_id,
+        actorUserId,
+      });
+      updatedCount += 1;
+      changes.push({ policy, previous_policy: previousPolicy });
+    });
+
+    return { createdCount, updatedCount, unchangedCount, changes };
+  });
+
+  return runImport();
 }
 
 function verifyLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = null, audit = true } = {}) {
@@ -371,6 +530,7 @@ function lookupLinkhamPolicyCoverage({ policyNumber, nationalId, actorUserId = n
 module.exports = {
   createLinkhamPolicy,
   getLinkhamPolicyById,
+  importLinkhamPolicies,
   listLinkhamPolicies,
   lookupLinkhamPolicyCoverage,
   normalizeCoverageStatus,

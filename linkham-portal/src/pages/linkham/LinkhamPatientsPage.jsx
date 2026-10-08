@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import EmptyState from "../../components/EmptyState.jsx";
 import LinkhamPatientDetailsSheet from "../../components/LinkhamPatientDetailsSheet.jsx";
@@ -40,21 +40,21 @@ export default function LinkhamPatientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchDraft, setSearchDraft] = useState(searchParams.get("search") || "");
   const missingPolicy = searchParams.get("missingPolicy") === "1";
+  const coverageIssue = searchParams.get("coverageIssue") === "1";
   const openId = searchParams.get("open");
-  const [selectedPatientId, setSelectedPatientId] = useState(openId || null);
-
-  useEffect(() => {
-    setSelectedPatientId(openId || null);
-  }, [openId]);
+  const selectedPatientId = openId || null;
 
   const visiblePatients = useMemo(() => {
     return patients.filter((client) => {
       if (missingPolicy && client.has_policy_number) {
         return false;
       }
+      if (coverageIssue && client.coverage_status === "green") {
+        return false;
+      }
       return matchesSearch(client, searchDraft);
     });
-  }, [patients, missingPolicy, searchDraft]);
+  }, [patients, coverageIssue, missingPolicy, searchDraft]);
 
   function updateParams(next) {
     const params = new URLSearchParams(searchParams);
@@ -97,14 +97,17 @@ export default function LinkhamPatientsPage() {
         />
         <button
           type="button"
-          onClick={() => updateParams({ missingPolicy: missingPolicy ? null : "1" })}
+          onClick={() => updateParams({
+            coverageIssue: coverageIssue ? null : "1",
+            missingPolicy: null,
+          })}
           className={`rounded-xl border px-4 py-2.5 text-xs font-bold ${
-            missingPolicy
+            coverageIssue
               ? "border-amber-200 bg-amber-50 text-amber-800"
               : "border-gray-200 bg-white text-gray-600"
           }`}
         >
-          Missing policy number
+          Coverage issues
         </button>
       </div>
 
@@ -140,7 +143,6 @@ export default function LinkhamPatientsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedPatientId(client.id);
                   updateParams({ open: client.id });
                 }}
                 className="shrink-0 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-xs font-bold text-[#3e5c76] shadow-sm transition-all duration-200 hover:border-[#065a60] hover:bg-[#065a60]/5 hover:text-[#065a60]"
@@ -161,7 +163,6 @@ export default function LinkhamPatientsPage() {
         open={Boolean(selectedPatientId)}
         patientId={selectedPatientId}
         onClose={() => {
-          setSelectedPatientId(null);
           updateParams({ open: null });
         }}
       />

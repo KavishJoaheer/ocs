@@ -181,6 +181,11 @@ function createLinkhamPolicyRegistryTables() {
     "row_version",
     "ALTER TABLE linkham_policies ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1",
   );
+  addColumnIfMissing(
+    "linkham_policy_audit_log",
+    "previous_outcome",
+    "ALTER TABLE linkham_policy_audit_log ADD COLUMN previous_outcome TEXT NOT NULL DEFAULT ''",
+  );
 }
 
 function createStreamTokensTable() {

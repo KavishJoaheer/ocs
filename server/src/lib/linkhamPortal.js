@@ -2,6 +2,7 @@ const { db } = require("../db");
 const { resolveIcd10FromText } = require("./icd10Lookup");
 const { isLinkhamInsuranceProvider } = require("./insuranceProvider");
 const { buildInsurerTreatmentSummaries } = require("./insurerClinicalSummary");
+const { listLinkhamPolicies } = require("./linkhamPolicyRegistry");
 const { getTodayLocal, offsetLocalDate } = require("./utils");
 
 const LINKHAM_PATIENT_SQL = "lower(trim(p.insurance_provider)) = 'linkham'";
@@ -227,6 +228,14 @@ function formatClaimRow(row) {
     && row.linkham_approved_share_amount != null
     ? roundMoney(row.linkham_approved_share_amount)
     : calculatedLinkhamShare;
+  const visitDate = String(row.visit_date || "").trim();
+  const today = new Date(`${getTodayLocal()}T00:00:00`);
+  const visited = /^\d{4}-\d{2}-\d{2}$/.test(visitDate)
+    ? new Date(`${visitDate}T00:00:00`)
+    : null;
+  const ageDays = visited && !Number.isNaN(visited.getTime())
+    ? Math.max(0, Math.floor((today.getTime() - visited.getTime()) / 86_400_000))
+    : 0;
   return {
     id: Number(row.id),
     visit_date: row.visit_date || null,
@@ -259,7 +268,42 @@ function formatClaimRow(row) {
     settlement_date: row.linkham_settlement_date || null,
     flagged_at: row.dispute_flagged_at || null,
     flagged_by_name: row.flagged_by_name || "",
+    age_days: ageDays,
   };
+}
+
+function listRecentPolicyActivity(limit = 8) {
+  return db
+    .prepare(`
+      SELECT
+        audit.id,
+        audit.action,
+        audit.outcome,
+        audit.previous_outcome,
+        audit.policy_number,
+        audit.national_id,
+        audit.created_at,
+        COALESCE(NULLIF(trim(policy.holder_name), ''), 'Policy holder not recorded') AS holder_name,
+        COALESCE(NULLIF(trim(actor.full_name), ''), 'Linkham operator') AS actor_name
+      FROM linkham_policy_audit_log audit
+      LEFT JOIN linkham_policies policy ON policy.id = audit.policy_id
+      LEFT JOIN users actor ON actor.id = audit.actor_user_id
+      WHERE audit.action IN ('created', 'updated')
+      ORDER BY audit.created_at DESC, audit.id DESC
+      LIMIT ?
+    `)
+    .all(Math.max(1, Math.min(Number(limit || 8), 20)))
+    .map((row) => ({
+      id: Number(row.id),
+      action: row.action,
+      coverage_status: row.outcome,
+      previous_coverage_status: row.previous_outcome || "",
+      policy_number: row.policy_number || "",
+      national_id: row.national_id || "",
+      holder_name: row.holder_name,
+      actor_name: row.actor_name,
+      created_at: row.created_at,
+    }));
 }
 
 function resolveMauritiusRegion(locationText) {
@@ -870,6 +914,55 @@ function getLinkhamDashboardMetrics() {
       .get(monthStart)?.total || 0,
   );
 
+  const approvedAwaitingPayment = db
+    .prepare(`
+      SELECT COUNT(*) AS count, COALESCE(SUM(${LINKHAM_SHARE_AMOUNT_SQL}), 0) AS total
+      FROM billing b
+      JOIN patients p ON p.id = b.patient_id
+      WHERE ${LINKHAM_CLAIM_SQL}
+        AND b.linkham_claim_status = 'approved'
+    `)
+    .get();
+
+  const settledThisMonth = db
+    .prepare(`
+      SELECT COUNT(*) AS count, COALESCE(SUM(${LINKHAM_SHARE_AMOUNT_SQL}), 0) AS total
+      FROM billing b
+      JOIN patients p ON p.id = b.patient_id
+      WHERE ${LINKHAM_CLAIM_SQL}
+        AND b.linkham_claim_status = 'settled'
+        AND date(COALESCE(b.linkham_claim_settled_at, b.updated_at, b.created_at)) >= date(?)
+    `)
+    .get(monthStart);
+
+  const policySummary = db
+    .prepare(`
+      SELECT
+        SUM(CASE WHEN coverage_status = 'green' THEN 1 ELSE 0 END) AS green_count,
+        SUM(CASE WHEN coverage_status = 'red' THEN 1 ELSE 0 END) AS red_count
+      FROM linkham_policies
+    `)
+    .get();
+
+  const unregisteredPolicyCount = Number(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM patients p
+        WHERE p.deleted_at IS NULL
+          AND ${LINKHAM_PATIENT_SQL}
+          AND p.insurance_policy_number IS NOT NULL
+          AND trim(p.insurance_policy_number) <> ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM linkham_policies policy
+            WHERE upper(replace(trim(policy.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+              AND upper(replace(trim(policy.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+          )
+      `)
+      .get()?.count || 0,
+  );
+
   const outstandingEightyLedger = roundMoney(
     db
       .prepare(`
@@ -901,6 +994,10 @@ function getLinkhamDashboardMetrics() {
     pendingClaimsCount,
     pendingCleanCount,
     monthlyApprovedAmount,
+    approvedAwaitingPaymentCount: Number(approvedAwaitingPayment?.count || 0),
+    approvedAwaitingPaymentAmount: roundMoney(approvedAwaitingPayment?.total || 0),
+    settledThisMonthCount: Number(settledThisMonth?.count || 0),
+    settledThisMonthAmount: roundMoney(settledThisMonth?.total || 0),
     dueLongTermReviews: listLinkhamDueLongTermReviews(),
     flaggedClaimsCount: Number(
       db
@@ -925,14 +1022,24 @@ function getLinkhamDashboardMetrics() {
         `)
         .get()?.count || 0,
     ),
+    unregisteredPolicyCount,
+    greenPolicyCount: Number(policySummary?.green_count || 0),
+    redPolicyCount: Number(policySummary?.red_count || 0),
     flaggedClaims: listLinkhamClaims({ status: "flagged" }).slice(0, 8),
-    missingPolicies: listLinkhamPatients({ missingPolicy: true }).slice(0, 8),
+    pendingClaims: listLinkhamClaims({ status: "pending" })
+      .sort((left, right) => Number(right.age_days || 0) - Number(left.age_days || 0))
+      .slice(0, 8),
+    missingPolicies: listLinkhamPatients({ missingPolicy: true, limit: 8 }),
+    unregisteredPolicies: listLinkhamPatients({ coverageStatus: "unregistered", limit: 8 }),
+    redPolicies: listLinkhamPolicies({ status: "red", limit: 8 }),
+    recentPolicyActivity: listRecentPolicyActivity(8),
     budgetExposure: getLinkhamBudgetExposure(),
     totalInsuredClients,
     monthlyClaimsSettled,
     outstandingEightyLedger,
     outstandingCleanEightyLedger,
     currentMonthKey: monthStart.slice(0, 7),
+    refreshedAt: new Date().toISOString(),
   };
 }
 
@@ -957,13 +1064,26 @@ function getLinkhamAnalyticsReports({ seenTimeFilter = "month", claimsTimeFilter
   };
 }
 
-function listLinkhamPatients({ search = "", missingPolicy = false } = {}) {
+function listLinkhamPatients({ search = "", missingPolicy = false, coverageStatus = "", limit = 0 } = {}) {
   const term = normalizeSearchTerm(search);
   const params = {};
   const filters = [`p.deleted_at IS NULL`, LINKHAM_PATIENT_SQL];
 
   if (missingPolicy) {
     filters.push("(p.insurance_policy_number IS NULL OR trim(p.insurance_policy_number) = '')");
+  }
+
+  if (coverageStatus === "unregistered") {
+    filters.push(`
+      p.insurance_policy_number IS NOT NULL
+      AND trim(p.insurance_policy_number) <> ''
+      AND NOT EXISTS (
+        SELECT 1
+        FROM linkham_policies lp
+        WHERE upper(replace(trim(lp.policy_number), ' ', '')) = upper(replace(trim(p.insurance_policy_number), ' ', ''))
+          AND upper(replace(trim(lp.national_id), ' ', '')) = upper(replace(trim(p.patient_id_number), ' ', ''))
+      )
+    `);
   }
 
   if (term) {
@@ -974,6 +1094,11 @@ function listLinkhamPatients({ search = "", missingPolicy = false } = {}) {
       OR lower(COALESCE(p.patient_id_number, '')) LIKE @search
       OR lower(COALESCE(p.insurance_policy_number, '')) LIKE @search
     )`);
+  }
+
+  const normalizedLimit = Math.max(0, Math.min(Number(limit || 0), 5000));
+  if (normalizedLimit) {
+    params.limit = normalizedLimit;
   }
 
   return db
@@ -1024,6 +1149,7 @@ function listLinkhamPatients({ search = "", missingPolicy = false } = {}) {
       FROM patients p
       WHERE ${filters.join(" AND ")}
       ORDER BY p.created_at DESC, p.full_name ASC
+      ${normalizedLimit ? "LIMIT @limit" : ""}
     `)
     .all(params)
     .map(formatLinkhamClientRow);

@@ -31,6 +31,7 @@ export default function LinkhamClaimsClearancePage() {
     : "pending";
   const month = searchParams.get("month") || "";
   const search = searchParams.get("search") || "";
+  const openClaimId = searchParams.get("open");
 
   const [claims, setClaims] = useState([]);
   const [ledger, setLedger] = useState({});
@@ -40,7 +41,7 @@ export default function LinkhamClaimsClearancePage() {
   const [flaggingClaimId, setFlaggingClaimId] = useState(null);
   const [batchApproving, setBatchApproving] = useState(false);
   const [batchSettling, setBatchSettling] = useState(false);
-  const [selectedClaimId, setSelectedClaimId] = useState(null);
+  const selectedClaimId = openClaimId || null;
   const [settlementTarget, setSettlementTarget] = useState(null);
   const [settlementForm, setSettlementForm] = useState({
     payment_date: mauritiusToday(),
@@ -249,13 +250,17 @@ export default function LinkhamClaimsClearancePage() {
         onExportPdf={() =>
           void downloadLinkhamStatementPdf(claims, { month, status: statusFilter })
         }
-        onViewSummary={(claim) => setSelectedClaimId(claim.id)}
+        onViewSummary={(claim) => {
+          updateParams({ open: claim.id });
+        }}
       />
 
       <LinkhamClaimSummarySheet
         open={Boolean(selectedClaimId)}
         claimId={selectedClaimId}
-        onClose={() => setSelectedClaimId(null)}
+        onClose={() => {
+          updateParams({ open: null });
+        }}
       />
 
       <Modal

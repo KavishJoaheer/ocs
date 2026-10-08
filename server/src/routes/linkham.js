@@ -22,32 +22,40 @@ const {
 } = require("../lib/linkhamPortal");
 const {
   createLinkhamPolicy,
+  importLinkhamPolicies,
   listLinkhamPolicies,
+  lookupLinkhamPolicyCoverage,
   updateLinkhamPolicy,
 } = require("../lib/linkhamPolicyRegistry");
 
 const router = express.Router();
 
-function publishPolicyCoverageChange(policy, changedByUserId = null, previousPolicy = null) {
+function publishPolicyCoverageChanges(changes, changedByUserId = null) {
   publishLinkhamPatientsChange({ changedByUserId });
-  if (!policy) return;
   const patientIds = new Set();
-  [policy, previousPolicy].filter(Boolean).forEach((candidate) => {
-    db.prepare(`
-      SELECT id
-      FROM patients
-      WHERE deleted_at IS NULL
-        AND lower(trim(insurance_provider)) = 'linkham'
-        AND (
-          upper(trim(insurance_policy_number)) = upper(trim(?))
-          OR upper(trim(patient_id_number)) = upper(trim(?))
-        )
-    `).all(candidate.policy_number || "", candidate.national_id || "")
-      .forEach(({ id }) => patientIds.add(Number(id)));
+  changes.forEach(({ policy, previousPolicy = null }) => {
+    [policy, previousPolicy].filter(Boolean).forEach((candidate) => {
+      db.prepare(`
+        SELECT id
+        FROM patients
+        WHERE deleted_at IS NULL
+          AND lower(trim(insurance_provider)) = 'linkham'
+          AND (
+            upper(trim(insurance_policy_number)) = upper(trim(?))
+            OR upper(trim(patient_id_number)) = upper(trim(?))
+          )
+      `).all(candidate.policy_number || "", candidate.national_id || "")
+        .forEach(({ id }) => patientIds.add(Number(id)));
+    });
   });
   patientIds.forEach((id) => {
     publishPatientDataChange(Number(id), { reason: "insurance_coverage", changedByUserId });
   });
+}
+
+function publishPolicyCoverageChange(policy, changedByUserId = null, previousPolicy = null) {
+  if (!policy) return;
+  publishPolicyCoverageChanges([{ policy, previousPolicy }], changedByUserId);
 }
 
 function publishPatientBillingChangeForClaim(claim) {
@@ -142,6 +150,15 @@ router.get("/policies", (req, res) => {
   });
 });
 
+router.get("/policy-lookup", (req, res) => {
+  const coverages = lookupLinkhamPolicyCoverage({
+    policyNumber: req.query.policy_number,
+    nationalId: req.query.national_id,
+    actorUserId: req.auth.id,
+  });
+  res.json({ coverages });
+});
+
 router.post("/policies", (req, res) => {
   const result = createLinkhamPolicy(req.body, req.auth.id);
   if (result.error) {
@@ -151,6 +168,30 @@ router.post("/policies", (req, res) => {
 
   publishPolicyCoverageChange(result.policy, req.auth.id);
   res.status(201).json({ policy: result.policy });
+});
+
+router.post("/policies/import", (req, res) => {
+  const result = importLinkhamPolicies(req.body?.rows, req.auth.id);
+  if (result.error) {
+    return res.status(400).json({
+      error: result.message,
+      code: result.error,
+      errors: result.errors || [],
+    });
+  }
+
+  publishPolicyCoverageChanges(
+    result.changes.map((change) => ({
+      policy: change.policy,
+      previousPolicy: change.previous_policy,
+    })),
+    req.auth.id,
+  );
+  res.json({
+    createdCount: result.createdCount,
+    updatedCount: result.updatedCount,
+    unchangedCount: result.unchangedCount,
+  });
 });
 
 router.put("/policies/:id", (req, res) => {

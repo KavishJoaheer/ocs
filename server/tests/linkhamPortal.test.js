@@ -250,6 +250,18 @@ test("dashboard shows unpaid 80% totals and a work queue instead of HCM news", a
   assert.ok(Number(response.data.pendingClaimsCount) >= 1);
   assert.ok(Number(response.data.missingPolicyCount) >= 1);
   assert.ok(Number(response.data.totalInsuredClients) >= 1);
+  assert.equal(typeof response.data.approvedAwaitingPaymentCount, "number");
+  assert.equal(typeof response.data.approvedAwaitingPaymentAmount, "number");
+  assert.equal(typeof response.data.settledThisMonthCount, "number");
+  assert.equal(typeof response.data.settledThisMonthAmount, "number");
+  assert.equal(typeof response.data.unregisteredPolicyCount, "number");
+  assert.equal(typeof response.data.greenPolicyCount, "number");
+  assert.equal(typeof response.data.redPolicyCount, "number");
+  assert.ok(Array.isArray(response.data.pendingClaims));
+  assert.ok(Array.isArray(response.data.unregisteredPolicies));
+  assert.ok(Array.isArray(response.data.redPolicies));
+  assert.ok(Array.isArray(response.data.recentPolicyActivity));
+  assert.ok(Number.isFinite(Date.parse(response.data.refreshedAt)));
 });
 
 test("patient detail is diagnosis-only and never verified without a policy number", async () => {
@@ -327,6 +339,16 @@ test("insurer policy flags are matched against both policy number and Mauritius 
   assert.ok(byNationalId.data.coverages.some((coverage) => coverage.policy_number === "12345"));
   assert.ok(byNationalId.data.coverages.every((coverage) => coverage.national_id === "J0605914619061"));
 
+  const insurerLookup = await api(
+    "GET",
+    "/api/linkham/policy-lookup?national_id=J0605914619061",
+    { token: linkhamToken },
+  );
+  assert.equal(insurerLookup.status, 200, JSON.stringify(insurerLookup.data));
+  assert.equal(insurerLookup.data.coverages.length, 1);
+  assert.equal(insurerLookup.data.coverages[0].policy_number, "12345");
+  assert.equal(insurerLookup.data.coverages[0].coverage_status, "green");
+
   const mismatch = await api(
     "GET",
     "/api/patients/insurance/coverage?policy_number=12345&national_id=J0705914619062",
@@ -403,6 +425,107 @@ test("insurer policy flags are matched against both policy number and Mauritius 
       .get(created.data.policy.id)?.count || 0,
   );
   assert.ok(auditCount >= 7);
+});
+
+test("policy portfolio imports are validated atomically and preserve flag history", async () => {
+  const firstImport = await api("POST", "/api/linkham/policies/import", {
+    token: linkhamToken,
+    body: {
+      rows: [
+        {
+          row_number: 2,
+          policy_number: "LKM-90001",
+          national_id: "C1503891234567",
+          holder_name: "Maya Import",
+          coverage_status: "green",
+        },
+        {
+          row_number: 3,
+          policy_number: "LKM-90002",
+          national_id: "D3112991234567",
+          holder_name: "Noah Import",
+          coverage_status: "red",
+          status_reason: "Membership paused",
+        },
+      ],
+    },
+  });
+  assert.equal(firstImport.status, 200, JSON.stringify(firstImport.data));
+  assert.deepEqual(firstImport.data, {
+    createdCount: 2,
+    updatedCount: 0,
+    unchangedCount: 0,
+  });
+
+  const secondImport = await api("POST", "/api/linkham/policies/import", {
+    token: linkhamToken,
+    body: {
+      rows: [
+        {
+          row_number: 2,
+          policy_number: "LKM-90001",
+          national_id: "C1503891234567",
+          holder_name: "Maya Import",
+          coverage_status: "red",
+          status_reason: "Cover suspended",
+        },
+        {
+          row_number: 3,
+          policy_number: "LKM-90002",
+          national_id: "D3112991234567",
+          holder_name: "Noah Import",
+          coverage_status: "red",
+          status_reason: "Membership paused",
+        },
+      ],
+    },
+  });
+  assert.equal(secondImport.status, 200, JSON.stringify(secondImport.data));
+  assert.deepEqual(secondImport.data, {
+    createdCount: 0,
+    updatedCount: 1,
+    unchangedCount: 1,
+  });
+
+  const updatedPolicy = db.prepare("SELECT * FROM linkham_policies WHERE policy_number = 'LKM-90001'").get();
+  assert.equal(updatedPolicy.coverage_status, "red");
+  const latestAudit = db.prepare(`
+    SELECT outcome, previous_outcome
+    FROM linkham_policy_audit_log
+    WHERE policy_id = ? AND action = 'updated'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(updatedPolicy.id);
+  assert.deepEqual(latestAudit, { outcome: "red", previous_outcome: "green" });
+
+  const rejectedImport = await api("POST", "/api/linkham/policies/import", {
+    token: linkhamToken,
+    body: {
+      rows: [
+        {
+          row_number: 2,
+          policy_number: "LKM-90003",
+          national_id: "E0101901234567",
+          holder_name: "Would Be Valid",
+          coverage_status: "green",
+        },
+        {
+          row_number: 3,
+          policy_number: "LKM-90004",
+          national_id: "INVALID",
+          holder_name: "Invalid Identity",
+          coverage_status: "green",
+        },
+      ],
+    },
+  });
+  assert.equal(rejectedImport.status, 400, JSON.stringify(rejectedImport.data));
+  assert.equal(rejectedImport.data.errors.length, 1);
+  assert.equal(rejectedImport.data.errors[0].row_number, 3);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM linkham_policies WHERE policy_number = 'LKM-90003'").get().count,
+    0,
+  );
 });
 
 test("a returning patient's profile updates and dispatch rechecks green status before assignment and en route", async () => {
