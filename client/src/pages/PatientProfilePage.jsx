@@ -47,6 +47,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
+import { formatVitalInput } from "../lib/consultationVitals.js";
 import {
   closePreviewTab,
   openInlinePreviewTab,
@@ -520,9 +521,9 @@ const CONSULTATION_VITAL_FIELD_CLASS =
 
 const CONSULTATION_VITAL_FIELDS = [
   { key: "vital_bp", label: "BP", placeholder: "120/80" },
-  { key: "vital_temperature", label: "T", placeholder: "36.6 °C" },
+  { key: "vital_temperature", label: "T", placeholder: "36.6", unit: "°C" },
   { key: "vital_glycemia", label: "Gr", placeholder: "5.5 / 100" },
-  { key: "vital_spo2", label: "SpO2", placeholder: "98%" },
+  { key: "vital_spo2", label: "SpO2", placeholder: "98", unit: "%" },
   { key: "vital_pulse", label: "Pulse", placeholder: "72" },
 ];
 
@@ -1048,19 +1049,30 @@ function ConsultationCreateModal({
                 {CONSULTATION_VITAL_FIELDS.map((field) => (
                   <label key={field.key} className="block space-y-1.5">
                     <span className="text-xs font-semibold text-slate-600">{field.label}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={form[field.key]}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          [field.key]: event.target.value,
-                        }))
-                      }
-                      placeholder={field.placeholder}
-                      className={CONSULTATION_VITAL_FIELD_CLASS}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        name={field.key}
+                        aria-label={field.label}
+                        inputMode={field.key === "vital_bp" ? "text" : "decimal"}
+                        value={form[field.key]}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setForm((current) => ({
+                            ...current,
+                            [field.key]: formatVitalInput(field.key, value, current[field.key]),
+                          }));
+                        }}
+                        placeholder={field.placeholder}
+                        className={cx(CONSULTATION_VITAL_FIELD_CLASS, field.unit && "pr-10")}
+                        aria-describedby={field.unit ? `${field.key}-unit` : undefined}
+                      />
+                      {field.unit ? (
+                        <span id={`${field.key}-unit`} className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-500">
+                          {field.unit}
+                        </span>
+                      ) : null}
+                    </div>
                   </label>
                 ))}
               </div>

@@ -10,12 +10,24 @@ function hasStructuredConsultationFields(body) {
   );
 }
 
+function normalizeVitalUnit(value, unit) {
+  const original = trimValue(value);
+  if (!original) return "";
+  const number = original
+    .replace(unit === "°C" ? /\s*°?\s*c\s*$/i : /\s*%\s*$/, "")
+    .trim().replace(",", ".");
+  // Preserve existing non-numeric notes; only add units to measurements.
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(number)
+    ? `${number}${unit === "%" ? "" : " "}${unit}`
+    : original;
+}
+
 function normalizeVitalsFields(body) {
   return {
     vital_bp: trimValue(body?.vital_bp),
-    vital_temperature: trimValue(body?.vital_temperature),
+    vital_temperature: normalizeVitalUnit(body?.vital_temperature, "°C"),
     vital_glycemia: trimValue(body?.vital_glycemia),
-    vital_spo2: trimValue(body?.vital_spo2),
+    vital_spo2: normalizeVitalUnit(body?.vital_spo2, "%"),
     vital_pulse: trimValue(body?.vital_pulse),
   };
 }

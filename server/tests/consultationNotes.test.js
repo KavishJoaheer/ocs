@@ -62,6 +62,26 @@ test("normalizeConsultationNotesPayload keeps legacy doctor_notes flow", () => {
   assert.equal(payload.doctor_notes, "URTI\nPrescribed: Tab levodenk");
 });
 
+test("numeric vitals gain units in both structured fields and saved notes", () => {
+  for (const temperature of ["36.6", "36.6°C", "36.6 °C", "36,6"]) {
+    for (const spo2 of ["98", "98%", "98 %"]) {
+      const payload = normalizeConsultationNotesPayload({
+        clinical_note: "Vitals recorded.", patient_diagnosis: "Review",
+        vital_temperature: temperature, vital_spo2: spo2,
+      });
+      assert.equal(payload.vital_temperature, "36.6 °C");
+      assert.equal(payload.vital_spo2, "98%");
+      assert.match(payload.doctor_notes, /T 36\.6 °C\. SpO2 98%/);
+    }
+  }
+  const payload = normalizeConsultationNotesPayload({
+    clinical_note: "Vitals not measured.", patient_diagnosis: "Review",
+    vital_temperature: "", vital_spo2: "",
+  });
+  assert.equal(payload.vital_temperature, "");
+  assert.equal(payload.vital_spo2, "");
+});
+
 test("composeDoctorNotesStorage joins private and patient-facing sections", () => {
   const notes = composeDoctorNotesStorage({
     clinicalNote: "Private vitals review.",
