@@ -43,7 +43,9 @@ async function seedRequest(request, actor, headers, name, status = "pending", ac
   } finally { db.close(); }
 }
 
-test("desktop dashboard accepts teleconsultations once, keeps accepted calls visible and opens the chosen request", async ({ page, request }) => {
+for (const width of [1440, 390]) {
+test(`operator dashboard accepts and follows teleconsultations at ${width}px`, async ({ page, request }) => {
+  await page.setViewportSize({ width, height: 900 });
   const { actor, headers } = await session(page, request);
   const first = await seedRequest(request, actor, headers, "First Patient");
   const second = await seedRequest(request, actor, headers, "Second Patient");
@@ -57,12 +59,13 @@ test("desktop dashboard accepts teleconsultations once, keeps accepted calls vis
     visitIds.push(visitId);
   } finally { db.close(); }
   await page.goto(`${STAFF}/`);
-  const visits = page.getByRole("region", { name: "Live visit requests", exact: true });
+  const visits = page.getByRole("region", { name: width < 768 ? "Home visit requests" : "Live visit requests", exact: true });
   await expect(visits.getByText(first.name, { exact: true })).toBeVisible();
   const cancelledVisit = await request.patch(`${API}/visit-requests/${visitId}`, { headers, data: { status: "cancelled" } });
   expect(cancelledVisit.ok()).toBeTruthy();
   await expect(visits.getByText(first.name, { exact: true })).toHaveCount(0, { timeout: 15_000 });
-  const queue = page.getByRole("region", { name: /^Live teleconsultations/ });
+  const queue = page.getByRole("region", { name: width < 768 ? /^Teleconsultations/ : /^Live teleconsultations/ });
+  if (width < 768) await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByRole("region", { name: /^Teleconsultations/ })).toBeVisible();
   await expect(queue.getByText(first.name, { exact: true })).toBeVisible();
   await expect(queue.getByText(second.name, { exact: true })).toBeVisible();
   await expect(queue.getByText(accepted.name, { exact: true })).toBeVisible();
@@ -89,18 +92,23 @@ test("desktop dashboard accepts teleconsultations once, keeps accepted calls vis
   expect(closed.ok()).toBeTruthy();
   await expect(queue.getByText(first.name, { exact: true })).toHaveCount(0, { timeout: 15_000 });
   await expect(queue.getByText(second.name, { exact: true })).toBeVisible();
-  await page.screenshot({ path: "/tmp/ocs-desktop-teleconsultations.png", fullPage: true });
+  await page.screenshot({ path: `/tmp/ocs-dashboard-teleconsultations-${width}.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 900 });
   const mobileAlerts = page.getByRole("complementary", { name: "Teleconsultation request alerts" });
+  await expect(mobileAlerts).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByText(second.name, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.goto(`${STAFF}/patients`);
   await expect(mobileAlerts).toContainText(second.name);
   await expect(queue).toHaveCount(0);
 });
 
-test("teleconsultation queue distinguishes loading failure from an empty queue and supports retry", async ({ page, request }) => {
+test(`teleconsultation queue supports error recovery at ${width}px`, async ({ page, request }) => {
+  await page.setViewportSize({ width, height: 900 });
   await session(page, request);
   await page.route("**/api/teleconsultations", route => route.fulfill({ status: 503, json: { error: "Unavailable" } }));
   await page.goto(`${STAFF}/`);
-  const queue = page.getByRole("region", { name: /^Live teleconsultations/ });
+  const queue = page.getByRole("region", { name: width < 768 ? /^Teleconsultations/ : /^Live teleconsultations/ });
   await expect(queue.getByRole("alert")).toContainText("Could not refresh teleconsultations");
   await expect(queue.getByText("No active teleconsultations", { exact: true })).toHaveCount(0);
   await page.unroute("**/api/teleconsultations");
@@ -108,3 +116,4 @@ test("teleconsultation queue distinguishes loading failure from an empty queue a
   await expect(queue.getByRole("alert")).toHaveCount(0);
   await expect(queue.getByText("No active teleconsultations", { exact: true })).toBeVisible();
 });
+}

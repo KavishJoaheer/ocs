@@ -13,7 +13,7 @@ function requestStatus(request) {
   return request.status === "assigned" ? "Doctor assigned" : "In consultation";
 }
 
-export default function OperatorTeleconsultationPanel({ readOnly = false }) {
+export default function OperatorTeleconsultationPanel({ readOnly = false, embedded = false }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,31 +66,31 @@ export default function OperatorTeleconsultationPanel({ readOnly = false }) {
   });
 
   return (
-    <section className="ocs-cc-panel min-w-0 px-5 py-4" aria-labelledby="ocs-cc-teleconsultation-heading">
+    <section className={embedded ? "min-w-0 border-t border-slate-100 px-4 pb-1 pt-2" : "ocs-cc-panel min-w-0 px-5 py-4"} aria-labelledby="ocs-cc-teleconsultation-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 id="ocs-cc-teleconsultation-heading" className="flex items-center gap-2 font-display text-base font-semibold text-[#203f42]">
-            <span className="ocs-cc-pulse" aria-hidden="true" />
-            Live teleconsultations
+          <h2 id="ocs-cc-teleconsultation-heading" className={`flex items-center gap-2 font-semibold text-[#203f42] ${embedded ? "text-xs" : "font-display text-base"}`}>
+            {!embedded ? <span className="ocs-cc-pulse" aria-hidden="true" /> : null}
+            {embedded ? "Teleconsultations" : "Live teleconsultations"}
             {!loading && !error && requests.length > 0 ? <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs tabular-nums text-slate-600">{requests.length}</span> : null}
           </h2>
-          <p className="mt-0.5 text-xs text-[#5f7476]">Accept requests and follow ongoing calls</p>
+          {!embedded ? <p className="mt-0.5 text-xs text-[#5f7476]">Accept requests and follow ongoing calls</p> : null}
         </div>
-        <Link to="/teleconsultations" className="inline-flex items-center gap-1 text-sm font-semibold text-[#1a7f7a] hover:text-[#203f42]">
-          Manage calls <ArrowUpRight className="size-3.5" aria-hidden="true" />
+        <Link to="/teleconsultations" aria-label={embedded ? "Manage teleconsultations" : undefined} className={`inline-flex min-h-11 items-center gap-1 font-semibold text-[#1a7f7a] hover:text-[#203f42] ${embedded ? "text-xs" : "text-sm"}`}>
+          Manage calls <ArrowUpRight className="size-3.5 shrink-0" aria-hidden="true" />
         </Link>
       </div>
 
       {error ? <p role="alert" className="mt-3 text-sm text-red-800">{error}<button type="button" onClick={load} className="ml-2 min-h-11 font-semibold underline">Retry teleconsultations</button></p> : null}
       {loading ? <p role="status" className="mt-4 text-sm text-[#5f7476]">Loading teleconsultations…</p> : null}
       {!loading && !error && requests.length === 0 ? (
-        <div className="mt-4">
-          <p className="font-display text-base font-semibold text-[#203f42]">No active teleconsultations</p>
-          <p className="mt-1 text-sm leading-6 text-[#5f7476]">New requests from OCS Care will appear here automatically.</p>
+        <div className={embedded ? "pb-3" : "mt-4"}>
+          <p className={embedded ? "text-xs text-slate-500" : "font-display text-base font-semibold text-[#203f42]"}>No active teleconsultations</p>
+          {!embedded ? <p className="mt-1 text-sm leading-6 text-[#5f7476]">New requests from OCS Care will appear here automatically.</p> : null}
         </div>
       ) : null}
       {sorted.length > 0 ? (
-        <ul className="mt-3 max-h-72 divide-y divide-slate-100 overflow-y-auto overscroll-contain">
+        <ul className={`${embedded ? "" : "mt-3 "}max-h-72 divide-y divide-slate-100 overflow-y-auto overscroll-contain`}>
           {sorted.map(request => {
             const waiting = request.status === "pending" && !request.accepted_at;
             return (

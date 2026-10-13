@@ -319,7 +319,7 @@ function AppShell() {
                 )}
               </>
             ) : null}
-            {["admin", "operator"].includes(user?.role) && !user.is_read_only && !(isDashboard && userRole === "operator" && !isMobile) && <TeleconsultationAlerts key={user.id} />}
+            {["admin", "operator"].includes(user?.role) && !user.is_read_only && !(isDashboard && userRole === "operator") && <TeleconsultationAlerts key={user.id} />}
             <Outlet />
             {!hideBottomNav && (
               <div

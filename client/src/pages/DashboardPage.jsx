@@ -42,6 +42,7 @@ import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
 import OperatorPolicyVerifier from "../components/operator-dashboard/OperatorPolicyVerifier.jsx";
+import OperatorTeleconsultationPanel from "../components/operator-dashboard/OperatorTeleconsultationPanel.jsx";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
 
@@ -212,28 +213,8 @@ function getOperatorBoardCounts(metrics) {
   };
 }
 
-function OperatorMobileLauncher({
-  user,
-  dashboard,
-  operatorMetrics,
-}) {
+function OperatorMobileLauncher({ user, dashboard }) {
   const firstName = (user.full_name || "").split(" ")[0] || "there";
-  const counts = getOperatorBoardCounts(operatorMetrics);
-
-  const listCards = [
-    {
-      label: "Patient Directory",
-      description: "Search and open existing patient records.",
-      icon: UsersRound,
-      to: "/patients",
-    },
-    {
-      label: "Add a Patient",
-      description: "Register a new patient into the OCS system.",
-      icon: UserPlus,
-      to: "/patients/add",
-    },
-  ];
 
   return (
     <div className="flex min-h-[60svh] w-full min-w-0 flex-col">
@@ -242,69 +223,29 @@ function OperatorMobileLauncher({
       </h1>
       <p className="mt-1 text-sm text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
 
+      <div className="mt-5">
+        <LiveRequestsPanel
+          requests={dashboard?.liveVisitRequests?.visit_requests || []}
+          activeCount={Number(dashboard?.liveVisitRequests?.active_count || 0)}
+          visitsUnavailable={!dashboard?.liveVisitRequests}
+          readOnly={Boolean(user.is_read_only)}
+          dispatch
+        />
+      </div>
+
       <Link
-        to="/teleconsultations"
-        className="mt-4 inline-flex min-h-12 items-center gap-3 rounded-2xl border border-ocs-teal/20 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate shadow-sm transition active:bg-ocs-teal/5"
+        to="/patients"
+        className="mt-5 flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition active:bg-slate-50"
       >
-        <ClipboardList className="size-5 text-ocs-teal" />
-        Manage teleconsultations
-        <ArrowUpRight className="ml-auto size-4 text-ocs-teal" />
+        <UsersRound className="size-5 shrink-0 text-ocs-teal" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-800">Patient directory</p>
+          <p className="mt-0.5 text-xs text-ocs-grey">Search and open existing patient records</p>
+        </div>
+        <ArrowUpRight className="size-4 shrink-0 text-ocs-teal" />
       </Link>
 
-      <div className="mt-5">
-        {dashboard?.liveVisitRequests ? (
-          <LiveRequestsPanel
-            requests={dashboard.liveVisitRequests.visit_requests || []}
-            activeCount={Number(dashboard.liveVisitRequests.active_count || 0)}
-            dispatch
-          />
-        ) : (
-          <Link to="/visit-requests" className="block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-ocs-slate">
-            Live requests could not be loaded. Open the live board.
-          </Link>
-        )}
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-4">
-        <DoctorMobileSplitCard
-          to="/visit-requests"
-          label="Visit requests"
-          icon={ClipboardList}
-          count={counts.visitRequests}
-        />
-        <DoctorMobileSplitCard
-          to="/operator/long-term-review"
-          label="Review appointment"
-          icon={Activity}
-          count={counts.reviews}
-        />
-      </div>
-
       <OperatorPolicyVerifier className="mt-5" />
-
-      <div className="mt-6 flex flex-1 flex-col gap-3.5 overflow-y-auto">
-        {listCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <Link
-              key={card.label}
-              to={card.to}
-              className="group flex w-full items-center gap-5 rounded-[24px] border border-slate-100 bg-white px-5 py-6 shadow-sm transition duration-150 active:scale-[0.97] active:bg-slate-50/80"
-            >
-              <div className="flex size-13 shrink-0 items-center justify-center rounded-2xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal shadow-sm">
-                <Icon className="size-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[1.05rem] font-bold tracking-tight text-slate-800">
-                  {card.label}
-                </p>
-                <p className="mt-0.5 text-sm leading-6 text-ocs-grey">{card.description}</p>
-              </div>
-              <ArrowUpRight className="size-5 shrink-0 text-ocs-teal/60 transition group-active:translate-x-0.5 group-active:-translate-y-0.5" />
-            </Link>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -326,11 +267,7 @@ function MobileLauncher({
 
   if (user.role === "operator") {
     return (
-      <OperatorMobileLauncher
-        user={user}
-        dashboard={dashboard}
-        operatorMetrics={operatorMetrics}
-      />
+      <OperatorMobileLauncher user={user} dashboard={dashboard} />
     );
   }
 
@@ -928,9 +865,70 @@ function DoctorMetricsRow({ dashboard }) {
   );
 }
 
-function LiveRequestsPanel({ requests = [], activeCount = 0, dispatch = false }) {
+function LiveRequestsPanel({ requests = [], activeCount = 0, dispatch = false, visitsUnavailable = false, readOnly = false }) {
   const visibleRequests = requests.slice(0, 2);
   const hasRequests = activeCount > 0;
+
+  if (dispatch) {
+    return (
+      <section aria-label="Live requests" className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+          <span className="size-2 shrink-0 rounded-full bg-ocs-teal" />
+          <h2 className="text-sm font-semibold text-ocs-slate">Live requests</h2>
+        </div>
+        <section aria-label="Home visit requests">
+          <div className="flex items-center justify-between gap-3 px-4 py-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="text-xs font-semibold text-ocs-slate">Home visits</h3>
+              {!visitsUnavailable ? (
+                <span className="rounded-full bg-ocs-teal/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-ocs-teal" aria-label={`${activeCount} active requests`}>
+                  {activeCount}
+                </span>
+              ) : null}
+            </div>
+            <Link to="/visit-requests" className="inline-flex min-h-11 shrink-0 items-center gap-1 text-xs font-semibold text-ocs-teal">
+              View all <ArrowUpRight className="size-3.5" />
+            </Link>
+          </div>
+          {visitsUnavailable ? (
+            <p role="alert" className="px-4 pb-3 text-xs text-red-800">Could not load home visits. Open the live board to retry.</p>
+          ) : visibleRequests.length ? (
+            <ul className="divide-y divide-slate-100">
+              {visibleRequests.map((request) => (
+                <li key={request.id}>
+                  <Link to="/visit-requests" className="block px-4 py-3 transition active:bg-slate-50">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{request.patient_name || "Patient"}</p>
+                      <span className={cx(
+                        "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold capitalize",
+                        request.urgency === "emergency" ? "bg-red-50 text-red-700"
+                          : request.urgency === "urgent" ? "bg-amber-50 text-amber-700"
+                            : "bg-slate-100 text-slate-500",
+                      )}>{request.urgency || "routine"}</span>
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-ocs-teal">
+                      {request.status_label || "Request received"}
+                      {request.eta_minutes != null ? ` · ETA ${request.eta_minutes} min` : ""}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-slate-600">{request.reason || "No reason provided"}</p>
+                    <div className="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                      <MapPin className="size-3 shrink-0" />
+                      <span className="truncate">{request.address || "Address not provided"}</span>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-4 pb-3 text-xs text-slate-500">
+              {hasRequests ? "Open the live board to view active requests." : "No active home visits. New requests appear automatically."}
+            </p>
+          )}
+        </section>
+        <OperatorTeleconsultationPanel embedded readOnly={readOnly} />
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Live requests" className="relative overflow-hidden rounded-[28px] bg-[#173f4a] p-5 text-white shadow-[0_22px_50px_rgba(23,63,74,0.22)] md:p-6">
