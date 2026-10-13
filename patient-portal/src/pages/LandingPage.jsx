@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import AppInstallLink from "../components/install/AppInstallLink.jsx";
 import {
   ArrowRight,
   CalendarDays,
@@ -344,6 +345,7 @@ function LandingPage() {
               <span><ShieldCheck size={17} aria-hidden="true" /> Private &amp; Confidential</span>
               <span><Route size={17} aria-hidden="true" /> One continuous journey</span>
             </div>
+            <AppInstallLink />
           </FadeInSection>
 
           <FadeInSection delay={120} className="landing-difference-preview">

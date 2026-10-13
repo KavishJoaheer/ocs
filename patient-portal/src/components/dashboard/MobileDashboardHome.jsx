@@ -196,6 +196,7 @@ function MobileDashboardHome({
   overdueReview = null,
   careTeamDoctorName = null,
   activeVisitSlot = null,
+  installPromotionSlot = null,
   managing = false,
 }) {
   const { openRequestSheet } = useRequestVisit();
@@ -279,6 +280,8 @@ function MobileDashboardHome({
           </div>
         </section>
       ) : null}
+
+      {installPromotionSlot}
 
       <section className="animate-fade-in-up stagger-3" aria-label="Care timeline">
         <div className="mb-5">

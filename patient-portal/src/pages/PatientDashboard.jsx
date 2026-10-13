@@ -9,6 +9,7 @@ import { pickVisibleActiveVisit } from "../lib/visitRequests.js";
 import VisitCancelPrompt from "../components/VisitCancelPrompt.jsx";
 import MobileDashboardHome from "../components/dashboard/MobileDashboardHome.jsx";
 import DesktopDashboardHome from "../components/dashboard/DesktopDashboardHome.jsx";
+import AppInstallCard from "../components/install/AppInstallCard.jsx";
 
 // Map a backend visit-request status onto the dashboard's 4-step mini tracker.
 const VISIT_STATUS_STEP_INDEX = {
@@ -250,12 +251,14 @@ function PatientDashboard() {
   const [retryToken, setRetryToken] = useState(0);
   const [activeVisit, setActiveVisit] = useState(null);
   const [activeVisitError, setActiveVisitError] = useState(null);
+  const [visitStatusLoading, setVisitStatusLoading] = useState(true);
   const refreshKey = useLiveRefreshKey();
 
   useEffect(() => {
     let ignore = false;
     setLoading(true);
     setLoadError(null);
+    setVisitStatusLoading(true);
 
     async function fetchDashboard() {
       try {
@@ -286,6 +289,8 @@ function PatientDashboard() {
             error?.message || "Couldn't load your active visit status. Pull to refresh or try again.",
           );
         }
+      } finally {
+        if (!ignore) setVisitStatusLoading(false);
       }
     }
 
@@ -379,6 +384,7 @@ function PatientDashboard() {
       ) : (
         <div key={activeProfileId} className="dashboard-profile-transition">
           <DesktopDashboardHome
+            installPromotionSlot={<AppInstallCard eligible={!visitStatusLoading && !activeVisit && !activeVisitError} />}
             headline={headline}
             careTeamDoctorName={careTeamDoctorName}
             profileLastConsultation={profileLastConsultation}
@@ -407,6 +413,7 @@ function PatientDashboard() {
         </div>
       ) : (
         <MobileDashboardHome
+          installPromotionSlot={<AppInstallCard eligible={!visitStatusLoading && !activeVisit && !activeVisitError} />}
           firstName={firstName}
           managing={!isPrimaryProfile}
           lastConsultation={profileLastConsultation}

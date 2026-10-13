@@ -233,6 +233,7 @@ function DesktopDashboardHome({
   profileNextAppointment = null,
   overdueReview = null,
   activeVisitSlot,
+  installPromotionSlot = null,
   headline,
   careTeamDoctorName,
 }) {
@@ -248,6 +249,8 @@ function DesktopDashboardHome({
       ) : (
         <div className="mb-5"><DesktopRequestHero /></div>
       )}
+
+      {installPromotionSlot}
 
       <div className="desktop-dashboard-shell">
         <div className="desktop-dashboard-grid">

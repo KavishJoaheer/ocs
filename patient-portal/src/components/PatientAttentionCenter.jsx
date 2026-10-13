@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { BellRing, ChevronDown, Link2, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { useLocation } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useAppInstallation } from "../hooks/useAppInstallation.jsx";
 import { getPatientLinkState } from "../lib/patientAccountLink.js";
 import { CLINIC_TEL, CLINIC_TEL_DISPLAY } from "../lib/clinicContact.js";
 import {
@@ -35,7 +37,11 @@ const LINK_COPY = {
 
 function PatientAttentionCenter({ className = "" }) {
   const { user } = usePatientAuth();
-  const [pushVisible, setPushVisible] = useState(false);
+  const { canPromote } = useAppInstallation();
+  const { pathname } = useLocation();
+  const [pushEligible, setPushVisible] = useState(false);
+  // Give installation its own moment instead of stacking two onboarding asks.
+  const pushVisible = pushEligible && !(canPromote && pathname === "/dashboard");
   const [expanded, setExpanded] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
   const linkState = getPatientLinkState(user);

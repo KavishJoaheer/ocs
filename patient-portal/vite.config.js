@@ -29,8 +29,9 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ["favicon.png", "ocs-medecins-mark.png", "pwa-192.png", "pwa-512.png", "ocs-mauritius-cinematic-v1.webp"],
       manifest: {
-        name: "OCS Médecins — Patient Portal",
-        short_name: "OCS Patient",
+        id: "/",
+        name: "OCS Care — OCS Médecins",
+        short_name: "OCS Care",
         description:
           "Manage your appointments, home visits, billing, and health records with OCS Médecins.",
         theme_color: "#065a60",

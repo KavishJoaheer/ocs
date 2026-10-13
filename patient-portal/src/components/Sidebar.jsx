@@ -4,6 +4,7 @@ import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 import { PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 import FamilyProfileSwitcher from "./FamilyProfileSwitcher.jsx";
 import MobileBottomNav from "./MobileBottomNav.jsx";
+import AppInstallLink from "./install/AppInstallLink.jsx";
 
 function SidebarLink({ item }) {
   const Icon = item.icon;
@@ -88,7 +89,7 @@ function Sidebar() {
             </nav>
           </div>
 
-          <div className="mt-auto" aria-hidden="true" />
+          <div className="mt-auto pt-8"><AppInstallLink variant="sidebar" /></div>
         </div>
       </aside>
     </>

@@ -31,6 +31,7 @@ import ProfilePrimaryCareContent from "../components/profile/ProfilePrimaryCareC
 import ProfilePasswordCard from "../components/profile/ProfilePasswordCard.jsx";
 import ProfileFamilyCard from "../components/profile/ProfileFamilyCard.jsx";
 import ProfileNotificationSettings from "../components/profile/ProfileNotificationSettings.jsx";
+import AppInstallLink from "../components/install/AppInstallLink.jsx";
 
 function MobileProfileDisclosure({ title, description, children }) {
   return (
@@ -456,6 +457,7 @@ function PatientProfile() {
 
         {/* Mobile — single column, interleaved order */}
         <div className="flex flex-col gap-5 lg:hidden">
+          <AppInstallLink variant="profile" />
           {personalCard}
           {primaryCareCard}
           {contactCard}
@@ -533,6 +535,7 @@ function PatientProfile() {
             )}
           </div>
           <div className="profile-desktop-col-right col-span-5 flex flex-col gap-8">
+            <AppInstallLink variant="profile" />
             {primaryCareCard}
             {billingCard}
             {isPrimaryProfile ? <ProfileNotificationSettings /> : null}
