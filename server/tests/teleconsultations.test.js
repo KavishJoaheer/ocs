@@ -171,6 +171,32 @@ test("consent and hotline screening are required; assignment, code checks, recor
   const otherPatient = await redeem(await invite(await patient()));
   assert.equal((await api("POST", `/patient-portal/teleconsultations/${r.id}/cancel`, {}, otherPatient)).status, 404);
 });
+test("completion requires private note and diagnosis, while prescription, summary and follow-up are optional", async () => {
+  const p = await patient(); const login = await redeem(await invite(p));
+  const r = (await request(login)).data.request;
+  await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator);
+  await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code: r.consultation_code, checks_confirmed: true }, doctor);
+  const body = { clinical_note: "PRIVATE-MINIMAL: findings and reasoning", patient_diagnosis: "Assessment discussed with patient" };
+  const beforeCount = db.prepare("SELECT count(*) AS n FROM consultations WHERE patient_id=?").get(p.id).n;
+  for (const invalid of [
+    { ...body, clinical_note: " " }, { ...body, patient_diagnosis: " " },
+    { doctor_notes: "Legacy-only note must not bypass structured fields" },
+    { ...body, patient_summary: "x".repeat(10001) }, { ...body, patient_prescription: "x".repeat(10001) },
+  ]) assert.equal((await api("POST", `/teleconsultations/${r.id}/complete`, invalid, doctor)).status, 400);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM consultations WHERE patient_id=?").get(p.id).n, beforeCount);
+  const completed = await api("POST", `/teleconsultations/${r.id}/complete`, body, doctor);
+  assert.equal(completed.status, 200, JSON.stringify(completed.data));
+  assert.equal(completed.data.request.status, "completed");
+  assert.equal(completed.data.request.patient_summary, "");
+  assert.equal(completed.data.request.follow_up, "");
+  const consultation = db.prepare("SELECT clinical_note, patient_diagnosis, patient_prescription FROM consultations WHERE id=?").get(completed.data.consultation_id);
+  assert.deepEqual(consultation, { ...body, patient_prescription: "" });
+  const records = await api("GET", "/patient-portal/health-records", null, login);
+  assert.ok(JSON.stringify(records.data).includes(body.patient_diagnosis));
+  assert.ok(!JSON.stringify(records.data).includes("PRIVATE-MINIMAL"));
+  assert.equal((await api("POST", `/teleconsultations/${r.id}/complete`, body, doctor)).status, 409);
+});
+
 test("wrong codes are limited; cancellation and referral remove codes and preserve next steps", async () => {
   const p=await patient(); const login=await redeem(await invite(p)); const r=(await request(login)).data.request;
   await api("POST", `/teleconsultations/${r.id}/assign`, {doctor_id:doctor.user.doctor_id}, operator);

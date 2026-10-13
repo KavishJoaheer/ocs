@@ -104,8 +104,14 @@ staffRouter.post("/:id/complete", (req, res) => {
   if (row.status !== "in_consultation" || !row.code_verified_at) return res.status(409).json({ error: "Verify the patient and begin the consultation first." });
   const summary = String(req.body.patient_summary || "").trim();
   const followUp = String(req.body.follow_up || "").trim();
+  if (!String(req.body.clinical_note || "").trim()) return res.status(400).json({ error: "Consultation note is required." });
+  if (!String(req.body.patient_diagnosis || "").trim()) return res.status(400).json({ error: "Patient-facing diagnosis is required." });
+  if ([req.body.clinical_note, req.body.patient_diagnosis, req.body.patient_prescription, summary].some(value => String(value || "").length > 10000)) {
+    return res.status(400).json({ error: "Keep each consultation field to 10,000 characters or fewer." });
+  }
+  if (followUp.length > 2000) return res.status(400).json({ error: "Keep follow-up to 2,000 characters or fewer." });
   const notes = normalizeConsultationNotesPayload(req.body);
-  if (notes.error || !summary || !followUp || summary.length > 10000 || followUp.length > 2000) return res.status(400).json({ error: notes.error || "Provide a patient summary and clear follow-up arrangements." });
+  if (notes.error) return res.status(400).json({ error: notes.error });
   const consultationId = db.transaction(() => {
     const date = getTodayLocal();
     const time = new Date(Date.now() + 4 * 3600000).toISOString().slice(11, 16);
@@ -117,7 +123,7 @@ staffRouter.post("/:id/complete", (req, res) => {
     return id;
   })();
   changed(row);
-  notifyPatient(row, "Your care plan is ready", "Your consultation summary and any prescription are available in OCS Care.");
+  notifyPatient(row, "Your consultation record is ready", "Your diagnosis and any prescription or care summary are available in OCS Care.");
   return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id)), consultation_id: Number(consultationId) });
 });
 staffRouter.post("/:id/close", (req, res) => {
