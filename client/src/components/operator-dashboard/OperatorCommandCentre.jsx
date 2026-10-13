@@ -50,7 +50,7 @@ function OperatorWorkflowCard({
         <p className="font-display text-[0.95rem] font-semibold tracking-tight text-[#203f42]">{title}</p>
         {status ? <p className="mt-0.5 text-sm font-medium text-[#203f42]">{status}</p> : null}
         {support ? <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">{support}</p> : null}
-        <span
+        {action ? <span
           className={cx(
             "mt-2 inline-flex items-center gap-1 text-xs font-semibold",
             variant === "amber" ? "text-[#8a6a12]" : "text-[#1a7f7a]",
@@ -58,7 +58,7 @@ function OperatorWorkflowCard({
         >
           {action}
           <ArrowUpRight className="size-3.5" strokeWidth={2.2} aria-hidden="true" />
-        </span>
+        </span> : null}
       </div>
       {value != null ? (
         <p className="shrink-0 font-display text-2xl font-semibold tabular-nums leading-none text-[#203f42]">{value}</p>
@@ -71,41 +71,20 @@ function OperatorLiveMonitoringPanel({ metrics }) {
   const unassigned = Array.isArray(metrics?.visit_requests?.unassigned)
     ? metrics.visit_requests.unassigned
     : [];
-  const unassignedCount = Number(metrics?.visit_requests?.unassigned_count ?? unassigned.length);
   const empty = unassigned.length === 0;
 
   return (
     <section className="ocs-cc-panel flex flex-col px-5 py-4" aria-labelledby="ocs-cc-live-heading">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2
-            id="ocs-cc-live-heading"
-            className="flex items-center gap-2 font-display text-base font-semibold text-[#203f42]"
-          >
+      <h2 id="ocs-cc-live-heading" className="font-display text-base font-semibold text-[#203f42]">
+          <Link to="/visit-requests" className="inline-flex items-center gap-2 transition hover:text-[#1a7f7a]">
             <span className="ocs-cc-pulse" aria-hidden="true" />
             Live visit requests
-          </h2>
-          <p className="mt-0.5 text-xs text-[#5f7476]">Monitoring OCS Care</p>
-        </div>
-        <Link
-          to="/visit-requests"
-          className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-[#1a7f7a] transition hover:text-[#203f42]"
-        >
-          Open live board
-          <ArrowUpRight className="size-3.5" aria-hidden="true" />
-        </Link>
-      </div>
+            <ArrowUpRight className="size-3.5 text-[#5f7476]" aria-hidden="true" />
+          </Link>
+      </h2>
 
       {empty ? (
-        <div className="mt-4">
-          <p className="font-display text-base font-semibold text-[#203f42]">No requests waiting</p>
-          <p className="mt-1 text-sm leading-6 text-[#5f7476]">
-            {unassignedCount === 0
-              ? "New requests from OCS Care will appear here automatically."
-              : "No unassigned visit requests in this list."}
-          </p>
-          <p className="mt-1 text-xs text-[#5f7476]">Monitoring in real time</p>
-        </div>
+        <p className="mt-2 text-sm text-[#5f7476]">No requests waiting</p>
       ) : (
         <ul className="mt-3 divide-y divide-slate-100">
           {unassigned.map((request) => (
@@ -238,15 +217,12 @@ export default function OperatorCommandCentre({
 
       <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <OperatorWorkflowCard
-          action="Start intake"
           icon={UserPlus}
-          status="Start a new care record"
           title="Add a patient"
           to="/patients/add"
           variant="create"
         />
         <OperatorWorkflowCard
-          action="Manage calls"
           icon={ClipboardList}
           title="Manage teleconsultations"
           to="/teleconsultations"

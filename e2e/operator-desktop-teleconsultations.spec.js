@@ -115,5 +115,13 @@ test(`teleconsultation queue supports error recovery at ${width}px`, async ({ pa
   await queue.getByRole("button", { name: "Retry teleconsultations", exact: true }).click();
   await expect(queue.getByRole("alert")).toHaveCount(0);
   await expect(queue.getByText("No active teleconsultations", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `/tmp/ocs-operator-minimal-panels-${width}.png`, fullPage: true });
+  if (width >= 768) {
+    await queue.getByRole("link", { name: "Live teleconsultations", exact: true }).click();
+    await expect(page).toHaveURL(/\/teleconsultations$/);
+    await page.goto(`${STAFF}/`);
+    await page.getByRole("link", { name: "Live visit requests", exact: true }).click();
+    await expect(page).toHaveURL(/\/visit-requests$/);
+  }
 });
 }
