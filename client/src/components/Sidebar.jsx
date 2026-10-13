@@ -268,7 +268,7 @@ function Sidebar() {
   const tabletNavItems = useMemo(
     () =>
       user.role === "operator"
-        ? getBottomNavItemsForRole(user.role)
+        ? [...getBottomNavItemsForRole(user.role), ...persistentNavItems.filter((item) => item.to === "/teleconsultations")]
         : persistentNavItems,
     [persistentNavItems, user.role],
   );
@@ -277,7 +277,7 @@ function Sidebar() {
     () =>
       visibleNavItems.filter(
         (item) =>
-          user.role !== "operator" &&
+          (user.role !== "operator" || item.to === "/teleconsultations") &&
           !bottomPaths.has(item.to) &&
           !DESKTOP_ONLY_PATHS.has(item.to) &&
           !item.hideInMobileDrawer,

@@ -214,6 +214,7 @@ function getOperatorBoardCounts(metrics) {
 
 function OperatorMobileLauncher({
   user,
+  dashboard,
   operatorMetrics,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "there";
@@ -240,6 +241,29 @@ function OperatorMobileLauncher({
         Hello, {firstName}
       </h1>
       <p className="mt-1 text-sm text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
+
+      <Link
+        to="/teleconsultations"
+        className="mt-4 inline-flex min-h-12 items-center gap-3 rounded-2xl border border-ocs-teal/20 bg-white px-4 py-3 text-sm font-semibold text-ocs-slate shadow-sm transition active:bg-ocs-teal/5"
+      >
+        <ClipboardList className="size-5 text-ocs-teal" />
+        Manage teleconsultations
+        <ArrowUpRight className="ml-auto size-4 text-ocs-teal" />
+      </Link>
+
+      <div className="mt-5">
+        {dashboard?.liveVisitRequests ? (
+          <LiveRequestsPanel
+            requests={dashboard.liveVisitRequests.visit_requests || []}
+            activeCount={Number(dashboard.liveVisitRequests.active_count || 0)}
+            dispatch
+          />
+        ) : (
+          <Link to="/visit-requests" className="block rounded-2xl border border-slate-200 bg-white p-4 text-sm text-ocs-slate">
+            Live requests could not be loaded. Open the live board.
+          </Link>
+        )}
+      </div>
 
       <div className="mt-5 grid grid-cols-2 gap-4">
         <DoctorMobileSplitCard
@@ -304,6 +328,7 @@ function MobileLauncher({
     return (
       <OperatorMobileLauncher
         user={user}
+        dashboard={dashboard}
         operatorMetrics={operatorMetrics}
       />
     );
@@ -903,12 +928,12 @@ function DoctorMetricsRow({ dashboard }) {
   );
 }
 
-function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
+function LiveRequestsPanel({ requests = [], activeCount = 0, dispatch = false }) {
   const visibleRequests = requests.slice(0, 2);
   const hasRequests = activeCount > 0;
 
   return (
-    <section className="relative overflow-hidden rounded-[28px] bg-[#173f4a] p-5 text-white shadow-[0_22px_50px_rgba(23,63,74,0.22)] md:p-6">
+    <section aria-label="Live requests" className="relative overflow-hidden rounded-[28px] bg-[#173f4a] p-5 text-white shadow-[0_22px_50px_rgba(23,63,74,0.22)] md:p-6">
       <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-ocs-teal/25 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-28 left-1/4 size-56 rounded-full bg-ocs-yellow/10 blur-3xl" />
 
@@ -934,8 +959,8 @@ function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
             </h2>
             <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-white/68">
               {hasRequests
-                ? "Assigned home visits that need your attention now."
-                : "You are clear for now. New assigned visits will appear here automatically."}
+                ? dispatch ? "Home visit requests that need your attention now." : "Assigned home visits that need your attention now."
+                : dispatch ? "New home visit requests will appear here automatically." : "You are clear for now. New assigned visits will appear here automatically."}
             </p>
           </div>
 
@@ -959,10 +984,10 @@ function DoctorLiveRequestsPanel({ requests = [], activeCount = 0 }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-white">
-                      {request.patient_name || "Assigned patient"}
+                      {request.patient_name || (dispatch ? "Patient" : "Assigned patient")}
                     </p>
                     <p className="mt-1 text-xs font-semibold text-[#83ddd7]">
-                      {request.status_label || "Doctor assigned"}
+                      {request.status_label || (dispatch ? "Request received" : "Doctor assigned")}
                       {request.eta_minutes != null ? ` · ETA ${request.eta_minutes} min` : ""}
                     </p>
                   </div>
@@ -1145,7 +1170,7 @@ function DoctorDashboardView({
 
       {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
 
-      <DoctorLiveRequestsPanel
+      <LiveRequestsPanel
         activeCount={liveVisitRequestCount}
         requests={liveVisitRequests}
       />
@@ -1524,7 +1549,7 @@ function DashboardPage() {
         const [data, doctorWorkspace, liveVisitRequests] = await Promise.all([
           api.get("/dashboard"),
           user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
-          user.role === "doctor"
+          (user.role === "doctor" || (user.role === "operator" && isMobile))
             ? api.get("/visit-requests?status=active").catch(() => null)
             : Promise.resolve(null),
         ]);
@@ -1539,7 +1564,7 @@ function DashboardPage() {
         if (user.role === "operator") {
           try {
             const operatorWorkspace = await api.get("/dashboard/operator-workspace");
-            merged = { ...data, operatorWorkspace };
+            merged = { ...merged, operatorWorkspace };
           } catch (opError) {
             toast.error(opError.message || "Could not load operator workspace metrics.");
           }
@@ -1576,7 +1601,24 @@ function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, [user.role, refreshKey]);
+  }, [user.role, refreshKey, isMobile]);
+
+  useEffect(() => {
+    if (!isOperator || !isMobile) return undefined;
+    let ignore = false;
+    const timer = window.setInterval(async () => {
+      try {
+        const liveVisitRequests = await api.get("/visit-requests?status=active");
+        if (!ignore) setDashboard((current) => current ? { ...current, liveVisitRequests } : current);
+      } catch {
+        // Keep the last live snapshot while the realtime connection recovers.
+      }
+    }, 15_000);
+    return () => {
+      ignore = true;
+      window.clearInterval(timer);
+    };
+  }, [isOperator, isMobile]);
 
   async function handleStatusChange(nextStatus) {
     if (isSavingStatus || user.operation_status === nextStatus) {

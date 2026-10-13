@@ -213,7 +213,7 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("button", { name: "Attach photo", exact: true })).toBeVisible();
   });
 
-  test("mobile keeps billing reachable while protecting the invoice form", async ({ page, request }) => {
+  test("mobile billing keeps the operator navigation focused and protects the invoice form", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -221,13 +221,11 @@ test.describe("operator billing", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
     const bottomNav = page.locator("#ocs-bottom-nav");
-    await expect(bottomNav.getByRole("link")).toHaveCount(5);
-    await expect(bottomNav.getByRole("link", { name: "Patients", exact: true })).toBeVisible();
+    await expect(bottomNav.getByRole("link")).toHaveCount(3);
+    await expect(bottomNav.getByRole("link", { name: "Home", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Add patient", exact: true })).toBeVisible();
-    await expect(bottomNav.getByRole("link", { name: "Visits", exact: true })).toBeVisible();
-    await expect(bottomNav.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
     await expect(bottomNav.getByRole("link", { name: "Reviews", exact: true })).toBeVisible();
-    for (const hiddenDestination of ["Home", "Follow-up", "Inventory", "Stock history", "HCM news"]) {
+    for (const hiddenDestination of ["Patients", "Visits", "Billing", "Follow-up", "Inventory", "Stock history", "HCM news"]) {
       await expect(bottomNav.getByRole("link", { name: hiddenDestination, exact: true })).toHaveCount(0);
     }
 

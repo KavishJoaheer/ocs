@@ -21,17 +21,8 @@ export const bottomNavItems = [
 ];
 
 export const operatorBottomNavItems = [
-  {
-    to: "/patients",
-    label: "Patients",
-    icon: UsersRound,
-    roles: ["operator"],
-    isActiveWhen: (location) =>
-      location.pathname.startsWith("/patients") && location.pathname !== "/patients/add",
-  },
+  { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["operator"] },
   { to: "/patients/add", label: "Add patient", icon: UserPlus, roles: ["operator"] },
-  { to: "/visit-requests", label: "Visits", icon: ClipboardList, roles: ["operator"] },
-  { to: "/billing", label: "Billing", icon: CreditCard, roles: ["operator"] },
   { to: "/operator/long-term-review", label: "Reviews", icon: Activity, roles: ["operator"] },
 ];
 
