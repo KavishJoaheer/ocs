@@ -69,7 +69,7 @@ export default function TeleconsultationsPage() {
     if (!["admin", "operator"].includes(user.role)) return;
     api.get("/doctors").then(setDoctors).catch(err => setError(err.message));
   }, [user.role]);
-  return <div className="ocs-page mx-auto max-w-5xl space-y-5 p-4 md:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-ocs-slate">Teleconsultations</h1><p className="mt-1 text-sm text-slate-600">Consent, assignment, WhatsApp consultation and follow-up.</p></div><Link to="/patients/add" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">Register patient</Link></div>
+  return <div className="ocs-page mx-auto max-w-5xl space-y-5 p-4 md:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-ocs-slate">Teleconsultations</h1><p className="mt-1 text-sm text-slate-600">Consent, assignment, WhatsApp consultation and follow-up.</p></div><Link to="/patients/add" className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">Add patient</Link></div>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}<button onClick={load} type="button" className="ml-3 underline">Retry</button></p>}
     {loading ? <p role="status">Loading requests…</p> : requests.length ? requests.map(r => <RequestCard key={r.id} request={r} user={user} doctors={doctors} reload={load} />) : <p className="rounded-xl bg-white p-5 text-sm text-slate-600">{user.role === "doctor" ? "No teleconsultations assigned to you yet." : "No teleconsultation requests yet. Open a patient profile to prepare their OCS Care invitation."}</p>}
   </div>;
