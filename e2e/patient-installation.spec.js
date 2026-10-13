@@ -95,10 +95,13 @@ test("landing and sign-in stay focused; successful sign-in reveals the invitatio
   await expect(page.getByRole("heading", { name: /Step into a world of Care/i })).toBeVisible();
   await expect(invite(page)).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator('.landing-primary-cta')).toHaveAttribute("href", "/register");
+  await expect(page.getByRole("link", { name: "Call OCS · 52 52 22 34", exact: true })).toHaveAttribute("href", "tel:52522234");
+  await expect(page.getByRole("link", { name: "Get care", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Add OCS Care to your phone", exact: true }).click();
   await expect(guide(page)).toBeVisible();
   await guide(page).getByRole("button", { name: "Close installation guide" }).click();
-  await page.getByRole("link", { name: "Patient login", exact: true }).click();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
   await expect(invite(page)).toHaveCount(0);
   await page.getByLabel("Email address").fill(user.email);
   await page.getByLabel("Password", { exact: true }).fill("test-password");

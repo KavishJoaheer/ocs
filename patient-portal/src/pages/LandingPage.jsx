@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AppInstallLink from "../components/install/AppInstallLink.jsx";
+import { CLINIC_TEL_DISPLAY, CLINIC_TEL_HREF } from "../lib/clinicContact.js";
 import {
   ArrowRight,
   CalendarDays,
@@ -12,6 +13,7 @@ import {
   HousePlus,
   Link2,
   MapPin,
+  Phone,
   Route,
   ShieldCheck,
   Stethoscope,
@@ -291,20 +293,25 @@ function LandingPage() {
 
             <FadeInSection delay={180}>
               <div className="landing-actions">
-                <a
-                  href="https://ocsmedecin.mu/doctor-at-home-in-mauritius/"
-                  className="landing-primary-cta"
-                >
-                  Get care
+                <Link to="/register" className="landing-primary-cta">
+                  <span>Create my OCS Care account</span>
                   <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />
-                </a>
+                </Link>
                 <Link to="/login" className="landing-secondary-cta">
-                  Patient login
+                  Sign in
                 </Link>
               </div>
               <p className="landing-action-note">
-                New to OCS? <Link to="/register">Create your patient account</Link>
+                Appointments and health records, in one place.
               </p>
+              <aside className="landing-hotline" aria-label="OCS hotline">
+                <p className="landing-hotline-title">Need care now?</p>
+                <a href={CLINIC_TEL_HREF} className="landing-hotline-call">
+                  <Phone size={16} strokeWidth={2} aria-hidden="true" />
+                  <span>Call OCS · {CLINIC_TEL_DISPLAY}</span>
+                </a>
+                <p className="landing-hotline-detail">24/7 hotline · No account needed</p>
+              </aside>
             </FadeInSection>
           </div>
 
@@ -385,7 +392,7 @@ function LandingPage() {
               <h2>Bringing healthcare to every Mauritian doorstep</h2>
             </div>
             <Link to="/register">
-              Create my account
+              Create my OCS Care account
               <ArrowRight size={18} strokeWidth={2.3} aria-hidden="true" />
             </Link>
           </FadeInSection>
