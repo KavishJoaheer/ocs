@@ -11,6 +11,10 @@ import {
   CircleAlert,
   CircleCheck,
   CircleHelp,
+  ChevronDown,
+  ArrowRight,
+  Navigation,
+  SlidersHorizontal,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -632,6 +636,118 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true, 
   );
 }
 
+function DoctorMobileVisitCard({ request, onUpdate }) {
+  const locked = CLOSED_STATUSES.includes(request.status);
+  const [draft, setDraft] = useState(() => draftFromRequest(request));
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const serverKey = `${request.id}|${request.eta_minutes}|${request.staff_notes}`;
+  const [syncedKey, setSyncedKey] = useState(serverKey);
+  if (serverKey !== syncedKey) {
+    setSyncedKey(serverKey);
+    if (!dirty || locked) {
+      setDraft(draftFromRequest(request));
+      setDirty(false);
+    }
+  }
+
+  const advance = nextStatus(request.status, { isDoctor: true });
+  const actionLabels = {
+    assigned: "I'm on my way",
+    en_route: "I've arrived",
+    arrived: "Start consultation",
+    in_consultation: "Complete visit",
+  };
+  const statusLabel = STATUS_OPTIONS.find((option) => option.value === request.status)?.label || request.status_label;
+  const coverageBlocked = request.insurance_coverage?.is_linkham && request.insurance_coverage.allowed !== true;
+  const blockedAdvance = coverageBlocked && ["assigned", "en_route"].includes(request.status);
+
+  function updateDraft(patch) {
+    setDraft((current) => ({ ...current, ...patch }));
+    setDirty(true);
+  }
+
+  async function save(event, status) {
+    event.preventDefault();
+    if (saving || locked) return;
+    setSaving(true);
+    try {
+      await onUpdate(request.id, {
+        ...(status ? { status } : {}),
+        ...(dirty ? {
+          eta_minutes: draft.eta_minutes === "" ? null : Number(draft.eta_minutes),
+          staff_notes: draft.staff_notes,
+        } : {}),
+      });
+      setDirty(false);
+      if (!status) toast.success("Visit details saved.");
+    } catch (error) {
+      toast.error(error?.message || "Could not update the visit. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article aria-label={`Visit for ${request.patient_name}`} className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_3px_16px_rgba(59,89,92,0.04)]">
+      <div className="p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={cx("rounded-full px-2.5 py-1 text-[11px] font-semibold", locked ? "bg-slate-100 text-slate-600" : "bg-ocs-teal/10 text-ocs-teal")}>
+            {statusLabel}
+          </span>
+          {request.urgency && request.urgency !== "routine" ? <UrgencyBadge urgency={request.urgency} /> : null}
+          {request.eta_minutes != null && !locked ? <span className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-slate-500"><Clock className="size-3.5" />{request.eta_minutes} min ETA</span> : null}
+        </div>
+        <h2 className="mt-3 break-words text-lg font-bold leading-snug tracking-tight text-ocs-slate">{request.patient_name}</h2>
+        {visitForLabel(request) ? <p className="mt-1 text-xs font-medium text-slate-500">{visitForLabel(request)}</p> : null}
+        <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{request.reason || "No reason provided"}</p>
+        <p className="mt-3 flex items-start gap-2 text-sm leading-5 text-slate-600">
+          <MapPin className="mt-0.5 size-4 shrink-0 text-ocs-teal" />
+          <span className="min-w-0 break-words">{request.address || "No address provided"}</span>
+        </p>
+        {request.insurance_coverage?.is_linkham ? <div className="mt-3"><InsuranceCoverageBadge request={request} /></div> : null}
+        {request.patient_contact_number || request.address ? (
+          <div className="mt-4 flex gap-2">
+            {request.patient_contact_number ? <a href={`tel:${request.patient_contact_number}`} aria-label={`Call ${request.patient_name}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-ocs-slate"><Phone className="size-4" />Call patient</a> : null}
+            {request.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(request.address)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-ocs-slate"><Navigation className="size-4" />Directions</a> : null}
+          </div>
+        ) : null}
+        {!locked && advance ? (
+          <button type="button" disabled={saving || blockedAdvance} onClick={(event) => save(event, advance)} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50">
+            {saving ? "Updating visit…" : actionLabels[request.status]}
+            {!saving ? <ArrowRight className="size-4" /> : null}
+          </button>
+        ) : null}
+        {blockedAdvance ? <p className="mt-2 text-xs leading-5 text-rose-700">Contact dispatch to confirm insurance coverage before continuing.</p> : null}
+      </div>
+      <details className="group border-t border-slate-100">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-xs font-semibold text-slate-500 [&::-webkit-details-marker]:hidden">
+          {locked ? "Visit details" : "ETA & team notes"}
+          <ChevronDown className="size-4 transition group-open:rotate-180" />
+        </summary>
+        <div className="px-4 pb-4">
+          <p className="text-xs leading-5 text-slate-500">Requested {formatRequestDate(request.created_at)}{request.patient_identifier ? ` · ${request.patient_identifier}` : ""}</p>
+          {locked ? (
+            <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-600">{request.staff_notes || "No team notes."}</p>
+          ) : (
+            <form onSubmit={save} className="mt-3 space-y-3">
+              <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                ETA in minutes
+                <input type="number" min="0" step="1" inputMode="numeric" value={draft.eta_minutes} disabled={saving} onChange={(event) => updateDraft({ eta_minutes: event.target.value })} placeholder="e.g. 25" className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-base font-normal text-slate-900 outline-none focus:border-ocs-teal" />
+              </label>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={`visit-notes-${request.id}`} className="text-xs font-semibold text-slate-600">Team notes</label>
+                <textarea id={`visit-notes-${request.id}`} rows={2} value={draft.staff_notes} disabled={saving} onChange={(event) => updateDraft({ staff_notes: event.target.value })} placeholder="Add a note for the clinic" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-base text-slate-900 outline-none focus:border-ocs-teal" />
+              </div>
+              <button type="submit" disabled={!dirty || saving} className="min-h-11 w-full rounded-xl border border-ocs-teal/25 px-3 text-sm font-semibold text-ocs-teal disabled:opacity-40">{saving ? "Saving…" : "Save details"}</button>
+            </form>
+          )}
+        </div>
+      </details>
+    </article>
+  );
+}
+
 export default function VisitRequestsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -641,6 +757,7 @@ export default function VisitRequestsPage() {
   const isDoctor = user?.role === "doctor";
   const isAdmin = user?.role === "admin";
   const canAssignDoctor = !isDoctor;
+  const isDoctorMobile = isDoctor && isMobile;
   const boardColumns = isDoctor ? DOCTOR_BOARD_COLUMNS : DISPATCH_BOARD_COLUMNS;
 
   const [requests, setRequests] = useState([]);
@@ -828,9 +945,60 @@ export default function VisitRequestsPage() {
     setDateError("");
   }
 
+  const dateFilterForm = (
+    <form onSubmit={applyDates} className="space-y-3 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-4">
+      <p className="text-sm font-semibold text-slate-700">Requested date <span className="font-normal text-slate-500">· Mauritius time</span></p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex">
+          <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
+            From
+            <input type="date" value={dateDraft.from} onChange={(event) => setDateDraft((current) => ({ ...current, from: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
+          </label>
+          <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
+            To
+            <input type="date" value={dateDraft.to} onChange={(event) => setDateDraft((current) => ({ ...current, to: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <button type="submit" className="flex-1 rounded-xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white sm:flex-none">Apply dates</button>
+          {hasDateFilter || dateDraft.from || dateDraft.to ? <button type="button" onClick={clearDates} className="rounded-xl border border-[rgba(65,200,198,0.25)] px-4 py-2 text-sm font-semibold text-[#2d8f98]">Clear dates</button> : null}
+        </div>
+      </div>
+      {dateError ? <p role="alert" className="text-sm text-red-700">{dateError}</p> : null}
+      <p aria-live="polite" className="text-xs text-slate-500">
+        {hasDateFilter
+          ? dateSummary
+          : "All dates. Use the same From and To date to find a single day."}
+      </p>
+    </form>
+  );
+
+  const displayedRequests = isDoctorMobile && statusFilter !== "active"
+    ? requests.filter((request) => CLOSED_STATUSES.includes(request.status))
+    : requests;
+
   return (
-    <div className="space-y-6">
-      <PageHeader
+    <div className={isDoctorMobile ? "mx-auto max-w-md space-y-4" : "space-y-6"}>
+      {isDoctorMobile ? (
+        <>
+          <header className="flex items-center justify-between gap-3 py-1">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-ocs-slate">Visit requests</h1>
+              <p className="mt-1 text-sm text-slate-500">Your assigned home visits</p>
+            </div>
+            <button type="button" aria-label="Refresh visit requests" disabled={refreshing || loading} onClick={() => loadRequests({ silent: true })} className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-ocs-teal disabled:opacity-50">
+              <RefreshCw className={cx("size-4", refreshing && "animate-spin")} />
+            </button>
+          </header>
+          <div className="flex rounded-2xl bg-slate-200/60 p-1" aria-label="Visit request views">
+            {[{ value: "active", label: "Active visits" }, { value: "all", label: "History" }].map((tab) => (
+              <button key={tab.value} type="button" aria-pressed={tab.value === "active" ? statusFilter === "active" : statusFilter !== "active"} onClick={() => setStatusFilter(tab.value)} className={cx("min-h-11 flex-1 rounded-xl text-sm font-semibold transition", (tab.value === "active" ? statusFilter === "active" : statusFilter !== "active") ? "bg-white text-ocs-slate shadow-sm" : "text-slate-500")}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : <PageHeader
         eyebrow={isDoctor ? "My visits" : "Dispatch desk"}
         title="Visit requests"
         description={
@@ -850,9 +1018,9 @@ export default function VisitRequestsPage() {
             Refresh
           </button>
         }
-      />
+      />}
 
-      <div className="flex flex-wrap gap-2">
+      {!isDoctorMobile ? <div className="flex flex-wrap gap-2">
         {[
           { value: "active", label: "Live board" },
           ...(!isDoctor ? [{ value: "changes", label: "Changes", badge: appointmentChangeCount }] : []),
@@ -884,34 +1052,19 @@ export default function VisitRequestsPage() {
             ) : null}
           </button>
         ))}
-      </div>
+      </div> : null}
 
       {statusFilter !== "changes" ? (
-        <form onSubmit={applyDates} className="space-y-3 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-4">
-          <p className="text-sm font-semibold text-slate-700">Requested date <span className="font-normal text-slate-500">· Mauritius time</span></p>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex">
-              <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
-                From
-                <input type="date" value={dateDraft.from} onChange={(event) => setDateDraft((current) => ({ ...current, from: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-600">
-                To
-                <input type="date" value={dateDraft.to} onChange={(event) => setDateDraft((current) => ({ ...current, to: event.target.value }))} className="min-w-0 w-full rounded-xl border border-[rgba(65,200,198,0.25)] bg-white px-3 py-2 text-sm text-slate-900 sm:w-44" />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button type="submit" className="flex-1 rounded-xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white sm:flex-none">Apply dates</button>
-              {hasDateFilter || dateDraft.from || dateDraft.to ? <button type="button" onClick={clearDates} className="rounded-xl border border-[rgba(65,200,198,0.25)] px-4 py-2 text-sm font-semibold text-[#2d8f98]">Clear dates</button> : null}
-            </div>
-          </div>
-          {dateError ? <p role="alert" className="text-sm text-red-700">{dateError}</p> : null}
-          <p aria-live="polite" className="text-xs text-slate-500">
-            {hasDateFilter
-              ? dateSummary
-              : "All dates. Use the same From and To date to find a single day."}
-          </p>
-        </form>
+        isDoctorMobile ? (
+          <details className="group rounded-2xl border border-slate-200/80 bg-white/70">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium text-slate-600 [&::-webkit-details-marker]:hidden">
+              <SlidersHorizontal className="size-4" />
+              {hasDateFilter ? "Date filter applied" : "Filter by date"}
+              <ChevronDown className="ml-auto size-4 transition group-open:rotate-180" />
+            </summary>
+            {dateFilterForm}
+          </details>
+        ) : dateFilterForm
       ) : null}
 
       {!isDoctor && statusFilter === "active" && appointmentChangeCount > 0 ? (
@@ -940,17 +1093,26 @@ export default function VisitRequestsPage() {
         <LoadingState label="Loading visit requests" />
       ) : loadError ? (
         <EmptyState title="Could not load visit requests" description={`${loadError} Use Refresh to try again.`} />
-      ) : requests.length === 0 ? (
+      ) : displayedRequests.length === 0 ? (
         <EmptyState
-          title={hasDateFilter ? "No visits match these dates" : "No visit requests"}
+          title={hasDateFilter ? "No visits match these dates" : isDoctorMobile ? statusFilter === "active" ? "No active visits" : "No visit history yet" : "No visit requests"}
           description={
             hasDateFilter
-              ? "Try another date range, clear the dates, or choose All to include every visit status."
+              ? isDoctorMobile
+                ? "Try another date range or clear the dates to see your visits."
+                : "Try another date range, clear the dates, or choose All to include every visit status."
+              : isDoctorMobile && statusFilter !== "active"
+              ? "Completed and cancelled visits will appear here."
               : isDoctor
               ? "When dispatch assigns you a home visit, it will appear here."
               : "When a patient requests a home visit from the patient portal, it will appear here for the team to action."
           }
         />
+      ) : isDoctorMobile ? (
+        <section aria-label={statusFilter === "active" ? "Active visits" : "Visit history"} className="space-y-3">
+          <p className="px-1 text-xs font-medium text-slate-500" aria-live="polite">{displayedRequests.length} {statusFilter === "active" ? "active visit" : "past visit"}{displayedRequests.length === 1 ? "" : "s"}{hasDateFilter ? " · Filtered by date" : ""}</p>
+          {displayedRequests.map((request) => <DoctorMobileVisitCard key={request.id} request={request} onUpdate={handleUpdate} />)}
+        </section>
       ) : isBoard ? (
         <DispatchBoard
           requests={requests}

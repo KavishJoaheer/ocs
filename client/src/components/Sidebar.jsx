@@ -106,6 +106,7 @@ const navItems = [
     label: "Billing",
     icon: CreditCard,
     roles: ["doctor", "operator"],
+    hideInMobileDrawer: true,
   },
   {
     to: "/consultations",

@@ -137,55 +137,50 @@ for (const device of [
   { name: "Samsung-sized Android", width: 360, height: 800 },
   { name: "large iPhone", width: 430, height: 932 },
 ]) {
-  test(`doctor billing stays reachable on ${device.name}`, async ({ page, request }) => {
-    const { session, patient, visit } = await loginDoctorWithBillableVisit(request);
-    prepareCurrentTariffForE2e(visit);
+  test(`doctor billing is hidden on ${device.name}`, async ({ page, request }) => {
+    const { session, patient } = await loginDoctorWithBillableVisit(request);
     await injectStaffSession(page, session.token);
     await page.setViewportSize({ width: device.width, height: device.height });
     await page.goto(`${STAFF_BASE}/billing`);
 
-    await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
-    const findAnotherVisit = page.getByRole("button", { name: "Find another visit", exact: true });
-    if (await findAnotherVisit.isVisible()) await findAnotherVisit.click();
-    await page.getByRole("button", { name: /Select patient/i }).click();
+    await expect(page).toHaveURL(`${STAFF_BASE}/`);
+    await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toHaveCount(0);
+    const bottomNav = page.locator("#ocs-bottom-nav");
+    await expect(bottomNav.getByRole("link")).toHaveCount(4);
+    await expect(bottomNav.getByRole("link", { name: "Billing", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Open menu" }).click();
+    const drawer = page.getByRole("dialog", { name: "Navigation menu" });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Billing", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
-    const picker = page.locator(".billing-patient-picker-panel");
-    await expect(picker).toBeVisible();
-    await expect(picker).toHaveCSS("position", "fixed");
-    const pickerBox = await picker.boundingBox();
-    expect(pickerBox?.x).toBeGreaterThanOrEqual(0);
-    expect((pickerBox?.x || 0) + (pickerBox?.width || 0)).toBeLessThanOrEqual(device.width);
-    await page
-      .getByRole("option", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
-      .click();
-    await page.getByLabel("2. Consultation").selectOption(String(visit.consultation_id));
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Charges" })).toBeVisible();
+    await page.goto(`${STAFF_BASE}/patients/${patient.patient_id}`);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Billing", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Open billing workspace", exact: true })).toHaveCount(0);
 
-    const chooseConsumablesBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Choose consumables" });
-    await expect(chooseConsumablesBar).toBeVisible();
-    const chooseConsumablesBox = await chooseConsumablesBar.boundingBox();
-    await expect(page.locator("#ocs-bottom-nav")).toBeHidden();
-    expect((chooseConsumablesBox?.y || 0) + (chooseConsumablesBox?.height || 0)).toBeLessThanOrEqual(device.height);
-
-    await chooseConsumablesBar.click();
-    await expect(page.getByRole("heading", { name: "Consumables used" })).toBeVisible();
-    const reviewBar = page.locator(".billing-integrated-review-bar").filter({ hasText: "Review invoice" });
-    await expect(reviewBar).toBeVisible();
-    const reviewBox = await reviewBar.boundingBox();
-    expect((reviewBox?.y || 0) + (reviewBox?.height || 0)).toBeLessThanOrEqual(device.height);
-
-    await reviewBar.click();
-    await expect(page.getByRole("heading", { name: "Review invoice" })).toBeVisible();
-    await expect(page.getByLabel("Consultation price")).toHaveCount(0);
-    await page.getByRole("button", { name: "Adjust prices", exact: true }).click();
-    await expect(page.getByLabel("Consultation price")).toHaveCount(1);
-    const issueBar = page.getByRole("button", { name: /Issue invoice for Rs/i });
-    await expect(issueBar).toBeVisible();
-    const issueBox = await issueBar.boundingBox();
-    expect((issueBox?.y || 0) + (issueBox?.height || 0)).toBeLessThanOrEqual(device.height);
+    await page.goto(`${STAFF_BASE}/doctor/pending-payment`);
+    await expect(page).toHaveURL(`${STAFF_BASE}/`);
   });
 }
+
+test("doctor billing remains available on desktop and closes when resized to mobile", async ({ page, request }) => {
+  const { session, patient } = await loginDoctorWithBillableVisit(request);
+  await injectStaffSession(page, session.token);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${STAFF_BASE}/billing`);
+  await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
+
+  await page.goto(`${STAFF_BASE}/patients/${patient.patient_id}`);
+  await expect(page.getByRole("link", { name: "Open billing workspace", exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto(`${STAFF_BASE}/billing`);
+  await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible();
+  await page.setViewportSize({ width: 767, height: 1024 });
+  await expect(page).toHaveURL(`${STAFF_BASE}/`);
+});
 
 test.describe("operator billing", () => {
   test("desktop lets an operator choose unpaid follow-up or payment received", async ({ page, request }) => {

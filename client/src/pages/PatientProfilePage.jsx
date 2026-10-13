@@ -1498,8 +1498,8 @@ function PatientProfilePage() {
   }, [canManageConsultations, searchParams, setSearchParams]);
 
   const showPatientBillingUi = useMemo(
-    () => Boolean(data && canBillPatientForUser(user, data.patient)),
-    [data, user],
+    () => Boolean(data && canBillPatientForUser(user, data.patient) && !(user.role === "doctor" && isMobile)),
+    [data, user, isMobile],
   );
 
   const showMobileFab =
