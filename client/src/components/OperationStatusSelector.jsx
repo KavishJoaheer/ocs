@@ -69,7 +69,7 @@ function OperationStatusSelector({
         </span>
       ) : null}
 
-      <div className={cx("flex items-center gap-1 rounded-xl p-1", onDark ? "bg-white/10" : onTeal ? "border border-[#cadfdd] bg-white" : "bg-slate-100")}>
+      <div className={cx("flex items-center gap-1 p-1", onTeal ? "rounded-full" : "rounded-xl", onDark ? "bg-white/10" : onTeal ? "border border-[#cadfdd] bg-white" : "bg-slate-100")}>
         {options.map((status) => {
           const meta = onDark ? DARK_STATUS_META[status] : STATUS_META[status];
           const isActive = value === status;
@@ -81,7 +81,8 @@ function OperationStatusSelector({
               onClick={() => onChange?.(status)}
               disabled={disabled || isActive}
               className={cx(
-                "rounded-lg px-3 py-1.5 text-xs font-bold normal-case transition disabled:cursor-default",
+                "px-3 py-1.5 text-xs font-bold normal-case transition disabled:cursor-default",
+                onTeal ? "rounded-full" : "rounded-lg",
                 isActive
                   ? onTeal ? "bg-[#137b80] text-white shadow-sm" : cx(meta?.textClassName, meta?.activeClassName)
                   : onDark

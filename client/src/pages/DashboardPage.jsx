@@ -225,17 +225,17 @@ function OperatorMobileLauncher({ user, dashboard }) {
       <h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-[#173f4a]">
         {getTimeOfDayGreeting()}, {firstName}
       </h1>
-      <p className="mt-1.5 text-sm text-[#718086]">{dayjs().format("dddd, D MMMM")}</p>
+      <p className="mt-1.5 text-sm text-[#485e65]">{dayjs().format("dddd, D MMMM")}</p>
 
       <div className="mt-6">
         <OperatorMobileLiveRequests visits={dashboard?.liveVisitRequests} readOnly={Boolean(user.is_read_only)} />
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        <Link to="/patients" className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-2xl border border-[#9dc5c4] bg-white/75 px-2 py-3 text-sm font-semibold text-[#173f4a] transition active:bg-[#e6f5f2]">
+        <Link to="/patients" className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-full border border-[#9dc5c4] bg-white/75 px-2 py-3 text-sm font-semibold text-[#173f4a] transition active:bg-[#e6f5f2]">
           <UserSearch className="size-6 shrink-0" strokeWidth={1.7} aria-hidden="true" />Find patient
         </Link>
-        <button type="button" onClick={() => setPolicyOpen(true)} className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-2xl border border-[#9dc5c4] bg-white/75 px-2 py-3 text-sm font-semibold text-[#173f4a] transition active:bg-[#e6f5f2]">
+        <button type="button" onClick={() => setPolicyOpen(true)} className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-full border border-[#9dc5c4] bg-white/75 px-2 py-3 text-sm font-semibold text-[#173f4a] transition active:bg-[#e6f5f2]">
           <ShieldCheck className="size-6 shrink-0" strokeWidth={1.7} aria-hidden="true" />Verify policy
         </button>
       </div>

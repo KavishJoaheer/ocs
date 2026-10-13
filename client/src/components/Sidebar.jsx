@@ -182,6 +182,7 @@ function resolveNavTarget(to) {
 function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onNavigate }) {
   const Icon = item.icon;
   const location = useLocation();
+  const { user } = useAuth();
 
   return (
     <NavLink
@@ -196,7 +197,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           "group flex items-center transition-all",
           drawer
             ? "gap-3.5 px-4 py-3 text-[15px] font-semibold text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate"
-            : "gap-3 rounded-2xl px-4 py-3 text-sm font-semibold",
+            : cx("gap-3 px-4 py-3 text-sm font-semibold", user.role === "operator" ? "rounded-full" : "rounded-2xl"),
           mobile
             ? "min-w-fit border border-ocs-teal/20 bg-white/80 text-ocs-grey hover:bg-white"
             : !drawer && "text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate",

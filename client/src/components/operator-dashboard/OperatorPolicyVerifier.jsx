@@ -86,7 +86,7 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
   return (
     <section
       className={cx(
-        !embedded && "rounded-[20px] border border-[#203f42]/10 bg-white px-4 py-4 sm:px-5",
+        !embedded && "rounded-[26px] border border-[#203f42]/10 bg-white px-4 py-4 sm:px-5",
         !embedded && !compact && "shadow-[0_10px_30px_rgba(32,63,66,0.07)]",
         className,
       )}
@@ -104,7 +104,7 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
           >
             {compact ? "Verify policy" : "Quick policy verification"}
           </h2>
-          {!compact ? <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">
+          {!compact ? <p className="mt-0.5 text-xs leading-5 text-[#485e65]">
             Enter either identifier. Use both to confirm they belong to the same policy.
           </p> : null}
         </div>
@@ -112,7 +112,7 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
 
       <form className={cx(!embedded && "mt-3", "grid grid-cols-1 gap-2.5", !embedded && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto]")} onSubmit={handleSubmit}>
         <label className="min-w-0">
-          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#5f7476]" : "sr-only"}>Policy number</span>
+          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#485e65]" : "sr-only"}>Policy number</span>
           <input
             type="text"
             value={policyNumber}
@@ -120,11 +120,11 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
             placeholder={compact ? "Enter policy number" : "Policy number (optional)"}
             autoComplete="off"
             autoCapitalize="characters"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
+            className="h-11 w-full rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
           />
         </label>
         <label className="min-w-0">
-          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#5f7476]" : "sr-only"}>Mauritius ID number</span>
+          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#485e65]" : "sr-only"}>Mauritius ID number</span>
           <input
             type="text"
             value={nationalId}
@@ -133,13 +133,13 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
             maxLength={14}
             autoComplete="off"
             autoCapitalize="characters"
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold uppercase text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
+            className="h-11 w-full rounded-full border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold uppercase text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
           />
         </label>
         <button
           type="submit"
           disabled={!canVerify || state === "checking"}
-          className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-xl bg-[#1a7f7a] px-5 text-sm font-bold text-white transition hover:bg-[#146b67] disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-full bg-[#1a7f7a] px-5 text-sm font-bold text-white transition hover:bg-[#146b67] disabled:cursor-not-allowed disabled:opacity-45"
         >
           {state === "checking" ? (
             <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />

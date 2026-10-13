@@ -314,7 +314,7 @@ function AppShell() {
                       changes from this account can be saved.
                     </p>
                   </div>
-                ) : !(isMobile && isDashboard && userRole === "operator") ? (
+                ) : !(isDashboard && userRole === "operator") ? (
                   <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
                 ) : null}
               </>

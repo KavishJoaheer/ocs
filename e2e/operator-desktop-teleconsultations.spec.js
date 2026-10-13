@@ -30,6 +30,13 @@ test("desktop toolbar and policy lookup work at desktop and tablet widths", asyn
     await page.setViewportSize({ width, height: 900 });
     await page.goto(`${STAFF}/`);
     const workflow = page.getByRole("region", { name: "Operator workflows", exact: true });
+    const notifications = page.getByRole("button", { name: "Notification settings: blocked", exact: true });
+    await notifications.click();
+    const notificationDialog = page.getByRole("dialog", { name: "Notification settings", exact: true });
+    await expect(notificationDialog.getByRole("list")).toBeVisible();
+    await notificationDialog.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await expect(notificationDialog).toHaveCount(0);
+    await expect(notifications).toBeFocused();
     await expect(workflow.getByRole("link")).toHaveCount(2);
     await workflow.getByRole("link", { name: "Add patient", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "ID type", exact: true })).toBeVisible();

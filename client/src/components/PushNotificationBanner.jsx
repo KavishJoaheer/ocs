@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, BellRing, X } from "lucide-react";
 import toast from "react-hot-toast";
+import Modal from "./Modal.jsx";
 import {
   PushPermissionDeniedError,
   dismissPushBanner,
@@ -14,12 +15,13 @@ import {
   subscribeToPushNotifications,
 } from "../lib/pushNotifications.js";
 
-function PushNotificationBanner({ role, className = "" }) {
+function PushNotificationBanner({ role, className = "", compact = false }) {
   const [visible, setVisible] = useState(false);
   const [isDenied, setIsDenied] = useState(false);
   const [isEnabling, setIsEnabling] = useState(false);
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
   const [compactRecovery, setCompactRecovery] = useState(true);
+  const [compactOpen, setCompactOpen] = useState(false);
   const copy = getPushBannerCopy(role);
   const recovery = getPushPermissionRecoveryInstructions();
 
@@ -98,6 +100,26 @@ function PushNotificationBanner({ role, className = "" }) {
     if (isDenied) markPushRecoverySeen();
     dismissPushBanner();
     setVisible(false);
+  }
+
+  if (compact) {
+    return (
+      <>
+        <button type="button" onClick={() => setCompactOpen(true)} aria-label={`Notification settings: ${isDenied ? "blocked" : "not enabled"}`} title={isDenied ? "Notifications blocked on this device" : "Enable notifications"} className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-[#d5e4e1] bg-white text-[#376168] transition hover:bg-[#edf9f7]">
+          <BellRing className="size-5" aria-hidden="true" />
+          <span className="absolute right-1 top-1 size-2.5 rounded-full border-2 border-white bg-amber-500" aria-hidden="true" />
+        </button>
+        <Modal open={compactOpen} onClose={() => setCompactOpen(false)} title="Notification settings" size="sm">
+          <p className="text-sm font-semibold text-[#203f42]">{isDenied ? recovery.title : copy.title}</p>
+          <p className="mt-2 text-sm leading-6 text-[#485e65]">{isDenied ? recovery.description : copy.description}</p>
+          {isDenied ? <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-[#485e65]">{recovery.steps.map(step => <li key={step}>{step}</li>)}</ol> : null}
+          <div className="mt-5 flex flex-wrap gap-2">
+            <button type="button" disabled={isEnabling} onClick={handleEnable} className="min-h-11 rounded-full bg-[#137b80] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{isEnabling ? "Checking…" : isDenied ? "I updated settings" : "Turn on notifications"}</button>
+            <button type="button" onClick={handleDismiss} className="min-h-11 rounded-full border border-[#d5e4e1] bg-white px-4 py-2 text-sm font-semibold text-[#376168]">Not now</button>
+          </div>
+        </Modal>
+      </>
+    );
   }
 
   if (isDenied && compactRecovery) {

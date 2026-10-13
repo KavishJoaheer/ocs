@@ -9,6 +9,7 @@ import {
 import { Link } from "react-router-dom";
 import HcmBulletinBanner from "../HcmBulletinBanner.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
+import PushNotificationBanner from "../PushNotificationBanner.jsx";
 import { cx } from "../../lib/utils.js";
 import OperatorPolicyVerifier from "./OperatorPolicyVerifier.jsx";
 import OperatorDesktopLiveRequests from "./OperatorDesktopLiveRequests.jsx";
@@ -27,13 +28,13 @@ function OperatorPulseRow({ to = null, icon: Icon, label, value, tone = "default
       <span className="min-w-0 flex-1 text-sm font-medium text-[#203f42]">{label}</span>
       <span
         className={cx(
-          "shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold tabular-nums",
+          "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
           tone === "warning" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-[#203f42]",
         )}
       >
         {value}
       </span>
-      {to ? <ArrowUpRight className="size-3.5 shrink-0 text-[#5f7476]" aria-hidden="true" /> : null}
+      {to ? <ArrowUpRight className="size-3.5 shrink-0 text-[#485e65]" aria-hidden="true" /> : null}
     </>
   );
 
@@ -96,12 +97,12 @@ export default function OperatorCommandCentre({
           <h1 className="font-display text-2xl font-semibold tracking-tight text-[#203f42]">
             {greeting}, {firstName}
           </h1>
-          <p className="mt-1 text-sm text-[#5f7476]">{dayjs().format("dddd, D MMMM")}</p>
+          <p className="mt-1 text-sm text-[#485e65]">{dayjs().format("dddd, D MMMM")}</p>
         </div>
         <div className="ocs-cc-header-tools">
           <div className="ocs-cc-availability">
             <span className={cx("size-2 shrink-0 rounded-full", counts.availableNow > 0 ? "bg-emerald-500" : "bg-slate-300")} aria-hidden="true" />
-            <span className="text-sm text-[#5f7476]">{counts.availableNow} {counts.availableNow === 1 ? "doctor available" : "doctors available"}</span>
+            <span className="text-sm text-[#485e65]">{counts.availableNow} {counts.availableNow === 1 ? "doctor available" : "doctors available"}</span>
           </div>
           <OperationStatusSelector
             align="left"
@@ -112,16 +113,17 @@ export default function OperatorCommandCentre({
             showLabel={false}
             value={user.operation_status}
           />
+          {!user.is_read_only ? <PushNotificationBanner role="operator" compact /> : null}
         </div>
       </header>
 
       <section aria-label="Operator workflows" className="flex flex-wrap items-center gap-3">
-        <Link to="/patients/add" className="inline-flex min-h-12 items-center gap-2.5 rounded-xl bg-[#137b80] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#10696d]">
+        <Link to="/patients/add" className="inline-flex min-h-12 items-center gap-2.5 rounded-full bg-[#137b80] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#10696d]">
           <UserPlus className="size-5" aria-hidden="true" />Add patient
         </Link>
-        <Link to="/operator/long-term-review" title={overdueReviews > 0 ? `${overdueReviews} overdue reviews` : "Review appointments"} className={cx("inline-flex min-h-12 items-center gap-2.5 rounded-xl border px-5 py-3 text-sm font-semibold transition", reviews > 0 ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" : "border-[#d5e4e1] bg-white text-[#203f42] hover:bg-[#edf9f7]")}>
+        <Link to="/operator/long-term-review" title={overdueReviews > 0 ? `${overdueReviews} overdue reviews` : "Review appointments"} className={cx("inline-flex min-h-12 items-center gap-2.5 rounded-full border px-5 py-3 text-sm font-semibold transition", reviews > 0 ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" : "border-[#d5e4e1] bg-white text-[#203f42] hover:bg-[#edf9f7]")}>
           <CalendarClock className="size-5" aria-hidden="true" />Reviews
-          <span className={cx("rounded-lg px-2 py-0.5 text-xs tabular-nums", reviews > 0 ? "bg-amber-200/60" : "bg-slate-100")}>{reviews}</span>
+          <span className={cx("rounded-full px-2 py-0.5 text-xs tabular-nums", reviews > 0 ? "bg-amber-200/60" : "bg-slate-100")}>{reviews}</span>
           {overdueReviews > 0 ? <span className="text-xs">· {overdueReviews} overdue</span> : null}
         </Link>
       </section>
