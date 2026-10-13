@@ -1461,6 +1461,7 @@ function PatientProfilePage() {
   const [activeTab, setActiveTab] = useState("summary");
   const [fabOpen, setFabOpen] = useState(false);
   const [patientEditorOpen, setPatientEditorOpen] = useState(false);
+  const [careInvitationPatientId, setCareInvitationPatientId] = useState(null);
   const [isSavingPatient, setIsSavingPatient] = useState(false);
   const [longTermReviewModalOpen, setLongTermReviewModalOpen] = useState(false);
   const [isSavingLongTermReview, setIsSavingLongTermReview] = useState(false);
@@ -2018,7 +2019,6 @@ function PatientProfilePage() {
 
   return (
     <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4 md:bg-slate-50">
-      {["admin", "operator"].includes(user.role) && <PatientCareInvitation key={data.patient.id} patient={data.patient} readOnly={user.is_read_only} />}
       {isMobile && (
         <div
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
@@ -2086,6 +2086,11 @@ function PatientProfilePage() {
           }
           actions={(
             <div className="flex flex-row flex-wrap items-center justify-end gap-2">
+              {["admin", "operator"].includes(user.role) && (
+                <button type="button" onClick={() => setCareInvitationPatientId(data.patient.id)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal">
+                  Send OCS Care link
+                </button>
+              )}
               {canFlagLongTermReviewAccess ? (
                 <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
               ) : null}
@@ -2164,6 +2169,11 @@ function PatientProfilePage() {
           </div>
           {activeTab === "summary" ? (
           <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+            {["admin", "operator"].includes(user.role) && (
+              <button type="button" onClick={() => setCareInvitationPatientId(data.patient.id)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-ocs-teal/40 hover:text-ocs-teal">
+                Send OCS Care link
+              </button>
+            )}
             {canFlagLongTermReviewAccess ? (
               <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
             ) : null}
@@ -3343,6 +3353,18 @@ function PatientProfilePage() {
             </button>
           </div>
         </>
+      )}
+
+      {["admin", "operator"].includes(user.role) && (
+        <Modal
+          open={careInvitationPatientId === data.patient.id && data.patient.id === Number(id)}
+          onClose={() => setCareInvitationPatientId(null)}
+          title="Send OCS Care link"
+          description="Create a personal sign-in link, valid for 10 minutes and one use."
+          size="sm"
+        >
+          <PatientCareInvitation key={data.patient.id} patient={data.patient} readOnly={user.is_read_only} />
+        </Modal>
       )}
 
       <LongTermReviewReasonModal

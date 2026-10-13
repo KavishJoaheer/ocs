@@ -1,6 +1,6 @@
 # OCS teleconsultation and operator-led onboarding
 
-Operators create or find the patient in VP, confirm identity and the patient's own mobile, and complete hotline screening using the clinic-approved checklist. On the patient profile, **Invite to OCS Care** creates a personal invitation to copy into the confirmed hotline WhatsApp conversation. No WhatsApp message or call is sent automatically.
+Operators create or find the patient in VP. The compact **Send OCS Care link** action in the patient profile opens an on-demand dialog; the invitation form is hidden during normal profile viewing. Choose **Patient records** for general Care access, or **Teleconsultation** to also record hotline screening. Both require identity and personal-mobile confirmation; the teleconsultation option also requires the screening checkbox. Create the personal invitation and copy it into the confirmed patient's WhatsApp conversation. Closing the dialog clears its local invitation and confirmations. No WhatsApp message or call is sent automatically.
 
 The patient follows the link and presses **Continue to OCS Care**. No email address or password is required for an invited account. The normal dashboard contains **Request a teleconsultation**. The patient supplies the reason, current location and confirmed callback number, reads the terms and limitations, and accepts both the terms and clinical consent. A six-digit consultation code is then visible to the patient and operator.
 
