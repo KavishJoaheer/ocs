@@ -19,13 +19,13 @@ export default function LongTermReviewQueuePage() {
   }
 
   if (loading) {
-    return <LoadingState label="Loading review appointment queue" />;
+    return <LoadingState label={user?.role === "doctor" ? "Loading follow-ups" : "Loading review appointment queue"} />;
   }
 
   if (error) {
     return (
       <EmptyState
-        title="Review appointment unavailable"
+        title={user?.role === "doctor" ? "Follow-ups unavailable" : "Review appointment unavailable"}
         description={error}
       />
     );
@@ -46,7 +46,7 @@ export default function LongTermReviewQueuePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Review appointment" />
+      <PageHeader title={user?.role === "doctor" ? "Follow-ups" : "Review appointment"} />
       {queue}
     </div>
   );

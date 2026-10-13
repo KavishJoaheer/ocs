@@ -119,11 +119,11 @@ function LongTermReviewOperatorPanel({
   }, [patients, selectedMonthIndex, timingFilter]);
 
   const filteredMonthLabel = monthLabelFromIndex(selectedMonthIndex);
-  const heading = isDoctor && scope === "mine" ? "Your reviews" : "Review Appointments";
+  const heading = isDoctor ? scope === "mine" ? "Your follow-ups" : "Follow-ups" : "Review Appointments";
   const countLabel =
     isDoctor && scope === "mine"
       ? `${filteredReviewList.length} assigned to you`
-      : `${filteredReviewList.length} ${filteredReviewList.length === 1 ? "review" : "reviews"}`;
+      : `${filteredReviewList.length} ${isDoctor ? "follow-ups" : filteredReviewList.length === 1 ? "review" : "reviews"}`;
 
   function handleScopeChange(event) {
     const value = event.target.value;
@@ -138,11 +138,11 @@ function LongTermReviewOperatorPanel({
     <div className={`grid gap-3 ${isMobile ? "grid-cols-2" : "sm:flex sm:items-end sm:gap-4"}`}>
       <ReviewFilterSelect
         id="long-term-review-doctor-filter"
-        label="View reviews"
+        label={isDoctor ? "View follow-ups" : "View reviews"}
         value={scope}
         onChange={handleScopeChange}
       >
-        {isDoctor ? <option value="mine">My reviews</option> : null}
+        {isDoctor ? <option value="mine">My follow-ups</option> : null}
         <option value="all">All doctors</option>
         {doctors.map((doctor) => (
           <option key={doctor.id} value={String(doctor.id)}>
@@ -187,7 +187,7 @@ function LongTermReviewOperatorPanel({
       {isMobile ? (
         <div className="space-y-3">
           <div className="flex items-baseline justify-between gap-3">
-            <h1 className="text-xl font-bold tracking-tight text-ocs-slate">Review</h1>
+            <h1 className="text-xl font-bold tracking-tight text-ocs-slate">{isDoctor ? heading : "Review"}</h1>
             <p className="text-sm font-medium text-slate-500">{countLabel}</p>
           </div>
           {filters}
@@ -235,7 +235,7 @@ function LongTermReviewOperatorPanel({
             : selectedMonthIndex !== "all"
             ? `No review appointment patients have a due date in ${filteredMonthLabel}.`
             : scope === "mine"
-              ? "Reviews assigned to you will appear here."
+              ? "Follow-ups assigned to you will appear here."
               : "Patients flagged for a review appointment will appear here."
         }
         emptyTitle={
@@ -244,7 +244,7 @@ function LongTermReviewOperatorPanel({
             : selectedMonthIndex !== "all"
             ? `No patients due in ${filteredMonthLabel}`
             : scope === "mine"
-              ? "No reviews assigned to you"
+              ? "No follow-ups assigned to you"
               : "No review appointment patients"
         }
         onPatientsChange={onPatientsChange}

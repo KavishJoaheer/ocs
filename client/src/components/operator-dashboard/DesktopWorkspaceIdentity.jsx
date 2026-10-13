@@ -8,14 +8,16 @@ import {
 } from "./operatorDashboardCopy.js";
 import "./operatorDashboard.css";
 
-function OperatorDesktopIdentity({ user, onSignOut }) {
+function DesktopWorkspaceIdentity({ user, onSignOut }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const menuId = useId();
-  const displayName = getOperatorDisplayName(user);
-  const initials = getOperatorInitials(user);
+  const doctor = user.role === "doctor";
+  const name = String(user.full_name || "").replace(/^dr\.?\s+/i, "").trim();
+  const displayName = doctor ? `Dr ${name || user.username}` : getOperatorDisplayName(user);
+  const initials = getOperatorInitials(doctor ? { ...user, full_name: name } : user);
   const live = isOperatorLive(user?.operation_status);
-  const statusLabel = live ? "Active" : "Offline";
+  const statusLabel = doctor && user.operation_status === "available" ? "Available" : live ? "Active" : "Offline";
 
   useEffect(() => {
     if (!open) return undefined;
@@ -54,7 +56,7 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
             {displayName}
           </p>
           <p className="mt-0.5 flex min-w-0 items-center gap-2 whitespace-nowrap text-xs font-medium text-[#5f7476]">
-            <span className="truncate">Operator</span>
+            <span className="truncate">{doctor ? "Doctor" : "Operator"}</span>
             <span className="inline-flex shrink-0 items-center gap-1.5">
               <span
                 className={cx(
@@ -101,4 +103,4 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
   );
 }
 
-export default OperatorDesktopIdentity;
+export default DesktopWorkspaceIdentity;

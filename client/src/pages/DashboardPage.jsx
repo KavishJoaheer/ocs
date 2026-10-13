@@ -14,7 +14,6 @@ import {
   ShieldCheck,
   Stethoscope,
   UserPlus,
-  UserRound,
   UsersRound,
   UserSearch,
 } from "lucide-react";
@@ -22,12 +21,8 @@ import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import ClinicalTwinMetricsCards from "../components/ClinicalTwinMetricsCards.jsx";
 import LowStockBanner from "../components/LowStockBanner.jsx";
-import DoctorMobileLowStockStrip from "../components/DoctorMobileLowStockStrip.jsx";
 import HcmBulletinBanner from "../components/HcmBulletinBanner.jsx";
 import { isHcmPostWithinBulletinWindow } from "../lib/hcmBulletin.js";
-import { useDoctorBagInventory } from "../hooks/useDoctorBagInventory.js";
-import { prefetchPatientOfflineDirectory } from "../lib/patientOfflineSync.js";
-import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
 import EmptyState from "../components/EmptyState.jsx";
 import MetricNavAnchor from "../components/MetricNavAnchor.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -41,6 +36,7 @@ import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetric
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
+import DoctorDashboard from "../components/doctor-dashboard/DoctorDashboard.jsx";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
 import OperatorPolicyVerifier from "../components/operator-dashboard/OperatorPolicyVerifier.jsx";
 import OperatorMobileLiveRequests from "../components/operator-dashboard/OperatorMobileLiveRequests.jsx";
@@ -48,159 +44,6 @@ import { getTimeOfDayGreeting } from "../components/operator-dashboard/operatorD
 import Modal from "../components/Modal.jsx";
 import { formatCurrency, formatDateTime, truncate } from "../lib/format.js";
 import { cx } from "../lib/utils.js";
-
-function buildDoctorMobileDateLabel() {
-  return dayjs().format("dddd, MMMM D");
-}
-
-function DoctorMobileSplitCard({ to, label, icon: Icon, showLowStockLed = false, count = null }) {
-  return (
-    <Link
-      to={to}
-      className="group relative flex min-h-[7.5rem] flex-col justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] active:bg-slate-50/80"
-    >
-      {showLowStockLed ? (
-        <span
-          className="absolute right-3 top-3 size-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]"
-          aria-label="Low stock alert"
-        />
-      ) : null}
-      <div className="flex size-10 items-center justify-center rounded-xl border border-ocs-teal/15 bg-ocs-teal/5 text-ocs-teal">
-        <Icon className="size-5" strokeWidth={2.25} />
-      </div>
-      <div className="mt-3 min-w-0">
-        <p className="text-[15px] font-bold leading-snug tracking-tight text-slate-800">{label}</p>
-        {count != null ? (
-          <p className="mt-1 text-2xl font-black tabular-nums text-slate-900">{count}</p>
-        ) : null}
-      </div>
-      <ArrowUpRight className="absolute bottom-3.5 right-3.5 size-4 text-ocs-teal/60" strokeWidth={2} />
-    </Link>
-  );
-}
-
-function DoctorMobileSupplyRequestsCard({ pendingCount = 0 }) {
-  return (
-    <Link
-      to="/supply-requests"
-      className="relative flex min-h-[110px] cursor-pointer flex-col justify-between rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all active:scale-[0.98] active:bg-slate-50/80"
-    >
-      <div className="flex items-start justify-between">
-        <span className="text-xl" aria-hidden="true">
-          📋
-        </span>
-        {pendingCount > 0 ? (
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-extrabold text-slate-600">
-            {pendingCount} Active
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-4">
-        <p className="text-sm font-bold text-slate-800">Supply Requests</p>
-        <p className="text-[11px] font-semibold text-ocs-grey">Track, edit or cancel orders</p>
-      </div>
-    </Link>
-  );
-}
-
-function DoctorMobileLiveRequestsCard({ activeCount = 0 }) {
-  const hasRequests = activeCount > 0;
-
-  return (
-    <Link
-      to="/visit-requests"
-      className="relative overflow-hidden rounded-[24px] bg-[#173f4a] p-5 text-white shadow-[0_18px_38px_rgba(23,63,74,0.22)] transition active:scale-[0.99]"
-    >
-      <div className="pointer-events-none absolute -right-12 -top-14 size-40 rounded-full bg-ocs-teal/25 blur-2xl" />
-      <div className="relative z-10 flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/70">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#ff7566] opacity-70" />
-              <span className="relative inline-flex size-2 rounded-full bg-[#ff7566]" />
-            </span>
-            Live requests
-          </div>
-          <p className="mt-2 text-2xl font-black tabular-nums">
-            {hasRequests ? activeCount : "Clear"}
-          </p>
-          <p className="mt-1 text-xs font-medium text-white/65">
-            {hasRequests
-              ? `${activeCount === 1 ? "Assigned visit needs" : "Assigned visits need"} your attention`
-              : "No assigned requests right now"}
-          </p>
-        </div>
-        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-white text-[#173f4a] shadow-sm">
-          <ArrowUpRight className="size-5" />
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-function DoctorMobileLauncher({ user, dashboard = null, latestHcmPost = null }) {
-  const firstName = String(user.full_name || "")
-    .replace(/^dr\.?\s+/i, "")
-    .trim()
-    .split(/\s+/)[0] || "Doctor";
-  const { lowStockCount, loading } = useDoctorBagInventory();
-  const showLowStockStrip = !loading && lowStockCount > 0;
-  const { activeCount: supplyPendingCount } = useDoctorSupplyRequests();
-  const reviewCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
-  const liveRequestCount = Number(dashboard?.liveVisitRequests?.active_count || 0);
-  const visitsToday = countDoctorScheduledVisitsToday(dashboard);
-
-  useEffect(() => {
-    if (user?.role === "doctor" && user?.id) {
-      void prefetchPatientOfflineDirectory(user.id);
-    }
-  }, [user?.id, user?.role]);
-
-  return (
-    <div className="mobile-dashboard-wrapper mx-auto w-full max-w-md min-w-0 px-1 py-4">
-      <header className="shrink-0 pb-2">
-        <h1 className="text-2xl font-bold tracking-tight text-ocs-slate">Hello, Dr. {firstName}</h1>
-        <p className="mt-2 text-base text-ocs-grey">{buildDoctorMobileDateLabel()}</p>
-      </header>
-
-      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
-
-      {showLowStockStrip ? <DoctorMobileLowStockStrip lowStockCount={lowStockCount} /> : null}
-
-      <nav className="doctor-mobile-action-grid flex flex-col gap-4" aria-label="Doctor quick actions">
-        <DoctorMobileLiveRequestsCard activeCount={liveRequestCount} />
-
-        <div className="grid grid-cols-2 gap-4">
-          <DoctorMobileSplitCard
-            to="/appointments"
-            label="Today's visits"
-            icon={CalendarClock}
-            count={visitsToday}
-          />
-          <DoctorMobileSplitCard
-            to="/doctor/long-term-review"
-            label="Reviews due"
-            icon={Activity}
-            count={reviewCount}
-          />
-        </div>
-
-        <DoctorMobileSupplyRequestsCard pendingCount={supplyPendingCount} />
-
-        <Link
-          to="/patients/add"
-          className="group flex w-full items-center gap-4 rounded-2xl border border-ocs-teal/20 bg-gradient-to-br from-ocs-teal to-[#22a8a1] px-4 py-3.5 text-left text-white shadow-sm transition active:scale-[0.99] active:opacity-95"
-        >
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/15 text-white">
-            <UserPlus className="size-5" strokeWidth={2.25} />
-          </div>
-          <p className="min-w-0 flex-1 text-[15px] font-bold tracking-tight text-white">Add Patient</p>
-          <ArrowUpRight className="size-4 shrink-0 text-white/80" strokeWidth={2} />
-        </Link>
-      </nav>
-    </div>
-  );
-}
 
 function getOperatorBoardCounts(metrics) {
   return {
@@ -251,6 +94,8 @@ function MobileLauncher({
   user,
   dashboard,
   operatorMetrics,
+  onStatusChange,
+  isSavingStatus,
   latestHcmPost = null,
 }) {
   const firstName = (user.full_name || "").split(" ")[0] || "Doctor";
@@ -258,7 +103,7 @@ function MobileLauncher({
 
   if (isDoctor) {
     return (
-      <DoctorMobileLauncher user={user} dashboard={dashboard} latestHcmPost={latestHcmPost} />
+      <DoctorDashboard user={user} dashboard={dashboard} latestHcmPost={latestHcmPost} onStatusChange={onStatusChange} isSavingStatus={isSavingStatus} mobile />
     );
   }
 
@@ -754,372 +599,6 @@ function RecentActivityPanel({ dashboard }) {
   );
 }
 
-function getDoctorVisitsToday(dashboard) {
-  const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
-  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
-
-  return visits.filter((visit) => visit.appointment_date === today && visit.status === "scheduled");
-}
-
-function countDoctorScheduledVisitsToday(dashboard) {
-  return getDoctorVisitsToday(dashboard).length;
-}
-
-function getDoctorNextScheduledVisit(dashboard) {
-  const today = dashboard?.doctorWorkspace?.periods?.today || dashboard?.periods?.today || "";
-  const visits = dashboard?.doctorWorkspace?.scheduledVisits || dashboard?.scheduledVisits || [];
-
-  return (
-    visits
-      .filter((visit) => visit.status === "scheduled" && visit.appointment_date > today)
-      .sort((left, right) => {
-        const leftValue = `${left.appointment_date || ""}T${left.appointment_time || ""}`;
-        const rightValue = `${right.appointment_date || ""}T${right.appointment_time || ""}`;
-        return leftValue.localeCompare(rightValue);
-      })[0] || null
-  );
-}
-
-const doctorMetricVariants = {
-  scheduled: {
-    card: "border-gray-100 bg-white shadow-sm hover:shadow-md",
-    label: "text-slate-600",
-    value: "text-ocs-teal",
-    anchorTheme: "doctor-primary",
-  },
-  assigned: {
-    card: "border border-[#e6ebd9] bg-[#f4f6f0] hover:bg-[#ebefe2]",
-    label: "text-[#8fa382]",
-    value: "text-[#3b4733]",
-    anchorTheme: "doctor-olive",
-  },
-  longTerm: {
-    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
-    label: "text-[#ba5a32]",
-    value: "text-[#6e2f14]",
-    anchorTheme: "doctor-terracotta",
-  },
-};
-
-function DoctorMetricCard({ to, label, value, variant }) {
-  const styles = doctorMetricVariants[variant];
-  const Icon =
-    variant === "scheduled" ? CalendarClock : variant === "assigned" ? UserRound : Activity;
-
-  return (
-    <Link
-      to={to}
-      className={cx(
-        "group relative flex min-h-[132px] cursor-pointer flex-col justify-between rounded-2xl p-5 transition-all duration-300 ease-in-out",
-        styles.card,
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className={cx("text-sm font-semibold", styles.label)}>{label}</span>
-        <MetricNavAnchor theme={styles.anchorTheme} />
-      </div>
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <p className={cx("text-4xl font-black tabular-nums", styles.value)}>{value}</p>
-        <span className={cx("grid size-9 place-items-center rounded-xl bg-white/65", styles.label)}>
-          <Icon className="size-4.5" strokeWidth={2.1} />
-        </span>
-      </div>
-    </Link>
-  );
-}
-
-function DoctorMetricsRow({ dashboard }) {
-  const visitsToday = countDoctorScheduledVisitsToday(dashboard);
-  const longTermCount = resolveClinicalTwinCounts("doctor", { dashboard }).longTermReviewCount;
-  const assignedCount = Number(
-    dashboard?.doctorWorkspace?.summary?.activeAssignedPatientsCount ??
-      dashboard?.doctorWorkspace?.assignedPatients?.filter((patient) => patient.status === "active")
-        .length ??
-      0,
-  );
-
-  return (
-    <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
-      <DoctorMetricCard
-        to="/appointments"
-        label="Visits today"
-        value={visitsToday}
-        variant="scheduled"
-      />
-      <DoctorMetricCard
-        to="/patients?filter=my_assigned"
-        label="Assigned patients"
-        value={assignedCount}
-        variant="assigned"
-      />
-      <DoctorMetricCard
-        to="/doctor/long-term-review"
-        label="Reviews due"
-        value={longTermCount}
-        variant="longTerm"
-      />
-    </div>
-  );
-}
-
-function LiveRequestsPanel({ requests = [], activeCount = 0 }) {
-  const visibleRequests = requests.slice(0, 2);
-  const hasRequests = activeCount > 0;
-
-  return (
-    <section aria-label="Live requests" className="relative overflow-hidden rounded-[28px] bg-[#173f4a] p-5 text-white shadow-[0_22px_50px_rgba(23,63,74,0.22)] md:p-6">
-      <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-ocs-teal/25 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-28 left-1/4 size-56 rounded-full bg-ocs-yellow/10 blur-3xl" />
-
-      <div className="relative z-10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white/90">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[#ff7566] opacity-70" />
-                <span className="relative inline-flex size-2 rounded-full bg-[#ff7566]" />
-              </span>
-              Live requests
-            </div>
-            <h2
-              className={cx(
-                "font-display text-2xl font-semibold tracking-tight md:text-3xl",
-                hasRequests ? "mt-4" : "mt-2",
-              )}
-            >
-              {hasRequests
-                ? `${activeCount} active ${activeCount === 1 ? "request" : "requests"}`
-                : "No active requests"}
-            </h2>
-            <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-white/68">
-              {hasRequests
-                ? "Assigned home visits that need your attention now."
-                : "You are clear for now. New assigned visits will appear here automatically."}
-            </p>
-          </div>
-
-          <Link
-            to="/visit-requests"
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#173f4a] shadow-sm transition hover:bg-[#effafa]"
-          >
-            Open live board
-            <ArrowUpRight className="size-4" />
-          </Link>
-        </div>
-
-        {visibleRequests.length ? (
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {visibleRequests.map((request) => (
-              <Link
-                key={request.id}
-                to="/visit-requests"
-                className="group rounded-2xl border border-white/12 bg-white/[0.08] p-4 backdrop-blur-sm transition hover:border-white/25 hover:bg-white/[0.12]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-white">
-                      {request.patient_name || "Assigned patient"}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-[#83ddd7]">
-                      {request.status_label || "Doctor assigned"}
-                      {request.eta_minutes != null ? ` · ETA ${request.eta_minutes} min` : ""}
-                    </p>
-                  </div>
-                  <span
-                    className={cx(
-                      "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide",
-                      request.urgency === "emergency"
-                        ? "bg-[#ff7566]/20 text-[#ffb2a9]"
-                        : request.urgency === "urgent"
-                          ? "bg-ocs-yellow/15 text-[#f6d571]"
-                          : "bg-white/10 text-white/65",
-                    )}
-                  >
-                    {request.urgency || "routine"}
-                  </span>
-                </div>
-                <p className="mt-3 line-clamp-1 text-sm text-white/75">
-                  {request.reason || "No reason provided"}
-                </p>
-                <div className="mt-3 flex items-center gap-2 text-xs text-white/50">
-                  <MapPin className="size-3.5 shrink-0" />
-                  <span className="truncate">{request.address || "Address not provided"}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function DoctorDashboardTwinPanels({
-  lowStockAlert,
-  visitsToday = [],
-  nextScheduledVisit = null,
-}) {
-  const lowStockCount = Number(lowStockAlert?.total_items || 0);
-  const hasTodayVisits = visitsToday.length > 0;
-  const hasSchedulePanel = hasTodayVisits || Boolean(nextScheduledVisit);
-  const displayedVisits = hasTodayVisits ? visitsToday : nextScheduledVisit ? [nextScheduledVisit] : [];
-
-  return (
-    <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
-      {hasSchedulePanel ? (
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
-            <span className="text-sm font-semibold text-slate-800">
-              {hasTodayVisits ? "Today’s visits" : "Next scheduled visit"}
-            </span>
-            <Link
-              to="/appointments"
-              className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate"
-            >
-              View calendar
-            </Link>
-          </div>
-          <ul className="mt-3 divide-y divide-slate-100">
-            {displayedVisits.map((visit) => {
-              const timeLabel =
-                formatReviewAppointmentTime(visit.appointment_time) ||
-                String(visit.appointment_time || "").slice(0, 5);
-              const place = String(visit.location || "").trim();
-              const dateLabel = dayjs(visit.appointment_date).isValid()
-                ? dayjs(visit.appointment_date).format("dddd, D MMMM")
-                : visit.appointment_date;
-
-              return (
-                <li key={visit.id}>
-                  <Link
-                    to={`/patients/${visit.patient_id}`}
-                    className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold tabular-nums text-slate-900">
-                        {hasTodayVisits ? timeLabel : `${dateLabel}${timeLabel ? ` · ${timeLabel}` : ""}`}
-                      </p>
-                      <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
-                        {visit.patient_name}
-                      </p>
-                      {place ? (
-                        <p className="mt-0.5 truncate text-xs text-slate-500">{place}</p>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-
-      {lowStockAlert?.triggered ? (
-        <Link
-          to="/inventory?context=my&restock=alert"
-          className={cx(
-            "flex min-h-[160px] flex-col justify-between rounded-2xl border border-amber-200/70 border-l-4 border-l-ocs-yellow bg-amber-50/45 p-6 shadow-sm transition-colors hover:shadow-md",
-            hasSchedulePanel ? "lg:col-span-2" : "lg:col-span-5",
-          )}
-        >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-600">
-              <Package className="size-4 text-amber-600" />
-              Bag stock
-            </span>
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-              Needs attention
-            </span>
-          </div>
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-2xl font-black tabular-nums text-slate-900">{lowStockCount}</p>
-              <p className="mt-0.5 text-xs font-semibold leading-normal text-slate-600">
-                Stock {lowStockCount === 1 ? "line" : "lines"} at or below par
-              </p>
-            </div>
-            <span className="shrink-0 rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-800 shadow-sm">
-              Review stock
-            </span>
-          </div>
-        </Link>
-      ) : (
-        <div
-          className={cx(
-            "flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 bg-white p-6 shadow-sm",
-            hasSchedulePanel ? "lg:col-span-2" : "lg:col-span-5",
-          )}
-        >
-          <div className="flex items-center justify-between border-b border-gray-50 pb-3">
-            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-500">
-              <Package className="size-4 text-slate-400" />
-              Bag stock
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-              <CheckCircle2 className="size-3.5" />
-              Bag ready
-            </span>
-          </div>
-          <p className="mt-4 text-sm font-medium leading-relaxed text-slate-500">
-            All kit items are at or above par. No replenishment is required.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DoctorDashboardView({
-  user,
-  dashboard,
-  onStatusChange,
-  isSavingStatus,
-  lowStockAlert,
-  latestHcmPost = null,
-}) {
-  const liveVisitRequests = dashboard?.liveVisitRequests?.visit_requests || [];
-  const liveVisitRequestCount = Number(
-    dashboard?.liveVisitRequests?.active_count ?? liveVisitRequests.length,
-  );
-
-  return (
-    <section className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
-      <div className="rounded-[28px] border border-slate-200/80 bg-white px-5 py-4 shadow-sm md:px-6">
-        <OperationsDashboardDesktopHeader
-          statusMarkup={
-            <OperationStatusSelector
-              align="right"
-              className="mt-0"
-              disabled={isSavingStatus}
-              onChange={onStatusChange}
-              showLabel={false}
-              value={user.operation_status}
-            />
-          }
-          subtitle={dayjs().format("dddd D MMMM")}
-          title="Today’s overview"
-        />
-      </div>
-
-      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
-
-      <LiveRequestsPanel
-        activeCount={liveVisitRequestCount}
-        requests={liveVisitRequests}
-      />
-
-      <DoctorMetricsRow dashboard={dashboard} />
-
-      <DoctorDashboardTwinPanels
-        lowStockAlert={lowStockAlert}
-        nextScheduledVisit={getDoctorNextScheduledVisit(dashboard)}
-        visitsToday={getDoctorVisitsToday(dashboard)}
-      />
-    </section>
-  );
-}
-
 function OperatorDashboardView({
   user,
   dashboard,
@@ -1483,7 +962,7 @@ function DashboardPage() {
         const [data, doctorWorkspace, liveVisitRequests] = await Promise.all([
           api.get("/dashboard"),
           user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
-          (user.role === "doctor" || user.role === "operator")
+          user.role === "operator"
             ? api.get("/visit-requests?status=active").catch(() => null)
             : Promise.resolve(null),
         ]);
@@ -1588,6 +1067,8 @@ function DashboardPage() {
   if (isMobile) {
     return (
       <MobileLauncher
+        onStatusChange={handleStatusChange}
+        isSavingStatus={isSavingStatus}
         user={user}
         dashboard={dashboard}
         operatorMetrics={operatorMetrics}
@@ -1598,11 +1079,10 @@ function DashboardPage() {
 
   if (user.role === "doctor") {
     return (
-      <DoctorDashboardView
+      <DoctorDashboard
         dashboard={dashboard}
         isSavingStatus={isSavingStatus}
         latestHcmPost={latestHcmPost}
-        lowStockAlert={dashboard.doctor_low_stock_alert}
         onStatusChange={handleStatusChange}
         user={user}
       />

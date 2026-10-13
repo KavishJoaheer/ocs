@@ -57,7 +57,7 @@ for (const width of [360, 430]) {
     await expect(page.getByRole("heading", { name: "Visit requests", exact: true })).toBeVisible();
     const bottom = page.locator("#ocs-bottom-nav");
     await expect(bottom.getByRole("link")).toHaveCount(4);
-    await expect(bottom.getByRole("link", { name: "Visits", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(bottom.getByRole("link", { name: "Home visits", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("button", { name: "Live board" })).toHaveCount(0);
     await expect(page.getByLabel("From", { exact: true })).toBeHidden();
     const card = page.getByRole("region", { name: "Active visits", exact: true }).getByRole("article")

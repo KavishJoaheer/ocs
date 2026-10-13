@@ -1,0 +1,6 @@
+/* Keep compact clinical actions readable despite the global native-control reset. */
+.doctor-dashboard-root button {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}

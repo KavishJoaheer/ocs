@@ -11,9 +11,10 @@ import {
 } from "lucide-react";
 
 export const bottomNavItems = [
-  { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["admin", "doctor", "lab_tech", "accountant"] },
+  { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["admin", "lab_tech", "accountant"] },
+  { to: "/", label: "Home", icon: House, end: true, roles: ["doctor"] },
   { to: "/patients", label: "Patients", icon: UsersRound, roles: ["admin", "doctor", "lab_tech"] },
-  { to: "/visit-requests", label: "Visits", icon: ClipboardList, roles: ["doctor"] },
+  { to: "/visit-requests", label: "Home visits", icon: ClipboardList, roles: ["doctor"] },
   { to: "/admin/finance", label: "Finance", icon: CreditCard, roles: ["admin", "accountant"] },
   { to: "/lab", label: "Lab", icon: Stethoscope, roles: ["lab_tech"] },
   { to: "/consultations", label: "Consults", icon: ClipboardList, roles: ["lab_tech"] },

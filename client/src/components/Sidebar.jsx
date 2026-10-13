@@ -26,7 +26,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
-import OperatorDesktopIdentity from "./operator-dashboard/OperatorDesktopIdentity.jsx";
+import DesktopWorkspaceIdentity from "./operator-dashboard/DesktopWorkspaceIdentity.jsx";
 import { getOperatorInitials, isOperatorLive } from "./operator-dashboard/operatorDashboardCopy.js";
 
 function formatMobileDrawerDisplayName(user) {
@@ -67,7 +67,7 @@ const navItems = [
   },
   {
     to: "/doctor/long-term-review",
-    label: "Reviews due",
+    label: "Follow-ups",
     icon: Activity,
     roles: ["doctor"],
     hideInMobileDrawer: true,
@@ -197,7 +197,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           "group flex items-center transition-all",
           drawer
             ? "gap-3.5 px-4 py-3 text-[15px] font-semibold text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate"
-            : cx("gap-3 px-4 py-3 text-sm font-semibold", user.role === "operator" ? "rounded-full" : "rounded-2xl"),
+            : cx("gap-3 px-4 py-3 text-sm font-semibold", ["operator", "doctor"].includes(user.role) ? "rounded-full" : "rounded-2xl"),
           mobile
             ? "min-w-fit border border-ocs-teal/20 bg-white/80 text-ocs-grey hover:bg-white"
             : !drawer && "text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate",
@@ -245,8 +245,8 @@ function Sidebar() {
 
   const visibleNavItems = useMemo(
     () => {
-      const items = navItems.filter((item) => item.roles.includes(user.role));
-      if (user.role !== "operator") return items;
+      const items = navItems.filter((item) => item.roles.includes(user.role)).map(item => user.role === "doctor" && item.to === "/visit-requests" ? { ...item, label: "Home visits" } : item);
+      if (!["operator", "doctor"].includes(user.role)) return items;
       const primaryPaths = ["/", "/patients", "/visit-requests", "/teleconsultations"];
       return [
         ...primaryPaths.flatMap((path) => items.filter((item) => item.to === path)),
@@ -398,9 +398,9 @@ function Sidebar() {
           size={36}
           logoClassName="max-h-9 w-auto object-contain"
         />
-        {user.role === "operator" ? (
-          <button type="button" onClick={() => setDrawerOpen(true)} aria-label={`Open profile menu for ${user.full_name || user.username}, ${isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
-            {getOperatorInitials(user)}
+        {["operator", "doctor"].includes(user.role) ? (
+          <button type="button" onClick={() => setDrawerOpen(true)} aria-label={`Open profile menu for ${user.full_name || user.username}, ${user.role === "doctor" && user.operation_status === "available" ? "Available" : isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
+            {getOperatorInitials(user.role === "doctor" ? { ...user, full_name: String(user.full_name || "").replace(/^dr\.?\s+/i, "") } : user)}
             <span className={cx("absolute bottom-0 right-0 size-3 rounded-full border-2 border-white", isOperatorLive(user.operation_status) ? "bg-emerald-500" : "bg-slate-400")} aria-hidden="true" />
           </button>
         ) : <div className="h-11 w-11 shrink-0" aria-hidden="true" />}
@@ -533,15 +533,15 @@ function Sidebar() {
       {/* ─── Desktop: full sidebar ─── */}
       <aside className="hidden w-full min-w-0 border-r border-ocs-teal/15 bg-white/88 text-ocs-slate shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-5 py-5">
-          <div className={user.role === "operator" ? "inline-flex w-full px-2 py-1" : "inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}>
+          <div className={["operator", "doctor"].includes(user.role) ? "inline-flex w-full px-2 py-1" : "inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}>
             <BrandMark
               maxWidth={220}
               size={48}
             />
           </div>
 
-          {user.role === "operator" ? (
-            <OperatorDesktopIdentity user={user} onSignOut={logout} />
+          {["operator", "doctor"].includes(user.role) ? (
+            <DesktopWorkspaceIdentity user={user} onSignOut={logout} />
           ) : (
             <div className="mt-4 rounded-[22px] border border-ocs-yellow/40 bg-[rgba(247,186,36,0.16)] p-4 text-ocs-slate">
               <div className="flex items-center justify-between gap-3">

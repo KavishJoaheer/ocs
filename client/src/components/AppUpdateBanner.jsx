@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { CLIENT_BUILD_SHA } from "../lib/clientBuildSha.js";
 import { hasUnsavedWork, subscribeUnsavedWork } from "../lib/unsavedWork.js";
 import { api } from "../lib/api.js";
+import { RefreshCw } from "lucide-react";
+import Modal from "./Modal.jsx";
 
 const POLL_MS = 60_000;
 const DISMISSED_SHA_KEY = "ocs_dismissed_build_sha";
@@ -15,12 +17,13 @@ function buildIdentity(payload) {
   return String(payload?.git_sha || payload?.version || "").trim();
 }
 
-export default function AppUpdateBanner() {
+export default function AppUpdateBanner({ compact = false }) {
   const clientSha = CLIENT_BUILD_SHA;
   const bootShaRef = useRef(clientSha);
   const [availableSha, setAvailableSha] = useState("");
   const [dirty, setDirty] = useState(hasUnsavedWork());
   const [confirmReload, setConfirmReload] = useState(false);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => subscribeUnsavedWork(setDirty), []);
 
@@ -68,6 +71,28 @@ export default function AppUpdateBanner() {
     window.location.reload();
   }
 
+  function dismiss() {
+    window.sessionStorage.setItem(DISMISSED_SHA_KEY, availableSha);
+    setAvailableSha("");
+    setConfirmReload(false);
+    setOpen(false);
+  }
+
+  if (compact) {
+    return <>
+      <button type="button" onClick={() => setOpen(true)} aria-label="App update available" title="App update available" className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-[#d5e4e1] bg-white text-[#376168]">
+        <RefreshCw className="size-4" aria-hidden="true" /><span className="absolute right-1 top-1 size-2.5 rounded-full border-2 border-white bg-[#20c9c0]" aria-hidden="true" />
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="App update available" size="sm">
+        <p className="text-sm leading-6 text-[#485e65]">A newer OCS release is available.{dirty ? " Unsaved work is open. Reloading can lose your changes." : " Reload to use the current version."}{confirmReload ? " Confirm reload to discard unsaved work." : ""}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={reloadNow} aria-label={dirty && !confirmReload ? "Reload requires confirmation" : confirmReload ? "Confirm reload" : "Reload now"} className="min-h-11 rounded-full bg-[#137b80] px-4 py-2 text-sm font-semibold text-white">{dirty && !confirmReload ? "Review" : confirmReload ? "Confirm" : "Reload"}</button>
+          <button type="button" onClick={dismiss} className="min-h-11 rounded-full border border-[#d5e4e1] bg-white px-4 py-2 text-sm font-semibold text-[#376168]">Later</button>
+        </div>
+      </Modal>
+    </>;
+  }
+
   return (
     <div
       role="status"
@@ -93,11 +118,7 @@ export default function AppUpdateBanner() {
         </button>
         <button
           type="button"
-          onClick={() => {
-            window.sessionStorage.setItem(DISMISSED_SHA_KEY, availableSha);
-            setAvailableSha("");
-            setConfirmReload(false);
-          }}
+          onClick={dismiss}
           className="inline-flex min-h-9 items-center justify-center rounded-lg border border-teal-200 bg-white px-2.5 text-xs font-semibold text-teal-900 sm:min-h-11 sm:rounded-xl sm:px-3 sm:text-sm"
         >
           Later

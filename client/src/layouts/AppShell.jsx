@@ -81,8 +81,8 @@ const pageMeta = {
     helper: "Review all patients currently assigned to this doctor account.",
   },
   "/doctor/long-term-review": {
-    label: "Review appointments",
-    helper: "Practice-wide chronic care follow-up queue.",
+    label: "Follow-ups",
+    helper: "Patients flagged for follow-up, including future appointments.",
   },
   "/operator/scheduled-visits": {
     label: "Scheduled visits",
@@ -302,7 +302,7 @@ function AppShell() {
           >
             {user?.role ? (
               <>
-                <AppUpdateBanner />
+                {!(isDashboard && userRole === "doctor") ? <AppUpdateBanner /> : null}
                 {user.is_read_only ? (
                   <div
                     className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm"
@@ -314,7 +314,7 @@ function AppShell() {
                       changes from this account can be saved.
                     </p>
                   </div>
-                ) : !(isDashboard && userRole === "operator") ? (
+                ) : !(isDashboard && ["operator", "doctor"].includes(userRole)) ? (
                   <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
                 ) : null}
               </>
