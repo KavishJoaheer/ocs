@@ -29,9 +29,9 @@ export default function PatientCareInvitation({ patient, readOnly = false }) {
     } catch (error) { toast.error(error.message); }
     finally { setBusy(false); }
   }
-  async function copy() {
-    try { await navigator.clipboard.writeText(invitation.message); toast.success("Invitation copied. Send it to the confirmed patient’s WhatsApp conversation."); }
-    catch { toast.error("Copy the invitation from the text box below."); }
+  async function copy(linkOnly = false) {
+    try { await navigator.clipboard.writeText(linkOnly ? invitation.url : invitation.message); toast.success(linkOnly ? "Sign-in link copied." : "Invitation copied. Send it to the confirmed patient’s WhatsApp conversation."); }
+    catch { toast.error("Select and copy the link and message below."); }
   }
   const rowClass = "flex items-start gap-3 text-sm text-slate-700";
   function choosePurpose(next) {
@@ -54,8 +54,21 @@ export default function PatientCareInvitation({ patient, readOnly = false }) {
       {purpose === "teleconsultation" && <label className={rowClass}><input type="checkbox" checked={screened} onChange={e => setScreened(e.target.checked)} />Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.</label>}
     </div>
     <button type="button" disabled={readOnly || busy || !identity || !mobile || !patient.patient_contact_number || (purpose === "teleconsultation" && !screened)} onClick={generate} className="rounded-xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Preparing…" : invitation ? "Create replacement link" : "Create 10-minute sign-in link"}</button>
-    {invitation && <div className="mt-4 space-y-3" role="status"><p className="text-sm font-semibold">{seconds ? `Valid for ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} · one use` : "Link expired. Create a replacement if needed."}</p>
-      {seconds > 0 && <><textarea aria-label="Personal invitation to copy" readOnly value={invitation.message} rows={5} className="w-full rounded-xl border border-slate-200 p-3 text-sm" /><button type="button" onClick={copy} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold">Copy invitation for WhatsApp</button></>}
+    {invitation && <div className="mt-4 space-y-3">
+      {seconds > 0 ? <>
+        <div className="min-w-0 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <label className="block text-sm font-semibold text-ocs-slate">
+            Personal sign-in link
+            <input readOnly value={invitation.url} onFocus={event => event.target.select()} className="mt-2 w-full min-w-0 rounded-lg border border-slate-200 bg-white p-3 text-sm font-normal text-ocs-teal" />
+          </label>
+          <p className="text-xs font-semibold text-ocs-teal">{`Expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} · one use`}</p>
+          <p aria-label="Invitation message" className="whitespace-pre-line text-sm leading-relaxed text-slate-600">{invitation.instructions || invitation.message.replace(invitation.url, "").trim()}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => copy()} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold">Copy invitation for WhatsApp</button>
+          <button type="button" onClick={() => copy(true)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold">Copy link only</button>
+        </div>
+      </> : <p role="status" className="text-sm font-semibold">Link expired. Create a replacement if needed.</p>}
       <p className="text-xs text-slate-500">Copying does not send a message. Share only with the confirmed patient. A replacement invalidates the earlier link. The sign-in link is separate from consent and the consultation code.</p></div>}
     {purpose === "teleconsultation" && <Link to="/teleconsultations" className="inline-block text-sm font-semibold text-ocs-teal underline">Teleconsultation queue</Link>}
   </div>;

@@ -95,6 +95,10 @@ test("invalid, duplicate and unconfirmed future sign-in attempts keep the patien
 test("operator invitation grants a cookie session without email/password; single-use and hashes only", async () => {
   const p = await patient(); const link = await invite(p); assert.equal(link.status, 201, JSON.stringify(link.data));
   assert.equal(link.data.expires_in_seconds, 600); assert.equal(new URL(link.data.url).search, "");
+  assert.match(token(link), /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(Buffer.from(token(link), "base64url").length, 32);
+  assert.equal(link.data.message, `${link.data.url}\n\n${link.data.instructions}`);
+  assert.ok(link.data.instructions.startsWith("OCS Médecins"));
   const stored = db.prepare("SELECT * FROM patient_magic_links WHERE patient_id=?").get(p.id);
   assert.notEqual(stored.token_hash, token(link)); assert.equal(Date.parse(`${stored.expires_at.replace(' ', 'T')}Z`) - Date.parse(`${stored.created_at.replace(' ', 'T')}Z`), 600000);
   const login = await redeem(link); assert.equal(login.status, 200, JSON.stringify(login.data)); assert.ok(login.cookie);
@@ -104,6 +108,16 @@ test("operator invitation grants a cookie session without email/password; single
   assert.equal((await api("GET", "/patient-portal/profile", null, login)).status, 200);
   assert.equal((await redeem(link)).status, 401);
   assert.equal((await api("GET", "/patient-portal/profile", null, login)).status, 200);
+});
+test("previously issued hexadecimal invitations remain usable once", async () => {
+  const { generateSessionToken, hashSessionToken } = require("../src/lib/security");
+  const p = await patient(); await invite(p);
+  const legacyToken = generateSessionToken();
+  db.prepare("UPDATE patient_magic_links SET token_hash=? WHERE patient_id=?").run(hashSessionToken(legacyToken), p.id);
+  const login = await api("POST", "/patient-auth/magic-link/redeem", { token: legacyToken });
+  assert.equal(login.status, 200, JSON.stringify(login.data));
+  assert.equal(login.data.user.patient_id, p.id);
+  assert.equal((await api("POST", "/patient-auth/magic-link/redeem", { token: legacyToken })).status, 401);
 });
 test("resend revokes earlier links; expired, wrong-mobile, unconfirmed, and unauthorized invitations fail", async () => {
   const p = await patient(); const old = await invite(p); const replacement = await invite(p);

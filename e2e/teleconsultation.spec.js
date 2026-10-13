@@ -19,7 +19,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     patient_contact_number: "52520142", patient_id_number: `TELE-E2E-${Date.now()}`, address: "Moka", location: "Moka", location_tags: [{ category: "Town", name: "Moka" }],
   } });
   expect(created.ok(), await created.text()).toBeTruthy(); const patient = await created.json();
-  const opContext = await browser.newContext(); const patientContext = await browser.newContext({ viewport: { width: 390, height: 844 } }); const doctorContext = await browser.newContext();
+  const opContext = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] }); const patientContext = await browser.newContext({ viewport: { width: 390, height: 844 } }); const doctorContext = await browser.newContext();
   try {
     const opPage = await staffPage(opContext, operator);
     await opPage.goto(`${STAFF}/patients/${patient.id}`);
@@ -39,9 +39,10 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
     await expect(opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.")).toHaveCount(0);
     await opPage.getByRole("button", { name: "Create 10-minute sign-in link" }).click();
-    await expect(opPage.getByLabel("Personal invitation to copy")).toBeVisible();
+    await expect(opPage.getByLabel("Personal sign-in link")).toBeVisible();
+    expect(await opPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await opPage.getByRole("button", { name: "Close dialog", exact: true }).click();
-    await expect(opPage.getByLabel("Personal invitation to copy")).toHaveCount(0);
+    await expect(opPage.getByLabel("Personal sign-in link")).toHaveCount(0);
     await opPage.setViewportSize({ width: 1280, height: 900 });
     await opPage.reload();
     await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
@@ -50,8 +51,15 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
     await opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.").check();
     await opPage.getByRole("button", { name: "Create 10-minute sign-in link" }).click();
-    const invitation = opPage.getByLabel("Personal invitation to copy"); await expect(invitation).toBeVisible();
-    const magicUrl = (await invitation.inputValue()).match(/https?:\/\/\S+/)[0];
+    const invitation = opPage.getByLabel("Personal sign-in link"); await expect(invitation).toBeVisible();
+    const magicUrl = await invitation.inputValue();
+    await expect(opPage.getByLabel("Invitation message")).not.toContainText(magicUrl);
+    await opPage.getByRole("button", { name: "Copy invitation for WhatsApp" }).click();
+    const copied = await opPage.evaluate(() => navigator.clipboard.readText());
+    expect(copied.startsWith(`${magicUrl}\n\nOCS Médecins`)).toBe(true);
+    expect(copied).toContain("Valid for 10 minutes");
+    await opPage.getByRole("button", { name: "Copy link only" }).click();
+    expect(await opPage.evaluate(() => navigator.clipboard.readText())).toBe(magicUrl);
     const carePage = await patientContext.newPage();
     await carePage.goto(magicUrl.replace(new URL(magicUrl).origin, CARE));
     await expect(carePage.getByRole("button", { name: "Continue to OCS Care" })).toBeEnabled();

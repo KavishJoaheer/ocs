@@ -1,4 +1,5 @@
 const { db } = require("../db");
+const { randomBytes } = require("node:crypto");
 const { generateSessionToken, hashSessionToken, getSessionExpiryTimestamp } = require("./security");
 const { getPatientPortalOrigin } = require("./mailer");
 
@@ -13,7 +14,8 @@ function issuePatientMagicLink(patientId, actor, body) {
   if (!["admin", "operator"].includes(actor.role) || actor.is_read_only) fail("Only authorised operators and administrators can issue invitations.", 403);
   const portalUrl = new URL(getPatientPortalOrigin());
   if (body.identity_confirmed !== true || body.mobile_confirmed !== true) fail("Confirm the patient’s identity and personal mobile number first.");
-  const token = generateSessionToken();
+  // URL-safe encoding keeps the same 256 bits of randomness in fewer characters.
+  const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");
   const result = db.transaction(() => {
     const patient = db.prepare("SELECT * FROM patients WHERE id = ? AND deleted_at IS NULL").get(patientId);
@@ -39,12 +41,14 @@ function issuePatientMagicLink(patientId, actor, body) {
   // Fragment avoids sending the credential in HTTP URLs, access logs or referrers.
   const link = new URL("/sign-in-link", portalUrl);
   link.hash = `token=${token}`;
+  const instructions = "OCS Médecins · Your personal OCS Care sign-in link.\nValid for 10 minutes · One use only.\nKeep this link private. OCS will never ask for your account password or WhatsApp registration code.";
   return { url: link.href, mobile: result.mobile, expires_at: `${expiresAt.replace(" ", "T")}Z`, expires_in_seconds: 600,
-    message: `OCS Médecins: Open your personal OCS Care sign-in link: ${link.href}\nValid for 10 minutes and one use. Keep this link private. OCS will never ask for your account password or WhatsApp registration code.` };
+    instructions, message: `${link.href}\n\n${instructions}` };
 }
 function redeemPatientMagicLink(rawToken) {
   const token = String(rawToken || "");
-  if (!/^[a-f0-9]{64}$/.test(token)) fail("This sign-in link is invalid, expired or already used. Please ask OCS for a new link.", 401);
+  // Continue accepting invitations issued in the previous hexadecimal format.
+  if (!/^(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(token)) fail("This sign-in link is invalid, expired or already used. Please ask OCS for a new link.", 401);
   return db.transaction(() => {
     const link = db.prepare(`SELECT * FROM patient_magic_links WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).get(hashSessionToken(token));
     if (!link) fail("This sign-in link is invalid, expired or already used. Please ask OCS for a new link.", 401);
