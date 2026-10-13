@@ -91,7 +91,7 @@ function EditActions({ onCancel, onSave, saving }) {
 }
 
 function PatientProfile() {
-  const { user, updateUser, logout } = usePatientAuth();
+  const { user, updateUser, requestLogout } = usePatientAuth();
   const { activeProfile, activeProfileId, dependents } = useFamilyProfile();
   const isPrimaryProfile = Boolean(activeProfile?.isPrimary);
   const [profile, setProfile] = useState(null);
@@ -515,7 +515,7 @@ function PatientProfile() {
           ) : null}
           <button
             type="button"
-            onClick={() => logout()}
+            onClick={requestLogout}
             className="mt-6 block w-full rounded-xl border border-red-200 bg-white py-4 text-center text-[15px] font-semibold text-red-500"
           >
             Sign Out
@@ -542,7 +542,7 @@ function PatientProfile() {
             {isPrimaryProfile ? <ProfilePasswordCard /> : null}
             <button
               type="button"
-              onClick={() => logout()}
+              onClick={requestLogout}
               className="block w-full rounded-xl border border-red-200 bg-white py-4 text-center text-[15px] font-semibold text-red-500"
             >
               Sign Out

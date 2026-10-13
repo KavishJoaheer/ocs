@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import FutureSignInDialog from "../components/auth/FutureSignInDialog.jsx";
 import { api, getStoredAuthToken, setStoredAuthToken, setActingPatientId } from "../lib/api.js";
 import { PATIENT_DATA_EVENT, startPatientRealtime, stopPatientRealtime } from "../lib/realtime.js";
 import { syncPushSubscriptionIfGranted } from "../lib/pushNotifications.js";
@@ -8,11 +9,13 @@ const AuthContext = createContext(null);
 const COOKIE_SESSION = "cookie-session";
 
 export function AuthProvider({ children }) {
+  const [signOutPatientId, setSignOutPatientId] = useState(null);
+  const [signOutState, setSignOutState] = useState(null);
   const [token, setToken] = useState(() => getStoredAuthToken() || COOKIE_SESSION);
   const [user, setUser] = useState(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
 
-  const logout = useCallback(async ({ remote = true } = {}) => {
+  const logout = useCallback(async ({ remote = true, redirectState } = {}) => {
     const activeToken = getStoredAuthToken();
 
     if (remote) {
@@ -20,15 +23,35 @@ export function AuthProvider({ children }) {
         await api.post("/patient-auth/logout", undefined, {
           headers: activeToken ? { Authorization: `Bearer ${activeToken}` } : {},
         });
-      } catch {
-        // Best effort cleanup only.
+      } catch (error) {
+        if (error.status !== 401) throw error;
       }
     }
 
+    if (redirectState) setSignOutState(redirectState);
     setStoredAuthToken(null);
     setToken(null);
     setUser(null);
   }, []);
+
+  const closeSignOutPrompt = useCallback(() => setSignOutPatientId(null), []);
+  const requestLogout = useCallback(async () => {
+    if (user?.has_password === false) {
+      setSignOutPatientId(user.id);
+      return;
+    }
+    try { await logout({ redirectState: { signedOut: true } }); }
+    catch (error) { toast.error(error.message || "Could not sign out. Please try again."); }
+  }, [user, logout]);
+  const skipFutureSignIn = useCallback(async () => {
+    await logout({ redirectState: { magicLinkRequired: true } });
+    setSignOutPatientId(null);
+  }, [logout]);
+  const setupFutureSignIn = useCallback(async (form) => {
+    const result = await api.post("/patient-auth/setup-future-sign-in", form);
+    await logout({ remote: false, redirectState: { setupComplete: true, email: result.email } });
+    setSignOutPatientId(null);
+  }, [logout]);
 
   const login = useCallback(async ({ email, password }) => {
     const payload = await api.post(
@@ -41,6 +64,7 @@ export function AuthProvider({ children }) {
     setActingPatientId(null);
     setToken(COOKIE_SESSION);
     setUser(payload.user);
+    setSignOutState(null);
     void syncPushSubscriptionIfGranted();
 
     return payload.user;
@@ -52,6 +76,7 @@ export function AuthProvider({ children }) {
     setActingPatientId(null);
     setToken(COOKIE_SESSION);
     setUser(payload.user);
+    setSignOutState(null);
     void syncPushSubscriptionIfGranted();
     return payload.user;
   }, []);
@@ -67,6 +92,7 @@ export function AuthProvider({ children }) {
     setActingPatientId(null);
     setToken(COOKIE_SESSION);
     setUser(payload.user);
+    setSignOutState(null);
     void syncPushSubscriptionIfGranted();
 
     return payload.user;
@@ -172,13 +198,18 @@ export function AuthProvider({ children }) {
       register,
       redeemMagicLink,
       logout,
+      requestLogout,
+      signOutState,
       changePassword,
       updateUser,
     }),
-    [isBootstrapping, login, register, redeemMagicLink, logout, changePassword, token, updateUser, user],
+    [isBootstrapping, login, register, redeemMagicLink, logout, requestLogout, signOutState, changePassword, token, updateUser, user],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>
+    {children}
+    {user && signOutPatientId === user.id && <FutureSignInDialog onSetup={setupFutureSignIn} onSkip={skipFutureSignIn} onClose={closeSignOutPrompt} />}
+  </AuthContext.Provider>;
 }
 
 export function usePatientAuth() {

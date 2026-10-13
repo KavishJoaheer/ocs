@@ -42,7 +42,7 @@ function SidebarLink({ item }) {
 }
 
 function Sidebar() {
-  const { logout } = usePatientAuth();
+  const { requestLogout } = usePatientAuth();
 
   return (
     <>
@@ -69,7 +69,7 @@ function Sidebar() {
             <FamilyProfileSwitcher />
             <button
               type="button"
-              onClick={() => logout()}
+              onClick={requestLogout}
               aria-label="Sign out"
               className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-[16px] border border-brand-teal/20 bg-brand-teal/10 p-2 text-brand-teal transition hover:bg-brand-teal/20"
             >

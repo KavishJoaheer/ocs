@@ -10,7 +10,7 @@ function PatientLoginPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isBootstrapping, login } = usePatientAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: location.state?.setupComplete ? location.state.email || "" : "", password: "" });
 
   if (!isBootstrapping && isAuthenticated) {
     const destination = location.state?.from?.pathname || "/dashboard";
@@ -39,6 +39,8 @@ function PatientLoginPage() {
       title="Sign in to access your health records"
       showStaffLink
     >
+      {location.state?.setupComplete && <p role="status" className="mb-5 rounded-xl bg-teal-50 p-4 text-sm leading-relaxed text-teal-900">Your sign-in is ready. Next time, use your email and the password you chose. You are now signed out.</p>}
+      {location.state?.magicLinkRequired && <p role="status" className="mb-5 rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-700">You are signed out. To return without a password, contact OCS for a new personal sign-in link.</p>}
       <form className="space-y-6" onSubmit={handleSubmit}>
         <div>
           <label

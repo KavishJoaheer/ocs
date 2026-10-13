@@ -46,8 +46,9 @@ export async function openAuthedFile(path) {
   );
 }
 
-function createApiError(message, data) {
+function createApiError(message, data, status) {
   const error = new Error(message);
+  error.status = status;
   if (data?.code) {
     error.code = data.code;
   }
@@ -97,7 +98,7 @@ async function apiRequest(path, options = {}) {
       );
     }
 
-    throw createApiError(data?.error || "Something went wrong.", data);
+    throw createApiError(data?.error || "Something went wrong.", data, response.status);
   }
 
   return data;
@@ -128,7 +129,7 @@ async function apiFormRequest(path, formData, options = {}) {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    throw createApiError(data?.error || "Something went wrong.", data);
+    throw createApiError(data?.error || "Something went wrong.", data, response.status);
   }
 
   return data;

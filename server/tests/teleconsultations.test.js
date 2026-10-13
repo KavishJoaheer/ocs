@@ -39,6 +39,59 @@ function token(invitation) { return new URLSearchParams(new URL(invitation.data.
 async function redeem(invitation) { return api("POST", "/patient-auth/magic-link/redeem", { token: token(invitation) }); }
 async function request(actor, extra = {}) { return api("POST", "/patient-portal/teleconsultations", { reason: "Report review", current_location: "Moka, home", callback_number: "52520142", consent_version: CONSENT_VERSION, terms_accepted: true, clinical_consent: true, ...extra }, actor); }
 
+test("future sign-in saves credentials on the same account and revokes previous access atomically", async () => {
+  const p = await patient();
+  const first = await redeem(await invite(p));
+  const second = await redeem(await invite(p));
+  const pending = await invite(p);
+  const userId = first.data.user.id;
+  assert.equal(first.data.user.has_password, false);
+  const countBefore = db.prepare("SELECT count(*) AS n FROM patient_users").get().n;
+  const form = { email: "  Future.Access@EXAMPLE.TEST  ", password: "Private-test-password1!", confirm_password: "Private-test-password1!", patient_id: 999999 };
+  assert.equal((await api("POST", "/patient-auth/setup-future-sign-in", form)).status, 401);
+  const saved = await api("POST", "/patient-auth/setup-future-sign-in", form, first);
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.deepEqual(saved.data, { ok: true, email: "future.access@example.test" });
+  assert.match(saved.headers.get("set-cookie"), /Expires=Thu, 01 Jan 1970/);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM patient_users").get().n, countBefore);
+  const row = db.prepare("SELECT * FROM patient_users WHERE id=?").get(userId);
+  assert.equal(row.patient_id, p.id);
+  assert.equal(row.email, "future.access@example.test");
+  assert.notEqual(row.password_hash, form.password);
+  assert.ok(row.password_hash);
+  for (const session of [first, second]) assert.equal((await api("GET", "/patient-auth/me", null, session)).status, 401);
+  assert.equal((await redeem(pending)).status, 401);
+  const signedIn = await api("POST", "/patient-auth/login", { email: "FUTURE.ACCESS@example.test", password: form.password });
+  assert.equal(signedIn.status, 200, JSON.stringify(signedIn.data));
+  assert.equal(signedIn.data.user.id, userId);
+  assert.equal(signedIn.data.user.patient_id, p.id);
+  assert.equal(signedIn.data.user.has_password, true);
+  assert.equal((await api("GET", "/patient-portal/profile", null, signedIn)).status, 200);
+  assert.equal((await api("POST", "/patient-auth/setup-future-sign-in", { ...form, email: "overwrite@example.test" }, signedIn)).status, 409);
+  assert.equal((await api("GET", "/patient-auth/me", null, signedIn)).status, 200);
+  assert.equal(db.prepare("SELECT email FROM patient_users WHERE id=?").get(userId).email, row.email);
+});
+
+test("invalid, duplicate and unconfirmed future sign-in attempts keep the patient signed in", async () => {
+  const other = await redeem(await invite(await patient()));
+  db.prepare("UPDATE patient_users SET email='Already.Used@EXAMPLE.TEST' WHERE id=?").run(other.data.user.id);
+  const p = await patient();
+  const login = await redeem(await invite(p));
+  const form = { email: "new@example.test", password: "Private-test-password2!", confirm_password: "Private-test-password2!" };
+  for (const invalid of [{ email: "invalid" }, { password: "short", confirm_password: "short" }, { confirm_password: "mismatch" }]) {
+    assert.equal((await api("POST", "/patient-auth/setup-future-sign-in", { ...form, ...invalid }, login)).status, 400);
+    assert.equal((await api("GET", "/patient-auth/me", null, login)).status, 200);
+  }
+  assert.equal((await api("POST", "/patient-auth/setup-future-sign-in", { ...form, email: "already.used@example.test" }, login)).status, 409);
+  assert.equal((await api("GET", "/patient-auth/me", null, login)).status, 200);
+  assert.equal(db.prepare("SELECT password_hash FROM patient_users WHERE id=?").get(login.data.user.id).password_hash, null);
+  db.prepare("UPDATE patients SET link_status='pending_review' WHERE id=?").run(p.id);
+  assert.equal((await api("POST", "/patient-auth/setup-future-sign-in", form, login)).status, 403);
+  assert.equal((await api("GET", "/patient-auth/me", null, login)).status, 200);
+  assert.equal(db.prepare("SELECT email FROM patient_users WHERE id=?").get(login.data.user.id).email, null);
+  assert.equal(db.prepare("SELECT email FROM patient_users WHERE id=?").get(other.data.user.id).email, "Already.Used@EXAMPLE.TEST");
+});
+
 test("operator invitation grants a cookie session without email/password; single-use and hashes only", async () => {
   const p = await patient(); const link = await invite(p); assert.equal(link.status, 201, JSON.stringify(link.data));
   assert.equal(link.data.expires_in_seconds, 600); assert.equal(new URL(link.data.url).search, "");

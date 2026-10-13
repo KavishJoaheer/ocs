@@ -43,7 +43,7 @@ function ProfilePasswordCard() {
   }
 
   if (user?.has_password === false) {
-    return <ProfileListCard title="Account security"><p className="px-5 pb-5 pt-3 text-[13px] leading-relaxed text-[#6e8587]">You sign in using a personal, one-time link from OCS. Keep it private. Contact the hotline if you need a new sign-in link.</p></ProfileListCard>;
+    return <ProfileListCard title="Account security"><p className="px-5 pb-5 pt-3 text-[13px] leading-relaxed text-[#6e8587]">You signed in with a personal, one-time link from OCS. When you sign out, you can choose an email and password for future access, or ask OCS for a new link next time.</p></ProfileListCard>;
   }
 
   return (

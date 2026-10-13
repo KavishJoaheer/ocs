@@ -308,6 +308,52 @@ router.get("/me", requirePatientAuth, (req, res) => {
   res.json({ user: req.patientAuth });
 });
 
+// Initial credentials for an already authenticated, clinic-confirmed account.
+// Saving and revoking sessions are atomic: failures leave access unchanged.
+router.post("/setup-future-sign-in", requirePatientAuth, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const password = String(req.body?.password ?? "");
+  const confirmPassword = String(req.body?.confirm_password ?? "");
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "Enter a valid email address that you control." });
+  }
+  if (password.length < 8 || password.length > 1024) {
+    return res.status(400).json({ error: "Choose a password between 8 and 1024 characters." });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: "The passwords do not match." });
+  }
+  const userId = req.patientAuth.id;
+  try {
+    db.transaction(() => {
+      const user = db.prepare("SELECT * FROM patient_users WHERE id=? AND is_active=1").get(userId);
+      const patient = user?.patient_id ? db.prepare("SELECT link_status FROM patients WHERE id=? AND deleted_at IS NULL").get(user.patient_id) : null;
+      if (!patient || !["verified", "staff_created"].includes(patient.link_status)) {
+        throw Object.assign(new Error("Contact OCS to confirm your patient account before setting up sign-in."), { status: 403 });
+      }
+      if (user.password_hash) {
+        throw Object.assign(new Error("Your account already has a password. Use Change password in your profile."), { status: 409 });
+      }
+      if (db.prepare("SELECT id FROM patient_users WHERE lower(email)=? AND id<>?").get(email, userId)) {
+        throw Object.assign(new Error("This email is already used by another account. Use another email or contact OCS."), { status: 409 });
+      }
+      db.prepare("UPDATE patient_users SET email=?, password_hash=? WHERE id=?").run(email, hashPassword(password), userId);
+      db.prepare("DELETE FROM patient_auth_sessions WHERE patient_user_id=?").run(userId);
+      db.prepare("DELETE FROM patient_password_reset_tokens WHERE patient_user_id=?").run(userId);
+      db.prepare("UPDATE patient_magic_links SET revoked_at=CURRENT_TIMESTAMP WHERE patient_id=? AND used_at IS NULL AND revoked_at IS NULL").run(user.patient_id);
+    })();
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (String(error.message).includes("UNIQUE constraint failed")) {
+      return res.status(409).json({ error: "This email is already in use. Choose another email or contact OCS." });
+    }
+    throw error;
+  }
+  res.clearCookie(PATIENT_SESSION_COOKIE, getClearSessionCookieOptions());
+  return res.json({ ok: true, email });
+});
+
 router.post("/logout", requirePatientAuth, (req, res) => {
   db.prepare("DELETE FROM patient_auth_sessions WHERE id = ?").run(req.patientAuthSessionId);
   res.clearCookie(PATIENT_SESSION_COOKIE, getClearSessionCookieOptions());

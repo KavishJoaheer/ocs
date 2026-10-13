@@ -2,7 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated, isBootstrapping } = usePatientAuth();
+  const { isAuthenticated, isBootstrapping, signOutState } = usePatientAuth();
   const location = useLocation();
 
   if (isBootstrapping) {
@@ -17,7 +17,7 @@ function ProtectedRoute({ children }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={signOutState || { from: location }} replace />;
   }
 
   return children;
