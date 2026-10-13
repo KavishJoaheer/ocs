@@ -44,7 +44,7 @@ function getCoveragePresentation(coverage) {
   };
 }
 
-export default function OperatorPolicyVerifier({ className = "", embedded = false }) {
+export default function OperatorPolicyVerifier({ className = "", embedded = false, compact = false }) {
   const [policyNumber, setPolicyNumber] = useState("");
   const [nationalId, setNationalId] = useState("");
   const [state, setState] = useState("idle");
@@ -86,14 +86,15 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
   return (
     <section
       className={cx(
-        !embedded && "rounded-[20px] border border-[#203f42]/10 bg-white px-4 py-4 shadow-[0_10px_30px_rgba(32,63,66,0.07)] sm:px-5",
+        !embedded && "rounded-[20px] border border-[#203f42]/10 bg-white px-4 py-4 sm:px-5",
+        !embedded && !compact && "shadow-[0_10px_30px_rgba(32,63,66,0.07)]",
         className,
       )}
       aria-labelledby={embedded ? undefined : "operator-policy-verifier-heading"}
       aria-label={embedded ? "Policy lookup" : undefined}
     >
       {!embedded ? <div className="flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#2bccc4]/10 text-[#1a7f7a]">
+        <span className={cx("grid shrink-0 place-items-center text-[#1a7f7a]", compact ? "size-6" : "size-10 rounded-xl bg-[#2bccc4]/10")}>
           <ShieldCheck className="size-5" strokeWidth={2.2} aria-hidden="true" />
         </span>
         <div className="min-w-0">
@@ -101,34 +102,34 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
             id="operator-policy-verifier-heading"
             className="font-display text-base font-semibold text-[#203f42]"
           >
-            Quick policy verification
+            {compact ? "Verify policy" : "Quick policy verification"}
           </h2>
-          <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">
+          {!compact ? <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">
             Enter either identifier. Use both to confirm they belong to the same policy.
-          </p>
+          </p> : null}
         </div>
       </div> : null}
 
       <form className={cx(!embedded && "mt-3", "grid grid-cols-1 gap-2.5", !embedded && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto]")} onSubmit={handleSubmit}>
         <label className="min-w-0">
-          <span className="sr-only">Policy number</span>
+          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#5f7476]" : "sr-only"}>Policy number</span>
           <input
             type="text"
             value={policyNumber}
             onChange={(event) => updateField(setPolicyNumber, event.target.value)}
-            placeholder="Policy number (optional)"
+            placeholder={compact ? "Enter policy number" : "Policy number (optional)"}
             autoComplete="off"
             autoCapitalize="characters"
             className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2bccc4] focus:bg-white focus:ring-2 focus:ring-[#2bccc4]/15"
           />
         </label>
         <label className="min-w-0">
-          <span className="sr-only">Mauritius ID number</span>
+          <span className={compact ? "mb-1.5 block text-xs font-medium text-[#5f7476]" : "sr-only"}>Mauritius ID number</span>
           <input
             type="text"
             value={nationalId}
             onChange={(event) => updateField(setNationalId, event.target.value)}
-            placeholder="Mauritius ID (optional)"
+            placeholder={compact ? "Enter Mauritius ID" : "Mauritius ID (optional)"}
             maxLength={14}
             autoComplete="off"
             autoCapitalize="characters"
@@ -138,7 +139,7 @@ export default function OperatorPolicyVerifier({ className = "", embedded = fals
         <button
           type="submit"
           disabled={!canVerify || state === "checking"}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#1a7f7a] px-5 text-sm font-bold text-white transition hover:bg-[#146b67] disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-xl bg-[#1a7f7a] px-5 text-sm font-bold text-white transition hover:bg-[#146b67] disabled:cursor-not-allowed disabled:opacity-45"
         >
           {state === "checking" ? (
             <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />

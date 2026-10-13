@@ -1137,7 +1137,7 @@ function OperatorDashboardView({
       latestHcmPost={latestHcmPost}
       lowStockAlert={dashboard?.ocs_low_stock_alert}
       onStatusChange={onStatusChange}
-      operatorMetrics={operatorMetrics}
+      liveVisits={dashboard?.liveVisitRequests}
       user={user}
     />
   );
@@ -1483,7 +1483,7 @@ function DashboardPage() {
         const [data, doctorWorkspace, liveVisitRequests] = await Promise.all([
           api.get("/dashboard"),
           user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
-          (user.role === "doctor" || (user.role === "operator" && isMobile))
+          (user.role === "doctor" || user.role === "operator")
             ? api.get("/visit-requests?status=active").catch(() => null)
             : Promise.resolve(null),
         ]);
@@ -1538,7 +1538,7 @@ function DashboardPage() {
   }, [user.role, refreshKey, isMobile]);
 
   useEffect(() => {
-    if (!isOperator || !isMobile) return undefined;
+    if (!isOperator) return undefined;
     let ignore = false;
     const timer = window.setInterval(async () => {
       try {

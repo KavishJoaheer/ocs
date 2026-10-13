@@ -53,6 +53,7 @@ function OperationStatusSelector({
   showLabel = true,
 }) {
   const onDark = tone === "onDark";
+  const onTeal = tone === "teal";
 
   return (
     <div
@@ -68,7 +69,7 @@ function OperationStatusSelector({
         </span>
       ) : null}
 
-      <div className={cx("flex items-center gap-1 rounded-xl p-1", onDark ? "bg-white/10" : "bg-slate-100")}>
+      <div className={cx("flex items-center gap-1 rounded-xl p-1", onDark ? "bg-white/10" : onTeal ? "border border-[#cadfdd] bg-white" : "bg-slate-100")}>
         {options.map((status) => {
           const meta = onDark ? DARK_STATUS_META[status] : STATUS_META[status];
           const isActive = value === status;
@@ -82,7 +83,7 @@ function OperationStatusSelector({
               className={cx(
                 "rounded-lg px-3 py-1.5 text-xs font-bold normal-case transition disabled:cursor-default",
                 isActive
-                  ? cx(meta?.textClassName, meta?.activeClassName)
+                  ? onTeal ? "bg-[#137b80] text-white shadow-sm" : cx(meta?.textClassName, meta?.activeClassName)
                   : onDark
                     ? "bg-transparent text-white/70 hover:bg-white/10 hover:text-white"
                     : "bg-transparent text-slate-500 hover:bg-white hover:text-slate-800",

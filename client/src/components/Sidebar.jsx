@@ -532,7 +532,7 @@ function Sidebar() {
       {/* ─── Desktop: full sidebar ─── */}
       <aside className="hidden w-full min-w-0 border-r border-ocs-teal/15 bg-white/88 text-ocs-slate shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-5 py-5">
-          <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className={user.role === "operator" ? "inline-flex w-full px-2 py-1" : "inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}>
             <BrandMark
               maxWidth={220}
               size={48}

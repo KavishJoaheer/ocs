@@ -6,7 +6,7 @@
   --ocs-cc-muted: #5f7476;
   width: 100%;
   min-width: 0;
-  max-width: 72rem;
+  max-width: 84rem;
   margin-inline: auto;
   color: var(--ocs-cc-ink);
 }
@@ -17,8 +17,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 0 1.25rem;
-  border-bottom: 1px solid rgba(32, 63, 66, 0.12);
+  padding: 0.5rem 0;
 }
 
 .ocs-cc-header-tools {
@@ -36,51 +35,9 @@
   border-right: 1px solid rgba(32, 63, 66, 0.12);
 }
 
-.ocs-cc-pulse {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 999px;
-  background: var(--ocs-cc-turquoise);
-}
-
-.ocs-cc-card {
-  display: flex;
-  min-height: 5.5rem;
-  height: 100%;
-  align-items: center;
-  gap: 0.8rem;
-  border: 1px solid rgba(32, 63, 66, 0.1);
-  border-radius: 14px;
-  background: #ffffff;
-  transition: background-color 180ms ease, border-color 180ms ease;
-}
-
-.ocs-cc-card:hover {
-  background: #f7faf9;
-  border-color: rgba(32, 63, 66, 0.2);
-}
-
-.ocs-cc-card:focus-visible {
-  outline: 2px solid #2bccc4;
-  outline-offset: 3px;
-}
-
-.ocs-cc-card--create {
-  background: #ffffff;
-}
-
-.ocs-cc-card--amber {
-  background: #fffdf7;
-}
-
-.ocs-cc-card--amber:hover {
-  border-color: rgba(32, 63, 66, 0.2);
-}
-
-.ocs-cc-panel,
 .ocs-cc-side-card {
   border: 1px solid rgba(32, 63, 66, 0.08);
-  border-radius: 14px;
+  border-radius: 20px;
   background: #ffffff;
 }
 
@@ -100,10 +57,7 @@
 
 .ocs-cc-identity {
   margin-top: 1.25rem;
-  border: 1px solid rgba(32, 63, 66, 0.1);
-  border-radius: 1.15rem;
-  background: #fffdf7;
-  box-shadow: 0 6px 16px rgba(32, 63, 66, 0.05);
+  background: transparent;
 }
 
 .ocs-cc-identity-menu {
@@ -120,7 +74,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ocs-cc-card,
   .ocs-cc-pulse-row {
     transition: none;
   }

@@ -23,6 +23,49 @@ async function session(page, request) {
   return { actor, headers: { Authorization: `Bearer ${actor.token}` } };
 }
 
+test("desktop toolbar and policy lookup work at desktop and tablet widths", async ({ page, request }) => {
+  await session(page, request);
+  await page.route("**/api/teleconsultations", route => route.fulfill({ json: { requests: [] } }));
+  for (const width of [1280, 820]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${STAFF}/`);
+    const workflow = page.getByRole("region", { name: "Operator workflows", exact: true });
+    await expect(workflow.getByRole("link")).toHaveCount(2);
+    await workflow.getByRole("link", { name: "Add patient", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "ID type", exact: true })).toBeVisible();
+    await page.goto(`${STAFF}/`);
+    await workflow.getByRole("link", { name: /^Reviews/ }).click();
+    await expect(page).toHaveURL(/\/operator\/long-term-review$/);
+    await page.goto(`${STAFF}/`);
+    const policy = page.getByRole("region", { name: "Verify policy", exact: true });
+    await expect(policy).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.screenshot({ path: `/tmp/ocs-operator-desktop-redesign-${width}.png`, fullPage: true });
+    let failLookup = true;
+    await page.route("**/api/patients/insurance/policy-lookup?**", route => failLookup
+      ? route.fulfill({ status: 503, json: { error: "Policy lookup unavailable" } })
+      : route.fulfill({ json: { coverages: [{ coverage_status: "not_found", matched: false }] } }));
+    await policy.getByRole("textbox", { name: "Policy number", exact: true }).fill("DESKTOP-TEST");
+    await policy.getByRole("textbox", { name: "Mauritius ID number", exact: true }).fill("R0101901234567");
+    await policy.getByRole("button", { name: "Verify", exact: true }).click();
+    await expect(policy.getByRole("alert")).toHaveText("Policy lookup unavailable");
+    failLookup = false;
+    const submitted = page.waitForRequest("**/api/patients/insurance/policy-lookup?**");
+    await policy.getByRole("button", { name: "Verify", exact: true }).click();
+    const url = new URL((await submitted).url());
+    expect(url.searchParams.get("policy_number")).toBe("DESKTOP-TEST");
+    expect(url.searchParams.get("national_id")).toBe("R0101901234567");
+    await expect(policy.getByRole("status")).toContainText("No matching policy found");
+    await expect(policy.getByRole("alert")).toHaveCount(0);
+    await page.unroute("**/api/patients/insurance/policy-lookup?**");
+  }
+  await page.route("**/api/visit-requests?status=active", route => route.fulfill({ status: 503, json: { error: "Unavailable" } }));
+  await page.goto(`${STAFF}/`);
+  const live = page.getByRole("region", { name: "Live requests", exact: true });
+  await expect(live.getByRole("alert")).toContainText("Could not load home visits");
+  await expect(live.getByLabel("0 active requests", { exact: true })).toHaveCount(0);
+});
+
 async function seedRequest(request, actor, headers, name, status = "pending", accepted = false) {
   const created = await request.post(`${API}/patients`, { headers, data: {
     first_name: "Dashboard", last_name: name, gender: "F", patient_id_type: "old_age",
@@ -54,17 +97,31 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   const completed = await seedRequest(request, actor, headers, "Completed Patient", "completed", true);
   const db = openE2eDb();
   let visitId;
+  let ongoingVisitId;
   try {
     visitId = Number(db.prepare("INSERT INTO visit_requests (patient_id, status, address, reason, urgency) VALUES (?, 'pending', 'Moka', 'Home visit needed', 'routine')").run(first.patientId).lastInsertRowid);
     visitIds.push(visitId);
+    const doctorId = db.prepare("SELECT doctor_id FROM users WHERE role='doctor' AND is_active=1 AND doctor_id IS NOT NULL LIMIT 1").get().doctor_id;
+    ongoingVisitId = Number(db.prepare("INSERT INTO visit_requests (patient_id, status, address, reason, urgency, assigned_doctor_id) VALUES (?, 'assigned', 'Quatre Bornes', 'Post-discharge review', 'routine', ?)").run(second.patientId, doctorId).lastInsertRowid);
+    visitIds.push(ongoingVisitId);
   } finally { db.close(); }
   await page.goto(`${STAFF}/`);
-  const visits = page.getByRole("region", { name: width < 768 ? "Home visit requests" : "Live visit requests", exact: true });
+  const visits = page.getByRole("region", { name: width < 768 ? "Home visit requests" : "Home visits", exact: true });
   await expect(visits.getByText(first.name, { exact: true })).toBeVisible();
+  await expect(visits.getByText(second.name, { exact: true })).toBeVisible();
+  const workspace = page.getByRole("region", { name: "Live requests", exact: true });
+  await expect(workspace.getByLabel("6 active requests", { exact: true })).toHaveText("6");
+  if (width >= 768) {
+    await visits.getByRole("link", { name: `Assign home visit for ${first.name}`, exact: true }).click();
+    await expect(page).toHaveURL(/\/visit-requests$/);
+    await page.goto(`${STAFF}/`);
+  }
   const cancelledVisit = await request.patch(`${API}/visit-requests/${visitId}`, { headers, data: { status: "cancelled" } });
   expect(cancelledVisit.ok()).toBeTruthy();
   await expect(visits.getByText(first.name, { exact: true })).toHaveCount(0, { timeout: 15_000 });
-  const queue = page.getByRole("region", { name: width < 768 ? /^Teleconsultations/ : /^Live teleconsultations/ });
+  await expect(visits.getByText(second.name, { exact: true })).toBeVisible();
+  await expect(workspace.getByLabel("5 active requests", { exact: true })).toHaveText("5");
+  const queue = page.getByRole("region", { name: /^Teleconsultations/ });
   if (width < 768) await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByRole("region", { name: /^Teleconsultations/ })).toBeVisible();
   await expect(queue.getByText(first.name, { exact: true })).toBeVisible();
   await expect(queue.getByText(second.name, { exact: true })).toBeVisible();
@@ -96,7 +153,7 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   await page.setViewportSize({ width: 390, height: 900 });
   const mobileAlerts = page.getByRole("complementary", { name: "Teleconsultation request alerts" });
   await expect(mobileAlerts).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByText(second.name, { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByRole("region", { name: /^Teleconsultations/ }).getByText(second.name, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.goto(`${STAFF}/patients`);
   await expect(mobileAlerts).toContainText(second.name);
@@ -108,7 +165,7 @@ test(`teleconsultation queue supports error recovery at ${width}px`, async ({ pa
   await session(page, request);
   await page.route("**/api/teleconsultations", route => route.fulfill({ status: 503, json: { error: "Unavailable" } }));
   await page.goto(`${STAFF}/`);
-  const queue = page.getByRole("region", { name: width < 768 ? /^Teleconsultations/ : /^Live teleconsultations/ });
+  const queue = page.getByRole("region", { name: /^Teleconsultations/ });
   await expect(queue.getByRole("alert")).toContainText("Could not refresh teleconsultations");
   await expect(queue.getByText("No active teleconsultations", { exact: true })).toHaveCount(0);
   await page.unroute("**/api/teleconsultations");
@@ -117,10 +174,10 @@ test(`teleconsultation queue supports error recovery at ${width}px`, async ({ pa
   await expect(queue.getByText("No active teleconsultations", { exact: true })).toBeVisible();
   await page.screenshot({ path: `/tmp/ocs-operator-minimal-panels-${width}.png`, fullPage: true });
   if (width >= 768) {
-    await queue.getByRole("link", { name: "Live teleconsultations", exact: true }).click();
+    await queue.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
     await expect(page).toHaveURL(/\/teleconsultations$/);
     await page.goto(`${STAFF}/`);
-    await page.getByRole("link", { name: "Live visit requests", exact: true }).click();
+    await page.getByRole("link", { name: "View visits", exact: true }).click();
     await expect(page).toHaveURL(/\/visit-requests$/);
   }
 });

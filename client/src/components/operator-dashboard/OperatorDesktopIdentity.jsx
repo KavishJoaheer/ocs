@@ -45,7 +45,7 @@ function OperatorDesktopIdentity({ user, onSignOut }) {
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
         <span
           aria-hidden="true"
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-[#203f42] font-display text-sm font-semibold text-white"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-[#dff3ef] font-display text-sm font-semibold text-[#137b80]"
         >
           {initials}
         </span>
