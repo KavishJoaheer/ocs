@@ -242,7 +242,15 @@ function Sidebar() {
   }
 
   const visibleNavItems = useMemo(
-    () => navItems.filter((item) => item.roles.includes(user.role)),
+    () => {
+      const items = navItems.filter((item) => item.roles.includes(user.role));
+      if (user.role !== "operator") return items;
+      const primaryPaths = ["/", "/patients", "/visit-requests", "/teleconsultations"];
+      return [
+        ...primaryPaths.flatMap((path) => items.filter((item) => item.to === path)),
+        ...items.filter((item) => !primaryPaths.includes(item.to)),
+      ];
+    },
     [user.role],
   );
 
