@@ -1563,12 +1563,13 @@ test.describe("Inventory workflow", () => {
     await expect(page.getByRole("button", { name: "Restock", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Add to request" }).first().click();
     await expect(page).toHaveURL(/compose=1/);
-    await expect(page.getByText(item.item_name).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/available/i).first()).toBeVisible();
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    const requestDialog = page.getByRole("dialog", { name: "Request Supply from OCS", exact: true });
+    await expect(requestDialog.getByText(item.item_name, { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(requestDialog.getByText("6 available", { exact: true })).toBeVisible();
+    await requestDialog.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByRole("heading", { name: /Discard this request draft/i })).toBeVisible();
     await page.getByRole("button", { name: "Continue editing" }).click();
-    await expect(page.getByText(item.item_name).first()).toBeVisible();
+    await expect(requestDialog.getByText(item.item_name, { exact: true })).toBeVisible();
   });
 
   test("doctor bag and depot switching keeps bag-scoped metric labels", async ({ request, page }) => {
