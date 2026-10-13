@@ -30,6 +30,11 @@ async function mockPortal(page, options = {}) {
     } else if (path === "/api/patient-auth/login" || path === "/api/patient-auth/register") {
       signedIn = true;
       json = { user };
+      if (options.loginError && path.endsWith("/login")) {
+        signedIn = false;
+        status = 401;
+        json = { error: "Email or password is incorrect." };
+      }
     } else if (path === "/api/patient-portal/dashboard") {
       json = { patient: { id: 1 }, next_appointment: null, last_consultation: null };
     } else if (path === "/api/patient-portal/visit-requests/active") {
@@ -85,6 +90,35 @@ for (const phone of phones) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       if (phone.browser === "huawei") await expect(guide(page)).toContainText("may add a shortcut");
       await page.screenshot({ path: testInfo.outputPath("installation-guide.png"), animations: "disabled" });
+    });
+
+    test("landing, account forms, and hotline remain usable on this phone", async ({ page }, testInfo) => {
+      const errors = [];
+      page.on("pageerror", error => errors.push(error.message));
+      await mockPortal(page, { signedIn: false });
+      await page.goto("/");
+      const hotline = page.getByRole("link", { name: "Call OCS · 52 52 22 34", exact: true });
+      await expect(hotline).toHaveAttribute("href", "tel:52522234");
+      expect((await hotline.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath("landing.png"), fullPage: true, animations: "disabled" });
+      await page.locator(".landing-primary-cta").click();
+      await expect(page).toHaveURL(/\/register$/);
+      await expect(page.getByLabel("Full name", { exact: true })).toBeVisible();
+      expect(await page.getByLabel("Full name", { exact: true }).evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.goto("/login");
+      expect(await page.getByLabel("Email address").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+      await page.getByLabel("Email address").fill(user.email);
+      await page.getByLabel("Password", { exact: true }).fill("test-password");
+      await page.getByRole("button", { name: "Sign in to OCS Care", exact: true }).click();
+      await expect(invite(page)).toBeVisible();
+      await invite(page).getByRole("button", { name: "Maybe later", exact: true }).click();
+      await page.getByRole("link", { name: "Profile", exact: true }).click();
+      await page.getByRole("button", { name: /Add OCS Care to your phone/ }).click();
+      await expect(guide(page).getByLabel("Instructions for")).toHaveValue(phone.browser);
+      await guide(page).getByRole("button", { name: "Close installation guide" }).click();
+      expect(errors).toEqual([]);
     });
   });
 }
@@ -279,16 +313,18 @@ test("small screens keep the guide usable, trap focus, and restore it on Escape"
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test("embedded browsers explain how to open externally and copy a safe public link", async ({ page, context }) => {
+test("embedded browsers explain how to open externally and copy a safe public link", async ({ page, context, browserName }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 14; SM-A546B; wv) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36 Instagram" }));
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await mockPortal(page);
   await page.goto("/dashboard?private=value");
   await invite(page).getByRole("button", { name: "Add to home screen" }).click();
   await expect(guide(page)).toContainText("Open this page in your phone’s browser first");
   await guide(page).getByRole("button", { name: "Copy OCS Care link" }).click();
   await expect(guide(page).getByRole("status")).toContainText("Link copied");
-  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  const copied = browserName === "chromium"
+    ? await page.evaluate(() => navigator.clipboard.readText())
+    : await guide(page).getByRole("textbox", { name: "OCS Care link", exact: true }).inputValue();
   expect(new URL(copied).pathname).toBe("/");
   expect(new URL(copied).search).toBe("");
 });
@@ -321,4 +357,58 @@ test("installation metadata serves the OCS Care name and home-screen icons", asy
   await page.goto("/login");
   await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "OCS Care");
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute("href", "/pwa-192.png");
+});
+
+test("phone rotation keeps guide actions visible and instructions scrollable", async ({ page }) => {
+  await mockPortal(page);
+  await page.goto("/dashboard");
+  await invite(page).getByRole("button", { name: "Add to home screen" }).click();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(guide(page).getByRole("button", { name: "Got it", exact: true })).toBeInViewport();
+  await expect(guide(page).getByRole("button", { name: "Close installation guide" })).toBeInViewport();
+  const scrollable = await guide(page).locator(".care-install-guide-body").evaluate(el => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === "auto");
+  expect(scrollable).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("restricted clipboard access still lets patients select and copy the public link", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("Clipboard unavailable")) } });
+  });
+  await mockPortal(page);
+  await page.goto("/dashboard?private=value");
+  await invite(page).getByRole("button", { name: "Add to home screen" }).click();
+  await guide(page).getByRole("button", { name: "Copy OCS Care link" }).click();
+  await expect(guide(page).getByRole("status")).toContainText("Select and copy the address below");
+  const input = guide(page).getByRole("textbox", { name: "OCS Care link", exact: true });
+  const url = new URL(await input.inputValue());
+  expect(url.pathname).toBe("/");
+  expect(url.search).toBe("");
+  await input.focus();
+  const selection = await input.evaluate(el => el.selectionEnd - el.selectionStart);
+  expect(selection).toBe(url.href.length);
+});
+
+test("installation eligibility captured before sign-in survives navigation", async ({ page }) => {
+  await mockPortal(page, { signedIn: false });
+  await page.goto("/login");
+  await page.getByLabel("Email address").fill(user.email);
+  await emitInstallPrompt(page);
+  await page.getByLabel("Password", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "Sign in to OCS Care", exact: true }).click();
+  await invite(page).getByRole("button", { name: "Install OCS Care", exact: true }).click();
+  expect(await page.evaluate(() => window.installPromptCalls)).toBe(1);
+});
+
+test("failed sign-in preserves entered details and allows retry", async ({ page }) => {
+  await mockPortal(page, { signedIn: false, loginError: true });
+  await page.goto("/login");
+  await page.getByLabel("Email address").fill(user.email);
+  await page.getByLabel("Password", { exact: true }).fill("incorrect-password");
+  await page.getByRole("button", { name: "Sign in to OCS Care", exact: true }).click();
+  await expect(page.getByText("Email or password is incorrect.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Email address")).toHaveValue(user.email);
+  await expect(page.getByRole("button", { name: "Sign in to OCS Care", exact: true })).toBeEnabled();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(invite(page)).toHaveCount(0);
 });

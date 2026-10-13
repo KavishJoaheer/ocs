@@ -11,6 +11,12 @@ export default defineConfig({
   fullyParallel: true,
   workers: 3,
   reporter: "list",
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    ...(process.env.E2E_INSTALL_WEBKIT === "1"
+      ? [{ name: "webkit", use: { browserName: "webkit" } }]
+      : []),
+  ],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     browserName: "chromium",

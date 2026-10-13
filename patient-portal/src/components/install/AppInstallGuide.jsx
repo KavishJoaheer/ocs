@@ -8,7 +8,7 @@ import { getInstallGuide } from "../../lib/appInstallation.js";
 
 const stepIcons = { share: Share, plus: Plus, home: House, menu: Menu };
 
-export default function AppInstallGuide({ onClose }) {
+export default function AppInstallGuide({ onClose, returnFocusRef }) {
   const { environment, prompt, installing, install, dismiss } = useAppInstallation();
   const [browser, setBrowser] = useState(environment.browser);
   const [copyStatus, setCopyStatus] = useState("");
@@ -17,7 +17,7 @@ export default function AppInstallGuide({ onClose }) {
   const descriptionId = useId();
   const guide = getInstallGuide(browser);
   const canInstall = prompt && !environment.embedded;
-  useFocusTrap(true, container);
+  useFocusTrap(true, container, returnFocusRef);
   useScrollLock(true);
 
   useEffect(() => {

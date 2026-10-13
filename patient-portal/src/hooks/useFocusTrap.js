@@ -10,14 +10,14 @@ function getFocusableElements(container) {
 }
 
 /** Traps keyboard focus inside an open overlay for accessibility. */
-export function useFocusTrap(enabled, containerRef) {
+export function useFocusTrap(enabled, containerRef, returnFocusRef) {
   const previouslyFocusedRef = useRef(null);
 
   useEffect(() => {
     if (!enabled || !containerRef.current) return undefined;
 
     const container = containerRef.current;
-    previouslyFocusedRef.current = document.activeElement;
+    previouslyFocusedRef.current = returnFocusRef?.current || document.activeElement;
 
     const focusable = getFocusableElements(container);
     (focusable[0] || container).focus();
@@ -44,9 +44,9 @@ export function useFocusTrap(enabled, containerRef) {
 
     return () => {
       container.removeEventListener("keydown", handleKeyDown);
-      if (previouslyFocusedRef.current?.focus) {
+      if (previouslyFocusedRef.current?.isConnected && previouslyFocusedRef.current?.focus) {
         previouslyFocusedRef.current.focus();
       }
     };
-  }, [enabled, containerRef]);
+  }, [enabled, containerRef, returnFocusRef]);
 }

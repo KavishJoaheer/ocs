@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLocation } from "react-router-dom";
 import {
   dismissInstallation, getInstallEnvironment, getInstallationSnapshot,
@@ -14,6 +14,7 @@ export function AppInstallationProvider({ children }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [now, setNow] = useState(Date.now);
+  const returnFocusRef = useRef(null);
   const location = useLocation();
 
   useEffect(() => { setGuideOpen(false); }, [location.pathname]);
@@ -26,7 +27,15 @@ export function AppInstallationProvider({ children }) {
     return () => window.clearTimeout(timer);
   }, [state.dismissedUntil]);
 
-  async function install() {
+  function rememberTrigger(event) {
+    // Safari does not focus buttons on touch, so capture the actual opener.
+    if (!guideOpen && event?.currentTarget instanceof HTMLElement) {
+      returnFocusRef.current = event.currentTarget;
+    }
+  }
+
+  async function install(event) {
+    rememberTrigger(event);
     if (!state.prompt || environment.embedded) { setGuideOpen(true); return; }
     if (installing) return;
     setInstalling(true);
@@ -40,7 +49,7 @@ export function AppInstallationProvider({ children }) {
   const value = {
     ...state, environment, installing, install,
     canPromote: environment.mobile && !state.standalone && !state.confirmed && now >= state.dismissedUntil,
-    openGuide: () => setGuideOpen(true),
+    openGuide: (event) => { rememberTrigger(event); setGuideOpen(true); },
     dismiss: dismissInstallation,
     actionLabel: state.prompt && !environment.embedded ? "Install OCS Care" : "Add to home screen",
   };
@@ -48,7 +57,7 @@ export function AppInstallationProvider({ children }) {
   return (
     <AppInstallationContext.Provider value={value}>
       {children}
-      {guideOpen && !state.standalone ? <AppInstallGuide onClose={() => setGuideOpen(false)} /> : null}
+      {guideOpen && !state.standalone ? <AppInstallGuide onClose={() => setGuideOpen(false)} returnFocusRef={returnFocusRef} /> : null}
     </AppInstallationContext.Provider>
   );
 }

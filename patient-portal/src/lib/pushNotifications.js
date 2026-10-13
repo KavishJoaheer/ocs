@@ -83,6 +83,7 @@ export async function getPushServiceWorkerRegistration() {
   }
 
   const registration = await navigator.serviceWorker.register(SW_PATH, SW_REGISTER_OPTIONS);
+  if (!registration) return null;
   try {
     await registration.update();
   } catch {
@@ -97,6 +98,7 @@ export async function registerServiceWorker() {
   }
 
   const registration = await navigator.serviceWorker.register(SW_PATH, SW_REGISTER_OPTIONS);
+  if (!registration) return null;
   try {
     await registration.update();
   } catch {
