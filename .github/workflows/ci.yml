@@ -70,6 +70,9 @@ jobs:
       - name: Build
         working-directory: patient-portal
         run: npm run build
+      - name: Run patient record regression tests
+        working-directory: patient-portal
+        run: npm test
 
   e2e-smoke:
     name: Playwright inventory and smoke tests

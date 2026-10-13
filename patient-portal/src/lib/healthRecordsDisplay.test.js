@@ -1,8 +1,8 @@
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
+import { test } from "node:test";
+import assert from "node:assert/strict";
 
 test("patient prescriptions preserve every supplied line instead of lossy legacy parsing", async () => {
-  const { formatPrescriptionSummary } = await import("../../patient-portal/src/lib/healthRecordsDisplay.js");
+  const { formatPrescriptionSummary } = await import("./healthRecordsDisplay.js");
   const text = "First medicine\nSecond medicine\nFollow these exact instructions.";
   assert.equal(formatPrescriptionSummary({ patient_prescription: text, prescriptions: [{ name: "First medicine", dosage: "First medicine" }] }), text);
   assert.equal(formatPrescriptionSummary({ prescriptions: [] }), null);
@@ -10,7 +10,7 @@ test("patient prescriptions preserve every supplied line instead of lossy legacy
 });
 
 test("health export opens a writable print tab, severs its opener and includes the full escaped prescription", async () => {
-  const { exportHealthRecordsPdf } = await import("../../patient-portal/src/lib/healthRecordsExport.js");
+  const { exportHealthRecordsPdf } = await import("./healthRecordsExport.js");
   const previousWindow = globalThis.window;
   let html = "", printed = false;
   const popup = { opener: {}, document: { open() {}, write(value) { html = value; }, close() {} }, focus() {}, print() { printed = true; } };

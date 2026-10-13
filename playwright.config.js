@@ -24,6 +24,8 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
+  // CI files share one SQLite fixture, including direct database seed writes.
+  workers: process.env.CI ? 1 : undefined,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
