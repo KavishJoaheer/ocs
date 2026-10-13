@@ -3363,7 +3363,7 @@ function PatientProfilePage() {
           description="Create a personal sign-in link, valid for 10 minutes and one use."
           size="sm"
         >
-          <PatientCareInvitation key={data.patient.id} patient={data.patient} readOnly={user.is_read_only} />
+          <PatientCareInvitation key={data.patient.id} patient={data.patient} readOnly={user.is_read_only} onSignedIn={() => setCareInvitationPatientId(null)} />
         </Modal>
       )}
 

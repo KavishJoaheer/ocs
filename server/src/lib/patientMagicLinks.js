@@ -29,20 +29,20 @@ function issuePatientMagicLink(patientId, actor, body) {
     if (user && (!user.is_active || !["verified", "staff_created"].includes(patient.link_status))) fail("Confirm the existing account’s ownership before issuing an invitation.", 409);
     if (user?.phone && normalizeMobile(user.phone) !== mobile) fail("The account mobile differs from the clinic record. Verify the change before continuing.", 409);
     db.prepare("UPDATE patient_magic_links SET revoked_at = CURRENT_TIMESTAMP WHERE patient_id = ? AND used_at IS NULL AND revoked_at IS NULL").run(patientId);
-    db.prepare(`INSERT INTO patient_magic_links (patient_id, patient_user_id, token_hash, phone_snapshot, created_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    const invitation = db.prepare(`INSERT INTO patient_magic_links (patient_id, patient_user_id, token_hash, phone_snapshot, created_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(patientId, user?.id || null, hashSessionToken(token), mobile, actor.id, expiresAt);
     if (body.teleconsultation_screened === true) {
       db.prepare(`INSERT INTO teleconsultation_screenings (patient_id, screened_by, mobile_snapshot) VALUES (?, ?, ?)
         ON CONFLICT(patient_id) DO UPDATE SET screened_by=excluded.screened_by, mobile_snapshot=excluded.mobile_snapshot, screened_at=CURRENT_TIMESTAMP`)
         .run(patientId, actor.id, mobile);
     }
-    return { mobile };
+    return { mobile, invitation_id: Number(invitation.lastInsertRowid) };
   })();
   // Fragment avoids sending the credential in HTTP URLs, access logs or referrers.
   const link = new URL("/sign-in-link", portalUrl);
   link.hash = `token=${token}`;
   const instructions = "OCS Médecins · Your personal OCS Care sign-in link.\nValid for 10 minutes · One use only.\nKeep this link private. OCS will never ask for your account password or WhatsApp registration code.";
-  return { url: link.href, mobile: result.mobile, expires_at: `${expiresAt.replace(" ", "T")}Z`, expires_in_seconds: 600,
+  return { invitation_id: result.invitation_id, url: link.href, mobile: result.mobile, expires_at: `${expiresAt.replace(" ", "T")}Z`, expires_in_seconds: 600,
     instructions, message: `${link.href}\n\n${instructions}` };
 }
 function redeemPatientMagicLink(rawToken) {

@@ -1,15 +1,47 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
+import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 
-export default function PatientCareInvitation({ patient, readOnly = false }) {
+export default function PatientCareInvitation({ patient, readOnly = false, onSignedIn }) {
   const [purpose, setPurpose] = useState("records");
   const [identity, setIdentity] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [screened, setScreened] = useState(false);
   const [invitation, setInvitation] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [statusError, setStatusError] = useState(false);
+  const [statusRetry, setStatusRetry] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const refreshKey = useLiveRefreshKey();
+  const invitationId = invitation?.invitation_id;
+  useEffect(() => {
+    if (!invitationId || busy) return;
+    let ignore = false;
+    let checking = false;
+    const check = async () => {
+      if (checking || ignore) return;
+      checking = true;
+      try {
+        const status = await api.get(`/patients/${patient.id}/care-invitation/${invitationId}`);
+        if (ignore) return;
+        setStatusError(false);
+        if (status.status === "used") {
+          ignore = true;
+          window.clearInterval(timer);
+          toast.success("Patient signed in to OCS Care.");
+          onSignedIn?.();
+        } else if (["expired", "revoked"].includes(status.status)) {
+          window.clearInterval(timer);
+        }
+      } catch {
+        if (!ignore) setStatusError(true);
+      } finally { checking = false; }
+    };
+    const timer = window.setInterval(check, 3000);
+    void check();
+    return () => { ignore = true; window.clearInterval(timer); };
+  }, [invitationId, patient.id, busy, refreshKey, statusRetry, onSignedIn]);
   useEffect(() => {
     if (!invitation) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -23,7 +55,7 @@ export default function PatientCareInvitation({ patient, readOnly = false }) {
         identity_confirmed: identity, mobile_confirmed: mobile,
         mobile: patient.patient_contact_number, teleconsultation_screened: purpose === "teleconsultation" && screened,
       });
-      setInvitation(next); setNow(Date.now());
+      setInvitation(next); setNow(Date.now()); setStatusError(false);
       toast.success("Personal sign-in link created. Share it with the confirmed patient.");
     } catch (error) { toast.error(error.message); }
     finally { setBusy(false); }
@@ -69,5 +101,6 @@ export default function PatientCareInvitation({ patient, readOnly = false }) {
         </div>
       </> : <p role="status" className="text-sm font-semibold">Link expired. Create a replacement if needed.</p>}
       <p className="text-xs text-slate-500">Copying does not send a message. Share only with the confirmed patient. A replacement invalidates the earlier link. The sign-in link is separate from consent and the consultation code.</p></div>}
+    {invitation && statusError && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">Waiting to confirm patient sign-in. This window will close when access is confirmed.<button type="button" onClick={() => setStatusRetry(value => value + 1)} className="ml-2 min-h-11 font-semibold underline">Check again</button></p>}
   </div>;
 }

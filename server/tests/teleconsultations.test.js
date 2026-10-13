@@ -121,6 +121,42 @@ test("previously issued hexadecimal invitations remain usable once", async () =>
   assert.equal(login.data.user.patient_id, p.id);
   assert.equal((await api("POST", "/patient-auth/magic-link/redeem", { token: legacyToken })).status, 401);
 });
+test("invitation status confirms only the exact redeemed link and exposes no sign-in credential", async () => {
+  const p = await patient(); const another = await patient();
+  const first = await invite(p, { teleconsultation_screened: false });
+  assert.ok(Number.isSafeInteger(first.data.invitation_id));
+  const route = id => `/patients/${p.id}/care-invitation/${id}`;
+  const pending = await api("GET", route(first.data.invitation_id), null, operator);
+  assert.equal(pending.status, 200); assert.deepEqual(pending.data, { status: "pending", used_at: null });
+  assert.equal(pending.headers.get("cache-control"), "no-store");
+  for (const actor of [doctor, accountant, training]) assert.equal((await api("GET", route(first.data.invitation_id), null, actor)).status, 403);
+  assert.equal((await api("GET", route(first.data.invitation_id))).status, 401);
+  assert.equal((await api("GET", `/patients/${another.id}/care-invitation/${first.data.invitation_id}`, null, operator)).status, 404);
+  assert.equal((await api("GET", route("invalid"), null, operator)).status, 404);
+  assert.equal((await api("POST", "/patient-auth/magic-link/redeem", { token: "invalid" })).status, 401);
+  assert.equal((await api("GET", route(first.data.invitation_id), null, operator)).data.status, "pending");
+  const { EventEmitter } = require("node:events");
+  const { addInventoryStreamClient } = require("../src/lib/inventoryRealtime");
+  const stream = new EventEmitter(); let frames = "";
+  stream.write = value => { frames += value; return true; };
+  addInventoryStreamClient(stream, operator.user); frames = "";
+  try {
+    assert.equal((await redeem(first)).status, 200);
+    assert.ok(frames.includes('"reason":"care_sign_in"'));
+    assert.ok(!frames.includes(token(first)));
+    const used = await api("GET", route(first.data.invitation_id), null, operator);
+    assert.equal(used.data.status, "used"); assert.ok(used.data.used_at);
+    assert.deepEqual(Object.keys(used.data).sort(), ["status", "used_at"]);
+    const fresh = await invite(p);
+    assert.equal((await api("GET", route(fresh.data.invitation_id), null, operator)).data.status, "pending", "an existing signed-in account must not mark a new link used");
+    const replacement = await invite(p);
+    assert.equal((await api("GET", route(fresh.data.invitation_id), null, operator)).data.status, "revoked");
+    db.prepare("UPDATE patient_magic_links SET expires_at=datetime('now','-1 minute') WHERE id=?").run(replacement.data.invitation_id);
+    assert.equal((await api("GET", route(replacement.data.invitation_id), null, operator)).data.status, "expired");
+    assert.equal((await redeem(replacement)).status, 401);
+    assert.equal((await api("GET", route(replacement.data.invitation_id), null, operator)).data.status, "expired");
+  } finally { stream.emit("close"); }
+});
 test("resend revokes earlier links; expired, wrong-mobile, unconfirmed, and unauthorized invitations fail", async () => {
   const p = await patient(); const old = await invite(p); const replacement = await invite(p);
   assert.equal((await redeem(old)).status, 401);

@@ -4,6 +4,8 @@ Operators create or find the patient in VP. The compact **Send OCS Care link** a
 
 Generated invitations display the URL in its own selectable field, with the message and expiry details underneath. **Copy invitation for WhatsApp** copies the URL first, a blank line, then the patient instructions. **Copy link only** copies just the URL.
 
+After the patient successfully signs in with that specific invitation, VP closes the invitation dialog and confirms sign-in. This uses a credential-free invitation-status check, refreshed by the live sign-in event with a three-second polling fallback while the dialog is open. Previewing a link, failed sign-in, an earlier invitation or an already existing patient account does not close a fresh invitation. Failed status checks retain the dialog and retry; reopening starts with a clean invitation form.
+
 The patient follows the link and presses **Continue to OCS Care**. No email address or password is required for an invited account. The normal dashboard contains **Request a teleconsultation**. The patient supplies the reason, current location and confirmed callback number, reads the terms and limitations, and accepts both the terms and clinical consent. A six-digit consultation code is then visible to the patient and operator.
 
 On mobile, the dashboard card is a single large tap target. Requesting has two steps: **Your details**, then **Review & consent**. The verified callback number is prefilled and read-only; changes go through OCS. Returning to edit retains the entered details. The confirmation view shows request sent, OCS accepted and doctor assigned, with the consultation code clearly separated. A dependent's request remains hotline-assisted.

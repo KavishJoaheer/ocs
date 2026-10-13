@@ -1990,6 +1990,23 @@ router.post("/:id/care-invitation", (req, res) => {
   }
 });
 
+router.get("/:id/care-invitation/:invitationId", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (!["admin", "operator"].includes(req.auth.role) || req.auth.is_read_only) {
+    return res.status(403).json({ error: "Only authorised dispatch staff can check invitations." });
+  }
+  const patientId = Number(req.params.id);
+  const invitationId = Number(req.params.invitationId);
+  if (!Number.isSafeInteger(patientId) || patientId <= 0 || !Number.isSafeInteger(invitationId) || invitationId <= 0) {
+    return res.status(404).json({ error: "Invitation not found." });
+  }
+  const invitation = db.prepare(`SELECT link.used_at, link.revoked_at, link.expires_at <= CURRENT_TIMESTAMP AS expired
+    FROM patient_magic_links link JOIN patients p ON p.id=link.patient_id AND p.deleted_at IS NULL
+    WHERE link.id=? AND link.patient_id=?`).get(invitationId, patientId);
+  if (!invitation) return res.status(404).json({ error: "Invitation not found." });
+  return res.json({ status: invitation.used_at ? "used" : invitation.revoked_at ? "revoked" : invitation.expired ? "expired" : "pending", used_at: invitation.used_at });
+});
+
 router.post("/:id/consultations", (req, res) => {
   if (!["admin", "doctor"].includes(req.auth.role)) {
     return res.status(403).json({ error: "Only admin and doctors can add consultation notes." });
