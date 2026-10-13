@@ -28,6 +28,7 @@ const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes.
 const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
 const { notifyReviewDoctorAssigned, resolveReviewDoctorId, syncReviewAppointmentSlot } = require("../lib/longTermReview");
 const { parseBillingRow, toPagination } = require("../lib/utils");
+const { capitalizeFirstLetter } = require("../lib/patientText");
 const {
   doctorCanAccessPatient,
   doctorPatientAccessError,
@@ -186,8 +187,8 @@ function normalizePatientPayload(body) {
   const assignedDoctorRaw = String(body.assigned_doctor_id ?? "").trim();
 
   return {
-    first_name: String(body.first_name ?? "").trim(),
-    last_name: String(body.last_name ?? "").trim(),
+    first_name: capitalizeFirstLetter(String(body.first_name ?? "").trim()),
+    last_name: capitalizeFirstLetter(String(body.last_name ?? "").trim()),
     patient_identifier: normalizePatientIdentifier(body.patient_identifier),
     patient_id_number: normalizePatientIdNumber(body.patient_id_number),
     date_of_birth: String(
@@ -198,7 +199,7 @@ function normalizePatientPayload(body) {
     patient_contact_number: String(
       body.patient_contact_number ?? body.contact_number ?? "",
     ).trim(),
-    address: String(body.address ?? "").trim(),
+    address: capitalizeFirstLetter(String(body.address ?? "").trim()),
     location: String(body.location ?? "").trim(),
     location_tags: Array.isArray(body.location_tags)
       ? body.location_tags

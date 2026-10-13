@@ -20,6 +20,7 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useKeyboardOffset } from "../hooks/useKeyboardOffset.js";
 import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientAutofill.js";
 import { cx } from "../lib/utils.js";
+import { capitalizeFirstLetter } from "../lib/patientText.js";
 
 const DRAFT_KEY = "ocs_patient_draft";
 
@@ -267,10 +268,14 @@ function PatientFormModal({
 
   function handleChange(event) {
     const { name, value, type, checked } = event.target;
+    const capitalize = ["first_name", "last_name", "address"].includes(name);
+    const nextValue = capitalize && !event.nativeEvent?.isComposing
+      ? capitalizeFirstLetter(value)
+      : value;
 
     setForm((current) => ({
       ...current,
-      [name]: type === "checkbox" ? checked : value,
+      [name]: type === "checkbox" ? checked : nextValue,
       ...(name === "status" && value === "discharged" ? { ongoing_treatment: "" } : {}),
     }));
   }
@@ -430,6 +435,8 @@ function PatientFormModal({
                   <input
                     ref={wizardStep === 0 ? stepFirstInputRef : undefined}
                     name="first_name"
+                    autoCapitalize="sentences"
+                    onBlur={handleChange}
                     value={form.first_name}
                     onChange={handleChange}
                     placeholder="Enter first name"
@@ -440,6 +447,8 @@ function PatientFormModal({
                   <span className={MOBILE_FIELD_LABEL}>Last name</span>
                   <input
                     name="last_name"
+                    autoCapitalize="sentences"
+                    onBlur={handleChange}
                     value={form.last_name}
                     onChange={handleChange}
                     placeholder="Enter last name"
@@ -560,6 +569,8 @@ function PatientFormModal({
                     required
                     rows={2}
                     name="address"
+                    autoCapitalize="sentences"
+                    onBlur={handleChange}
                     value={form.address}
                     onChange={handleChange}
                     placeholder="Street, area, and locality"
@@ -825,6 +836,8 @@ function PatientFormModal({
                   ref={firstNameRef}
                   data-modal-initial-focus
                   name="first_name"
+                  autoCapitalize="sentences"
+                  onBlur={handleChange}
                   value={form.first_name}
                   onChange={handleChange}
                   placeholder="Enter first name"
@@ -836,6 +849,8 @@ function PatientFormModal({
                 <span className="text-sm font-semibold text-slate-700">Last name</span>
                 <input
                   name="last_name"
+                  autoCapitalize="sentences"
+                  onBlur={handleChange}
                   value={form.last_name}
                   onChange={handleChange}
                   placeholder="Enter last name"
@@ -950,6 +965,8 @@ function PatientFormModal({
                     required
                     rows={2}
                     name="address"
+                    autoCapitalize="sentences"
+                    onBlur={handleChange}
                     value={form.address}
                     onChange={handleChange}
                     className={DESKTOP_TEXTAREA}
