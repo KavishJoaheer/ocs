@@ -1,5 +1,5 @@
 import {
-  Activity,
+  House,
   ClipboardList,
   CreditCard,
   LayoutDashboard,
@@ -21,9 +21,9 @@ export const bottomNavItems = [
 ];
 
 export const operatorBottomNavItems = [
-  { to: "/", label: "Home", icon: LayoutDashboard, end: true, roles: ["operator"] },
+  { to: "/", label: "Home", icon: House, end: true, roles: ["operator"] },
   { to: "/patients/add", label: "Add patient", icon: UserPlus, roles: ["operator"] },
-  { to: "/operator/long-term-review", label: "Reviews", icon: Activity, roles: ["operator"] },
+  { to: "/operator/long-term-review", label: "Reviews", icon: ClipboardList, roles: ["operator"] },
 ];
 
 export const linkhamBottomNavItems = [

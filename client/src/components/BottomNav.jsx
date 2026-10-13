@@ -36,7 +36,7 @@ function BottomNav() {
                 return cx(
                   "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[20px] px-1.5 py-2 text-[10px] font-semibold transition-all duration-200",
                   isActive
-                    ? "bg-ocs-slate text-white shadow-[0_8px_18px_rgba(59,89,92,0.2)]"
+                    ? cx(user.role === "operator" ? "bg-[#137b80]" : "bg-ocs-slate", "text-white shadow-[0_8px_18px_rgba(59,89,92,0.2)]")
                     : "text-ocs-grey hover:bg-ocs-teal/8 hover:text-ocs-slate",
                 );
               }}

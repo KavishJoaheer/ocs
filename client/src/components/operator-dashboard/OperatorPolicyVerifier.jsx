@@ -44,7 +44,7 @@ function getCoveragePresentation(coverage) {
   };
 }
 
-export default function OperatorPolicyVerifier({ className = "" }) {
+export default function OperatorPolicyVerifier({ className = "", embedded = false }) {
   const [policyNumber, setPolicyNumber] = useState("");
   const [nationalId, setNationalId] = useState("");
   const [state, setState] = useState("idle");
@@ -86,12 +86,13 @@ export default function OperatorPolicyVerifier({ className = "" }) {
   return (
     <section
       className={cx(
-        "rounded-[20px] border border-[#203f42]/10 bg-white px-4 py-4 shadow-[0_10px_30px_rgba(32,63,66,0.07)] sm:px-5",
+        !embedded && "rounded-[20px] border border-[#203f42]/10 bg-white px-4 py-4 shadow-[0_10px_30px_rgba(32,63,66,0.07)] sm:px-5",
         className,
       )}
-      aria-labelledby="operator-policy-verifier-heading"
+      aria-labelledby={embedded ? undefined : "operator-policy-verifier-heading"}
+      aria-label={embedded ? "Policy lookup" : undefined}
     >
-      <div className="flex items-start gap-3">
+      {!embedded ? <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#2bccc4]/10 text-[#1a7f7a]">
           <ShieldCheck className="size-5" strokeWidth={2.2} aria-hidden="true" />
         </span>
@@ -106,9 +107,9 @@ export default function OperatorPolicyVerifier({ className = "" }) {
             Enter either identifier. Use both to confirm they belong to the same policy.
           </p>
         </div>
-      </div>
+      </div> : null}
 
-      <form className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto]" onSubmit={handleSubmit}>
+      <form className={cx(!embedded && "mt-3", "grid grid-cols-1 gap-2.5", !embedded && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto]")} onSubmit={handleSubmit}>
         <label className="min-w-0">
           <span className="sr-only">Policy number</span>
           <input

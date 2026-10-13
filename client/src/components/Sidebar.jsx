@@ -27,6 +27,7 @@ import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 import OperatorDesktopIdentity from "./operator-dashboard/OperatorDesktopIdentity.jsx";
+import { getOperatorInitials, isOperatorLive } from "./operator-dashboard/operatorDashboardCopy.js";
 
 function formatMobileDrawerDisplayName(user) {
   const name = String(user?.full_name || "").trim();
@@ -396,7 +397,12 @@ function Sidebar() {
           size={36}
           logoClassName="max-h-9 w-auto object-contain"
         />
-        <div className="h-11 w-11 shrink-0" aria-hidden="true" />
+        {user.role === "operator" ? (
+          <button type="button" onClick={() => setDrawerOpen(true)} aria-label={`Open profile menu for ${user.full_name || user.username}, ${isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
+            {getOperatorInitials(user)}
+            <span className={cx("absolute bottom-0 right-0 size-3 rounded-full border-2 border-white", isOperatorLive(user.operation_status) ? "bg-emerald-500" : "bg-slate-400")} aria-hidden="true" />
+          </button>
+        ) : <div className="h-11 w-11 shrink-0" aria-hidden="true" />}
       </div>
 
       {/* ─── Phone: slide-out drawer ─── */}

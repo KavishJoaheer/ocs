@@ -1,69 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check } from "lucide-react";
 import { Link } from "react-router-dom";
-import toast from "react-hot-toast";
-import { useLiveRefreshKey } from "../../hooks/useLiveRefreshKey.js";
-import { api } from "../../lib/api.js";
-import { PATIENTS_LIVE_EVENT } from "../../lib/inventorySync.js";
-
-const ACTIVE_STATUSES = ["pending", "assigned", "in_consultation"];
-
-function requestStatus(request) {
-  if (request.status === "pending") return request.accepted_at ? "Awaiting doctor assignment" : "Awaiting acceptance";
-  return request.status === "assigned" ? "Doctor assigned" : "In consultation";
-}
+import { useOperatorTeleconsultations, teleconsultationRequestStatus } from "../../hooks/useOperatorTeleconsultations.js";
 
 export default function OperatorTeleconsultationPanel({ readOnly = false, embedded = false }) {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState(null);
-  const version = useRef(0);
-  const refreshKey = useLiveRefreshKey();
-
-  const load = useCallback(async () => {
-    const current = ++version.current;
-    try {
-      const response = await api.get("/teleconsultations");
-      if (!Array.isArray(response.requests)) throw new Error("Invalid request response");
-      if (current === version.current) {
-        setRequests(response.requests.filter(request => ACTIVE_STATUSES.includes(request.status)));
-        setError("");
-      }
-    } catch {
-      if (current === version.current) setError("Could not refresh teleconsultations. Please retry.");
-    } finally {
-      if (current === version.current) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(load, 10000);
-    return () => { window.clearInterval(timer); version.current += 1; };
-  }, [load, refreshKey]);
-
-  async function accept(request) {
-    if (readOnly || busyId !== null) return;
-    setBusyId(request.id);
-    try {
-      const response = await api.post(`/teleconsultations/${request.id}/accept`, {});
-      version.current += 1;
-      setRequests(current => current.map(row => row.id === request.id ? response.request : row));
-      window.dispatchEvent(new CustomEvent(PATIENTS_LIVE_EVENT));
-      toast.success("Request accepted. You can now assign a doctor.");
-      await load();
-    } catch (err) {
-      toast.error(err.message || "Could not accept this request. Please retry.");
-      if (err.status === 409 || err.status === 404) await load();
-    } finally { setBusyId(null); }
-  }
-
-  const sorted = [...requests].sort((left, right) => {
-    const leftWaiting = left.status === "pending" && !left.accepted_at;
-    const rightWaiting = right.status === "pending" && !right.accepted_at;
-    return Number(rightWaiting) - Number(leftWaiting) || left.id - right.id;
-  });
+  const { requests, loading, error, busyId, load, accept } = useOperatorTeleconsultations({ readOnly });
 
   return (
     <section className={embedded ? "min-w-0 border-t border-slate-100 px-4 pb-1 pt-2" : "ocs-cc-panel min-w-0 px-5 py-4"} aria-labelledby="ocs-cc-teleconsultation-heading">
@@ -92,9 +32,9 @@ export default function OperatorTeleconsultationPanel({ readOnly = false, embedd
           <p className={embedded ? "text-xs text-slate-500" : "text-sm text-[#5f7476]"}>No active teleconsultations</p>
         </div>
       ) : null}
-      {sorted.length > 0 ? (
+      {requests.length > 0 ? (
         <ul className={`${embedded ? "" : "mt-3 "}max-h-72 divide-y divide-slate-100 overflow-y-auto overscroll-contain`}>
-          {sorted.map(request => {
+          {requests.map(request => {
             const waiting = request.status === "pending" && !request.accepted_at;
             return (
               <li key={request.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -102,7 +42,7 @@ export default function OperatorTeleconsultationPanel({ readOnly = false, embedd
                   <p className="break-words text-sm font-semibold text-slate-800">{request.patient_name}</p>
                   <p className="mt-0.5 line-clamp-1 break-words text-xs text-slate-500">{request.reason}</p>
                   <p className={`mt-1 text-xs ${waiting ? "font-semibold text-amber-800" : "text-[#1a7f7a]"}`}>
-                    {requestStatus(request)}{request.doctor_name ? ` · ${request.doctor_name}` : ""}
+                    {teleconsultationRequestStatus(request)}{request.doctor_name ? ` · ${request.doctor_name}` : ""}
                   </p>
                 </div>
                 {waiting && !readOnly ? (
