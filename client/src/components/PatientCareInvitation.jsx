@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
 
@@ -70,6 +69,5 @@ export default function PatientCareInvitation({ patient, readOnly = false }) {
         </div>
       </> : <p role="status" className="text-sm font-semibold">Link expired. Create a replacement if needed.</p>}
       <p className="text-xs text-slate-500">Copying does not send a message. Share only with the confirmed patient. A replacement invalidates the earlier link. The sign-in link is separate from consent and the consultation code.</p></div>}
-    {purpose === "teleconsultation" && <Link to="/teleconsultations" className="inline-block text-sm font-semibold text-ocs-teal underline">Teleconsultation queue</Link>}
   </div>;
 }

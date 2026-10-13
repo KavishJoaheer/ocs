@@ -47,6 +47,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.reload();
     await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
     await opPage.getByRole("radio", { name: "Teleconsultation", exact: true }).check();
+    await expect(opPage.getByRole("dialog").getByRole("link", { name: "Manage teleconsultations" })).toHaveCount(0);
     await opPage.getByLabel("Patient identity checked using the agreed OCS procedure.").check();
     await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
     await opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.").check();
@@ -78,7 +79,9 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.getByRole("button", { name: "Accept & request teleconsultation" }).click();
     await expect(carePage.getByText("Your OCS consultation code", { exact: true })).toBeVisible();
     const code = await carePage.locator("section").first().locator("p").filter({ hasText: /^\d{6}$/ }).innerText();
-    await opPage.goto(`${STAFF}/teleconsultations`);
+    await opPage.getByRole("button", { name: "Close dialog", exact: true }).click();
+    await opPage.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
+    await expect(opPage.getByRole("heading", { name: "Manage teleconsultations", exact: true, level: 1 })).toBeVisible();
     const card = opPage.locator("section").filter({ has: opPage.getByRole("link", { name: patientName, exact: true }) });
     await expect(card).toContainText(code);
     await card.getByLabel("Assign doctor").selectOption(String(doctor.user.doctor_id)); await card.getByRole("button", { name: "Assign", exact: true }).click();
