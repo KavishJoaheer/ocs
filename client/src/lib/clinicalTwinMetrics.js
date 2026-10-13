@@ -23,7 +23,7 @@ export function getClinicalTwinMetricCopy(role) {
   switch (role) {
     case "doctor":
       return {
-        longTermReview: "Your patients flagged for follow-up, including future appointments",
+        longTermReview: "Your patients flagged for review appointments, including future appointments",
       };
     case "operator":
       return {

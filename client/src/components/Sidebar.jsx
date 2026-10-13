@@ -67,7 +67,7 @@ const navItems = [
   },
   {
     to: "/doctor/long-term-review",
-    label: "Follow-ups",
+    label: "Review appointments",
     icon: Activity,
     roles: ["doctor"],
     hideInMobileDrawer: true,

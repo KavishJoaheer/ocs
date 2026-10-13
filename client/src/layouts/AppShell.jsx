@@ -81,8 +81,8 @@ const pageMeta = {
     helper: "Review all patients currently assigned to this doctor account.",
   },
   "/doctor/long-term-review": {
-    label: "Follow-ups",
-    helper: "Patients flagged for follow-up, including future appointments.",
+    label: "Review appointments",
+    helper: "Patients flagged for review appointments, including future appointments.",
   },
   "/operator/scheduled-visits": {
     label: "Scheduled visits",

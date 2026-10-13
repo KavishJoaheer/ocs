@@ -37,7 +37,7 @@ export default function DoctorDashboard({ user, dashboard, mobile = false, onSta
 
   const followUpLink = (
     <Link to="/doctor/long-term-review" className={cx(pill, followUps > 0 ? "border-amber-200 bg-amber-50/80 text-amber-900 hover:bg-amber-100" : "border-[#d5e4e1] bg-white text-[#173f4a] hover:bg-[#edf9f7]")}>
-      <ClipboardList className="size-4 shrink-0" aria-hidden="true" /><span className={mobile ? "whitespace-nowrap text-xs" : ""}>Follow-ups</span>
+      <ClipboardList className="size-4 shrink-0" aria-hidden="true" /><span className={mobile ? "text-center text-xs" : ""}>Review appointments</span>
       <span className={cx("rounded-full px-2 py-0.5 text-xs tabular-nums", followUps > 0 ? "bg-amber-200/70" : "bg-slate-100")}>{followUps}</span>
     </Link>
   );

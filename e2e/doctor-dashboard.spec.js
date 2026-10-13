@@ -58,7 +58,7 @@ for (const width of [360, 430, 1440]) {
     await expect(doctor.getByRole("button", { name: /Accept/ })).toHaveCount(0);
     await expect(doctor.getByText("Closed visit", { exact: true })).toHaveCount(0);
     await expect(doctor.getByRole("region", { name: "Next scheduled visit", exact: true }).getByText("Sarah Noel", { exact: true })).toBeVisible();
-    const followUps = doctor.getByRole("link", { name: /^Follow-ups/ });
+    const followUps = doctor.getByRole("link", { name: /^Review appointments/ });
     await expect(followUps).toContainText("1");
     await expect(doctor.getByText("Reviews due", { exact: true })).toHaveCount(0);
     await expect(visit.getByRole("link", { name: "Call Anjali Devi", exact: true })).toHaveAttribute("href", "tel:57001122");
@@ -86,7 +86,7 @@ for (const width of [360, 430, 1440]) {
     else await expect(doctor.getByRole("button", { name: "Available", exact: true })).toBeDisabled();
     await followUps.click();
     await expect(page).toHaveURL(/\/doctor\/long-term-review$/);
-    await expect(page.getByRole("heading", { name: "Your follow-ups", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your review appointments", exact: true })).toBeVisible();
     await expect(page.getByText("Sarah Noel", { exact: true })).toBeVisible();
     await page.goto(`${STAFF}/`);
     await care.getByRole("link", { name: "Open call for Ravi Pillay", exact: true }).click();
