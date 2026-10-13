@@ -46,8 +46,8 @@ export function calculateAgeFromDateOfBirth(value) {
   return Math.max(age, 0);
 }
 
-export function formatAgeFromDateOfBirth(value) {
-  const age = calculateAgeFromDateOfBirth(value);
+export function formatAgeFromDateOfBirth(value, manualAge = null) {
+  const age = manualAge ?? calculateAgeFromDateOfBirth(value);
   return age === null ? "Age unavailable" : `${age} years old`;
 }
 

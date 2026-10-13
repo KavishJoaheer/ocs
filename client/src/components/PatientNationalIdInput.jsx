@@ -1,10 +1,13 @@
 import { cx } from "../lib/utils.js";
+import { PATIENT_ID_TYPES } from "../lib/patientIdentity.js";
 
 function PatientNationalIdInput({
   value = "",
   onChange,
   required = false,
   variant = "mobile",
+  idType = "national_id",
+  onTypeChange,
 }) {
   const isMobile = variant === "mobile";
   const labelClass = isMobile
@@ -16,17 +19,34 @@ function PatientNationalIdInput({
 
   return (
     <div className="flex w-full flex-col gap-1.5">
-      <label className={labelClass}>National ID Number{required ? " *" : ""}</label>
-      <input
-        type="text"
-        maxLength={14}
-        name="patient_id_number"
-        autoComplete="off"
-        placeholder="e.g., B290493310239F"
-        value={value}
-        onChange={onChange}
-        className={cx(inputClass)}
-      />
+      {onTypeChange ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="patient-id-type" className={labelClass}>ID type</label>
+          <select id="patient-id-type" name="patient_id_type" value={idType} onChange={onTypeChange} className={inputClass.replace(" uppercase", "")}>
+            {PATIENT_ID_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+          </select>
+        </div>
+      ) : null}
+      {idType !== "old_age" ? (
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>
+            {PATIENT_ID_TYPES.find((type) => type.value === idType)?.label || "ID number"}{required ? " *" : ""}
+          </span>
+          <input
+            type="text"
+            required={required}
+            maxLength={idType === "national_id" ? 14 : 100}
+            name="patient_id_number"
+            autoComplete="off"
+            placeholder={idType === "national_id" ? "e.g., B290493310239F" : "Enter document number"}
+            value={value}
+            onChange={onChange}
+            className={cx(inputClass)}
+          />
+        </label>
+      ) : (
+        <p className="text-xs text-slate-500">No ID number required. Date of birth and age are optional.</p>
+      )}
     </div>
   );
 }

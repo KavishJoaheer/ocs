@@ -29,6 +29,7 @@ const { purgePatientRecordsSync } = require("../lib/purgePatientRecords.js");
 const { notifyReviewDoctorAssigned, resolveReviewDoctorId, syncReviewAppointmentSlot } = require("../lib/longTermReview");
 const { parseBillingRow, toPagination } = require("../lib/utils");
 const { capitalizeFirstLetter } = require("../lib/patientText");
+const { parseMauritianID } = require("../lib/nicParser");
 const {
   doctorCanAccessPatient,
   doctorPatientAccessError,
@@ -185,14 +186,24 @@ function formatPatientRecord(patient, auth) {
 function normalizePatientPayload(body) {
   const status = String(body.status ?? "active").trim().toLowerCase();
   const assignedDoctorRaw = String(body.assigned_doctor_id ?? "").trim();
+  const patientIdType = String(body.patient_id_type ?? "national_id").trim();
+  const patientIdNumber = patientIdType === "old_age" ? "" : normalizePatientIdNumber(body.patient_id_number);
+  // Older API clients do not send an ID type. Preserve their existing contract;
+  // the intake form always supplies it and uses the document-specific rules.
+  const hasIdentityType = body.patient_id_type !== undefined;
+  const nic = hasIdentityType && patientIdType === "national_id" ? parseMauritianID(patientIdNumber) : null;
+  const manualAgeRaw = patientIdType === "national_id" ? "" : String(body.manual_age ?? body.age ?? "").trim();
 
   return {
     first_name: capitalizeFirstLetter(String(body.first_name ?? "").trim()),
     last_name: capitalizeFirstLetter(String(body.last_name ?? "").trim()),
     patient_identifier: normalizePatientIdentifier(body.patient_identifier),
-    patient_id_number: normalizePatientIdNumber(body.patient_id_number),
+    patient_id_type: patientIdType,
+    patient_id_number: patientIdNumber,
+    manual_age: manualAgeRaw === "" ? null : Number(manualAgeRaw),
+    has_identity_type: hasIdentityType,
     date_of_birth: String(
-      body.date_of_birth ?? deriveDateOfBirthFromAge(body.age),
+      nic?.isoDob ?? body.date_of_birth ?? (hasIdentityType ? "" : deriveDateOfBirthFromAge(body.age)),
     ).trim(),
     gender: String(body.gender ?? "").trim().toUpperCase(),
     assigned_doctor_id: assignedDoctorRaw ? Number(assignedDoctorRaw) : null,
@@ -347,6 +358,18 @@ function validatePatientPayload(
   if (!buildPatientFullName(payload.first_name, payload.last_name)) {
     return "Patient name is required.";
   }
+  if (!["national_id", "driving_licence", "passport", "birth_certificate", "old_age"].includes(payload.patient_id_type)) {
+    return "Select a valid ID type.";
+  }
+  if (payload.has_identity_type && payload.patient_id_type !== "old_age" && !payload.patient_id_number) {
+    return "ID number is required for the selected ID type.";
+  }
+  if (payload.has_identity_type && payload.patient_id_type === "national_id" && !parseMauritianID(payload.patient_id_number)) {
+    return "Enter a valid 14-character National ID Number.";
+  }
+  if (payload.manual_age !== null && (!Number.isInteger(payload.manual_age) || payload.manual_age < 0)) {
+    return "Age must be a whole number of years, zero or greater.";
+  }
   if (payload.date_of_birth) {
     const dateOfBirth = parseDateOfBirth(payload.date_of_birth);
     if (!dateOfBirth) {
@@ -412,7 +435,7 @@ function validateLinkhamPatientCoverage(payload, actorUserId) {
 
   const coverage = verifyLinkhamPolicyCoverage({
     policyNumber: payload.insurance_policy_number,
-    nationalId: payload.patient_id_number,
+    nationalId: payload.patient_id_type === "national_id" ? payload.patient_id_number : "",
     actorUserId,
   });
 
@@ -482,11 +505,13 @@ function getPatientSnapshot(patient) {
   return {
     patient_identifier: patient.patient_identifier || "",
     patient_id_number: patient.patient_id_number || "",
+    patient_id_type: patient.patient_id_type || "national_id",
+    manual_age: patient.manual_age ?? null,
     first_name: patient.first_name || "",
     last_name: patient.last_name || "",
     full_name: patient.full_name || "",
     date_of_birth: patient.date_of_birth || "",
-    age: calculateAgeFromDateOfBirth(patient.date_of_birth),
+    age: patient.manual_age ?? calculateAgeFromDateOfBirth(patient.date_of_birth),
     gender: patient.gender || "",
     assigned_doctor_id: patient.assigned_doctor_id ? Number(patient.assigned_doctor_id) : null,
     assigned_doctor_name: patient.assigned_doctor_name || "",
@@ -936,7 +961,7 @@ router.get("/offline-directory", (req, res) => {
   `);
 
   const items = patients.map((patient) => {
-    const age = calculateAgeFromDateOfBirth(patient.date_of_birth) || Number(patient.age || 0);
+    const age = patient.manual_age ?? (patient.date_of_birth ? calculateAgeFromDateOfBirth(patient.date_of_birth) : null);
     const genderLabel = formatPatientGenderLabel(patient.gender);
     const consultation = latestConsultationStmt.get(patient.id, doctorId);
 
@@ -944,7 +969,7 @@ router.get("/offline-directory", (req, res) => {
       id: Number(patient.id),
       patient_id: String(patient.patient_identifier || `PT-${patient.id}`),
       full_name: patient.full_name,
-      age_gender: `${age}, ${genderLabel}`,
+      age_gender: `${age ?? "Age unavailable"}, ${genderLabel}`,
       contact_number: String(patient.patient_contact_number || patient.contact_number || "").trim(),
       emergency_contact: buildEmergencyContactSummary(patient),
       address_location: buildAddressLocationSummary(patient) || "Address not recorded",
@@ -952,6 +977,8 @@ router.get("/offline-directory", (req, res) => {
       last_consultation_summary: summarizeConsultationNotes(consultation?.doctor_notes),
       status: patient.status,
       patient_identifier: patient.patient_identifier,
+      patient_id_type: patient.patient_id_type,
+      manual_age: patient.manual_age,
       date_of_birth: patient.date_of_birth || "",
       gender: patient.gender,
       location: patient.location || "",
@@ -1674,7 +1701,7 @@ router.post("/", (req, res) => {
   }
 
   const fullName = buildPatientFullName(payload.first_name, payload.last_name);
-  const calculatedAge = calculateAgeFromDateOfBirth(payload.date_of_birth);
+  const calculatedAge = payload.manual_age ?? calculateAgeFromDateOfBirth(payload.date_of_birth);
 
   const result = db
     .prepare(`
@@ -1684,6 +1711,8 @@ router.post("/", (req, res) => {
         last_name,
         patient_identifier,
         patient_id_number,
+        patient_id_type,
+        manual_age,
         age,
         date_of_birth,
         gender,
@@ -1710,7 +1739,7 @@ router.post("/", (req, res) => {
         insurance_provider,
         insurance_policy_number
       )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
     .run(
       fullName,
@@ -1718,6 +1747,8 @@ router.post("/", (req, res) => {
       payload.last_name,
       patientIdentifier,
       payload.patient_id_number,
+      payload.patient_id_type,
+      payload.manual_age,
       calculatedAge,
       payload.date_of_birth,
       payload.gender,
@@ -1792,7 +1823,12 @@ router.put("/:id", (req, res) => {
     return res.status(404).json({ error: "Patient not found." });
   }
 
-  const payload = normalizePatientPayload(req.body);
+  const payload = normalizePatientPayload({
+    ...req.body,
+    ...(req.body.patient_id_type === undefined && existing.patient_id_type !== "national_id"
+      ? { patient_id_type: existing.patient_id_type, manual_age: req.body.manual_age ?? existing.manual_age }
+      : {}),
+  });
   const validationError = validatePatientPayload(payload, {
     requireDispatchLocation: req.auth.role === "operator",
   });
@@ -1856,11 +1892,13 @@ router.put("/:id", (req, res) => {
     ...previousSnapshot,
     patient_identifier: patientIdentifier,
     patient_id_number: patientIdNumber,
+    patient_id_type: payload.patient_id_type,
+    manual_age: payload.manual_age,
     first_name: payload.first_name,
     last_name: payload.last_name,
     full_name: fullName,
     date_of_birth: payload.date_of_birth,
-    age: calculateAgeFromDateOfBirth(payload.date_of_birth),
+    age: payload.manual_age ?? calculateAgeFromDateOfBirth(payload.date_of_birth),
     gender: payload.gender,
     assigned_doctor_id: assignedDoctorId,
     assigned_doctor_name: assignedDoctorName,
@@ -1883,7 +1921,7 @@ router.put("/:id", (req, res) => {
     ongoing_treatment: payload.ongoing_treatment,
     is_subscribed: payload.is_subscribed,
   };
-  const calculatedAge = calculateAgeFromDateOfBirth(payload.date_of_birth);
+  const calculatedAge = payload.manual_age ?? calculateAgeFromDateOfBirth(payload.date_of_birth);
 
   const updatePatient = db.transaction(() => {
     db.prepare(`
@@ -1894,6 +1932,8 @@ router.put("/:id", (req, res) => {
         last_name = ?,
         patient_identifier = ?,
         patient_id_number = ?,
+        patient_id_type = ?,
+        manual_age = ?,
         age = ?,
         date_of_birth = ?,
         gender = ?,
@@ -1926,6 +1966,8 @@ router.put("/:id", (req, res) => {
       payload.last_name,
       patientIdentifier,
       patientIdNumber,
+      payload.patient_id_type,
+      payload.manual_age,
       calculatedAge,
       payload.date_of_birth,
       payload.gender,

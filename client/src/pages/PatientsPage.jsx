@@ -107,8 +107,8 @@ function formatMobilePatientGender(gender) {
   return normalized || null;
 }
 
-function formatMobilePatientAgeYears(dateOfBirth) {
-  const formatted = formatAgeFromDateOfBirth(dateOfBirth);
+function formatMobilePatientAgeYears(dateOfBirth, manualAge = null) {
+  const formatted = formatAgeFromDateOfBirth(dateOfBirth, manualAge);
   const match = /^(\d+)\s+years old$/.exec(formatted);
   return match ? `${match[1]} yrs` : null;
 }
@@ -120,7 +120,7 @@ function formatMobilePatientMetaLine(patient) {
     parts.push(patient.patient_identifier);
   }
 
-  const ageLabel = patient.date_of_birth ? formatMobilePatientAgeYears(patient.date_of_birth) : null;
+  const ageLabel = (patient.date_of_birth || patient.manual_age != null) ? formatMobilePatientAgeYears(patient.date_of_birth, patient.manual_age) : null;
   if (ageLabel) {
     parts.push(ageLabel);
   }
@@ -136,8 +136,8 @@ function formatMobilePatientMetaLine(patient) {
 function formatUnderReviewAgeLocationLine(patient) {
   const parts = [];
 
-  if (patient.date_of_birth) {
-    const ageLabel = formatMobilePatientAgeYears(patient.date_of_birth);
+  if (patient.date_of_birth || patient.manual_age != null) {
+    const ageLabel = formatMobilePatientAgeYears(patient.date_of_birth, patient.manual_age);
     if (ageLabel) {
       parts.push(ageLabel);
     }

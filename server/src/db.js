@@ -2030,6 +2030,14 @@ function ensurePatientColumns() {
       sql: "ALTER TABLE patients ADD COLUMN patient_id_number TEXT NOT NULL DEFAULT ''",
     },
     {
+      name: "patient_id_type",
+      sql: "ALTER TABLE patients ADD COLUMN patient_id_type TEXT NOT NULL DEFAULT 'national_id'",
+    },
+    {
+      name: "manual_age",
+      sql: "ALTER TABLE patients ADD COLUMN manual_age INTEGER CHECK (manual_age >= 0)",
+    },
+    {
       name: "date_of_birth",
       sql: "ALTER TABLE patients ADD COLUMN date_of_birth TEXT NOT NULL DEFAULT ''",
     },
@@ -3551,9 +3559,9 @@ function backfillPatientRecords() {
       ).trim();
       const patientIdNumber = String(patient.patient_id_number || "").trim().toUpperCase();
       const dateOfBirth = String(
-        patient.date_of_birth || deriveDateOfBirthFromAge(patient.age),
+        patient.date_of_birth || (patient.patient_id_type === "national_id" ? deriveDateOfBirthFromAge(patient.age) : ""),
       ).trim();
-      const derivedAge = calculateAgeFromDateOfBirth(dateOfBirth);
+      const derivedAge = patient.manual_age ?? calculateAgeFromDateOfBirth(dateOfBirth);
       const location = String(patient.location || "").trim();
       const nextOfKinRelationship = String(
         patient.next_of_kin_relationship || patient.contact_relationship || "",

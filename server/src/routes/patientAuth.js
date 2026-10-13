@@ -103,7 +103,7 @@ router.post("/register", (req, res) => {
         `
           SELECT id, date_of_birth, gender, link_status
           FROM patients
-          WHERE patient_id_number = ? AND deleted_at IS NULL
+          WHERE patient_id_number = ? AND patient_id_type = 'national_id' AND deleted_at IS NULL
         `,
       )
       .get(nationalId);

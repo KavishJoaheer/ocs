@@ -86,7 +86,7 @@ function purgePatientRecordsSync(patientId) {
       db.prepare(`
         UPDATE patients
         SET full_name = ?, first_name = 'Deleted', last_name = 'Patient',
-            patient_identifier = ?, patient_id_number = '', age = 0,
+            patient_identifier = ?, patient_id_number = '', patient_id_type = 'national_id', manual_age = NULL, age = 0,
             date_of_birth = '', gender = 'M', assigned_doctor_id = NULL,
             contact_number = '', patient_contact_number = '', contact_relationship = '',
             address = '', location = '', past_medical_history = '',

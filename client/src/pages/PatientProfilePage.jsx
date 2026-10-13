@@ -1926,8 +1926,8 @@ function PatientProfilePage() {
     : data.appointments[0]?.appointment_date
       ? formatDate(data.appointments[0].appointment_date)
       : "Not recorded";
-  const profileAgeLabel = data.patient.date_of_birth
-    ? formatAgeFromDateOfBirth(data.patient.date_of_birth)
+  const profileAgeLabel = data.patient.date_of_birth || data.patient.manual_age != null
+    ? formatAgeFromDateOfBirth(data.patient.date_of_birth, data.patient.manual_age)
     : "Not recorded";
   const profileAddressLabel = hasMeaningfulPatientField(data.patient.address)
     ? data.patient.address

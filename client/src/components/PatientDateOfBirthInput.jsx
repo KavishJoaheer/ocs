@@ -15,9 +15,13 @@ function PatientDateOfBirthInput({
   required = false,
   variant = "mobile",
   nicAutofill = null,
+  nationalIdSelected = true,
+  manualAge = "",
+  onAgeChange,
 }) {
-  const [rawDobInput, setRawDobInput] = useState("");
-  const [calculatedAge, setCalculatedAge] = useState(null);
+  const [rawDobInput, setRawDobInput] = useState(() => isoToDobDisplayMask(value));
+  const [calculatedAge, setCalculatedAge] = useState(() => calculateAgeFromDobMask(isoToDobDisplayMask(value)));
+  const [emittedValue, setEmittedValue] = useState(value);
 
   const lockedFromNic = Boolean(nicAutofill);
   const displayAge = lockedFromNic ? nicAutofill.age : calculatedAge;
@@ -51,7 +55,7 @@ function PatientDateOfBirthInput({
   ) {
     setSyncedDeps({ open, resetKey, value, lockedFromNic });
 
-    if (open && !lockedFromNic) {
+    if (open && !lockedFromNic && (value !== emittedValue || syncedDeps.resetKey !== resetKey || syncedDeps.open !== open || syncedDeps.lockedFromNic !== lockedFromNic)) {
       const masked = isoToDobDisplayMask(value);
       setRawDobInput((current) => (current === masked ? current : masked));
       setCalculatedAge(masked.length === 10 ? calculateAgeFromDobMask(masked) : null);
@@ -68,11 +72,15 @@ function PatientDateOfBirthInput({
 
     if (masked.length === 10) {
       const iso = parseDobMaskToIso(masked);
+      event.target.setCustomValidity(iso ? "" : "Enter a valid date of birth.");
       const age = calculateAgeFromDobMask(masked);
       setCalculatedAge(age);
+      setEmittedValue(iso || "");
       onChange?.(iso || "");
     } else {
+      event.target.setCustomValidity("");
       setCalculatedAge(null);
+      setEmittedValue("");
       onChange?.("");
     }
   }
@@ -80,8 +88,8 @@ function PatientDateOfBirthInput({
   return (
     <div className="flex w-full flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
-        <label className={labelClass}>Date of Birth{required ? " *" : ""}</label>
-        {displayAge !== null ? (
+        <label htmlFor="patient-date-of-birth" className={labelClass}>Date of Birth{required ? " *" : ""}</label>
+        {nationalIdSelected && displayAge !== null ? (
           <span className="animate-fade-in text-xs font-extrabold text-[#557373]">
             🟢 Age: {displayAge} years old
           </span>
@@ -90,7 +98,10 @@ function PatientDateOfBirthInput({
 
       <div className="relative">
         <input
+          id="patient-date-of-birth"
           type="text"
+          required={required}
+          pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}"
           readOnly={lockedFromNic}
           inputMode={lockedFromNic ? "text" : "numeric"}
           maxLength={lockedFromNic ? undefined : 10}
@@ -102,9 +113,18 @@ function PatientDateOfBirthInput({
           className={lockedFromNic ? nicLockedInputClass : manualInputClass}
         />
       </div>
+      {!nationalIdSelected && onAgeChange ? (
+        <label className="flex flex-col gap-1.5">
+          <span className={labelClass}>Age (years)</span>
+          <input type="number" name="manual_age" min="0" step="1" value={manualAge}
+            onChange={onAgeChange} placeholder="Enter age (optional)" className={manualInputClass} />
+        </label>
+      ) : null}
       {!lockedFromNic ? (
         <p className="text-[11px] font-medium text-gray-400">
-          Auto-filled from National ID when a valid 14-character NIC is entered.
+          {nationalIdSelected
+            ? "Auto-filled from National ID when a valid 14-character NIC is entered."
+            : "Enter date of birth and age manually if known. Both are optional."}
         </p>
       ) : null}
     </div>

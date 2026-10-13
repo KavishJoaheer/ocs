@@ -28,6 +28,8 @@ export function mapOfflineRecordToPatient(record) {
     full_name: record.full_name,
     patient_identifier: record.patient_id || record.patient_identifier || "",
     patient_id_number: record.patient_id_number || "",
+    patient_id_type: record.patient_id_type || "national_id",
+    manual_age: record.manual_age ?? null,
     status: record.status || "active",
     gender:
       record.gender ||

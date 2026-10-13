@@ -22,6 +22,8 @@ import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientA
 import { cx } from "../lib/utils.js";
 import { capitalizeFirstLetter } from "../lib/patientText.js";
 
+import { validatePatientIdentity } from "../lib/patientIdentity.js";
+
 const DRAFT_KEY = "ocs_patient_draft";
 
 const WIZARD_STEPS = [
@@ -46,6 +48,7 @@ const DRAFT_TEXT_FIELDS = [
   "last_name",
   "patient_identifier",
   "patient_id_number",
+  "manual_age",
   "date_of_birth",
   "patient_contact_number",
   "address",
@@ -96,7 +99,9 @@ const emptyPatient = {
   first_name: "",
   last_name: "",
   patient_identifier: "",
+  patient_id_type: "national_id",
   patient_id_number: "",
+  manual_age: "",
   date_of_birth: "",
   gender: "M",
   assigned_doctor_id: "",
@@ -129,7 +134,9 @@ function toPatientFormState(patient) {
     first_name: patient.first_name ?? "",
     last_name: patient.last_name ?? "",
     patient_identifier: patient.patient_identifier ?? "",
+    patient_id_type: patient.patient_id_type || "national_id",
     patient_id_number: patient.patient_id_number ?? "",
+    manual_age: patient.manual_age ?? "",
     date_of_birth: patient.date_of_birth ?? "",
     gender: patient.gender ?? "M",
     assigned_doctor_id: patient.assigned_doctor_id ? String(patient.assigned_doctor_id) : "",
@@ -180,9 +187,12 @@ function PatientFormModal({
 }) {
   const isMobile = useIsMobile();
   const keyboardInset = useKeyboardOffset(isMobile && open);
-  const [form, setForm] = useState(emptyPatient);
+  const [form, setForm] = useState(() => open
+    ? (mode === "edit" ? toPatientFormState(patient) : { ...emptyPatient, ...readPatientDraft() })
+    : emptyPatient);
   const [wizardStep, setWizardStep] = useState(0);
   const [desktopWizardStep, setDesktopWizardStep] = useState(0);
+  const formRef = useRef(null);
   const firstNameRef = useRef(null);
   const stepFirstInputRef = useRef(null);
   const isPageLayout = layout === "page";
@@ -195,11 +205,33 @@ function PatientFormModal({
     }
   }
 
+  const isNationalId = (form.patient_id_type || "national_id") === "national_id";
+
+  function handleIdTypeChange(event) {
+    const type = event.target.value;
+    setForm((current) => ({
+      ...current,
+      patient_id_type: type,
+      patient_id_number: "",
+      date_of_birth: "",
+      manual_age: "",
+    }));
+  }
+
+  function handleDocumentNumberChange(event) {
+    if (isNationalId) {
+      handleNationalIdChange(event);
+    } else {
+      const value = event.target.value.toUpperCase();
+      setForm((current) => ({ ...current, patient_id_number: value }));
+    }
+  }
+
   const { handleNationalIdChange, isDobLockedFromNic, nicParsed } = useMauritianNicPatientAutofill({
     nationalId: form.patient_id_number,
     dateOfBirth: form.date_of_birth,
     setForm,
-    enabled: open,
+    enabled: open && isNationalId,
   });
 
   const patientId = patient?.id ?? null;
@@ -226,7 +258,7 @@ function PatientFormModal({
       }
 
       if (restoredDraft) {
-        setForm(restoredDraft);
+        setForm({ ...emptyPatient, ...restoredDraft });
         setDraftRestoreSignal((signal) => signal + 1);
       } else {
         setForm(toPatientFormState(patient));
@@ -293,6 +325,14 @@ function PatientFormModal({
   function goToWizardStep(stepIndex, event) {
     event?.preventDefault?.();
     const nextStep = Math.max(0, Math.min(WIZARD_STEPS.length - 1, stepIndex));
+    if (currentStep === 0 && nextStep > 0) {
+      const identityError = validatePatientIdentity(form);
+      if (identityError) {
+        toast.error(identityError);
+        return;
+      }
+      if (!formRef.current?.reportValidity()) return;
+    }
     if (isMobile) {
       setWizardStep(nextStep);
     } else {
@@ -328,6 +368,12 @@ function PatientFormModal({
     if (!onFinalWizardStep) {
       return;
     }
+    const identityError = validatePatientIdentity(form);
+    if (identityError) {
+      toast.error(identityError);
+      goToWizardStep(0);
+      return;
+    }
     const locationTags = sanitizeLocationTagsForDisplay(
       Array.isArray(form.location_tags) ? form.location_tags : [],
     );
@@ -355,6 +401,8 @@ function PatientFormModal({
     clearDraft();
     onSubmit({
       ...form,
+      patient_id_type: form.patient_id_type || "national_id",
+      manual_age: isNationalId ? null : form.manual_age,
       location_tags: locationTags,
       location: legacyLocation,
       insurance_provider: insuranceProvider,
@@ -422,6 +470,7 @@ function PatientFormModal({
         </div>
 
         <form
+          ref={formRef}
           id="mobile-patient-form"
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={handleSubmit}
@@ -467,15 +516,21 @@ function PatientFormModal({
                   />
                 </label>
                 <PatientNationalIdInput
-                  required
+                  idType={form.patient_id_type || "national_id"}
+                  onTypeChange={handleIdTypeChange}
+                  required={form.patient_id_type !== "old_age"}
                   value={form.patient_id_number}
                   variant="mobile"
-                  onChange={handleNationalIdChange}
+                  onChange={handleDocumentNumberChange}
                 />
                 <PatientDateOfBirthInput
+                key={form.patient_id_type || "national_id"}
                   open={open}
-                  resetKey={patient?.id ?? "create"}
-                  required
+                  resetKey={`${patient?.id ?? "create"}-${form.patient_id_type || "national_id"}`}
+                  required={isNationalId}
+                  nationalIdSelected={isNationalId}
+                  manualAge={form.manual_age ?? ""}
+                  onAgeChange={handleChange}
                   value={form.date_of_birth}
                   variant="mobile"
                   nicAutofill={isDobLockedFromNic ? nicParsed : null}
@@ -583,7 +638,7 @@ function PatientFormModal({
                     tags={form.location_tags}
                     insuranceProvider={form.insurance_provider}
                     insurancePolicyNumber={form.insurance_policy_number}
-                    patientNationalId={form.patient_id_number}
+                    patientNationalId={isNationalId ? form.patient_id_number : ""}
                     onInsuranceChange={(update) =>
                       setForm((current) => syncInsuranceSelection(current, update))
                     }
@@ -783,7 +838,7 @@ function PatientFormModal({
       size="xl"
       innerScroll={false}
     >
-      <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
+      <form ref={formRef} className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
         <div className="shrink-0 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -859,16 +914,22 @@ function PatientFormModal({
               </label>
 
               <PatientNationalIdInput
-                required
+                idType={form.patient_id_type || "national_id"}
+                onTypeChange={handleIdTypeChange}
+                required={form.patient_id_type !== "old_age"}
                 value={form.patient_id_number}
                 variant="desktop"
-                onChange={handleNationalIdChange}
+                onChange={handleDocumentNumberChange}
               />
 
               <PatientDateOfBirthInput
+                key={form.patient_id_type || "national_id"}
                 open={open}
-                resetKey={patient?.id ?? "create"}
-                required
+                resetKey={`${patient?.id ?? "create"}-${form.patient_id_type || "national_id"}`}
+                required={isNationalId}
+                nationalIdSelected={isNationalId}
+                manualAge={form.manual_age ?? ""}
+                onAgeChange={handleChange}
                 value={form.date_of_birth}
                 variant="desktop"
                 nicAutofill={isDobLockedFromNic ? nicParsed : null}
@@ -981,7 +1042,7 @@ function PatientFormModal({
                     tags={form.location_tags}
                     insuranceProvider={form.insurance_provider}
                     insurancePolicyNumber={form.insurance_policy_number}
-                    patientNationalId={form.patient_id_number}
+                    patientNationalId={isNationalId ? form.patient_id_number : ""}
                     onInsuranceChange={(update) =>
                       setForm((current) => syncInsuranceSelection(current, update))
                     }
