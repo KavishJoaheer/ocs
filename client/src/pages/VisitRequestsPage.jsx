@@ -29,6 +29,7 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 import AppointmentChangeInbox from "../components/AppointmentChangeInbox.jsx";
+import OperatorVisitRequests from "../components/visit-requests/OperatorVisitRequests.jsx";
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Request received" },
@@ -755,6 +756,8 @@ export default function VisitRequestsPage() {
   const refreshKey = useLiveRefreshKey();
   const appointmentChangeCount = useAppointmentChangeCount();
   const isDoctor = user?.role === "doctor";
+  const isOperator = user?.role === "operator";
+  const isOperatorCompact = useIsMobile(1024);
   const isAdmin = user?.role === "admin";
   const canAssignDoctor = !isDoctor;
   const isDoctorMobile = isDoctor && isMobile;
@@ -762,6 +765,8 @@ export default function VisitRequestsPage() {
 
   const [requests, setRequests] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [doctorError, setDoctorError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("active");
@@ -810,6 +815,7 @@ export default function VisitRequestsPage() {
         knownActiveRequestIdsRef.current = null;
       }
       setRequests(nextRequests);
+      setLastUpdated(Date.now());
       setLoadError("");
     } catch (error) {
       if (fetchId !== fetchIdRef.current) return;
@@ -825,32 +831,35 @@ export default function VisitRequestsPage() {
 
   loadRef.current = loadRequests;
 
+  const loadDoctors = useCallback(async () => {
+    if (!canAssignDoctor) return;
+    try {
+      const data = await api.get("/doctors");
+      setDoctors(data.doctors || data || []);
+      setDoctorError("");
+    } catch {
+      setDoctorError("Could not load doctors.");
+    }
+  }, [canAssignDoctor]);
+
   useEffect(() => {
     if (!canAssignDoctor) {
       setDoctors([]);
       return undefined;
     }
 
-    let ignore = false;
-
-    async function loadDoctors() {
-      try {
-        const data = await api.get("/doctors");
-        if (!ignore) setDoctors(data.doctors || data || []);
-      } catch {
-        if (!ignore) setDoctors([]);
-      }
-    }
-
     loadDoctors();
-    return () => { ignore = true; };
-  }, [canAssignDoctor]);
+  }, [canAssignDoctor, loadDoctors]);
 
   useEffect(() => {
     setLoading(true);
     loadRequests();
     return () => { fetchIdRef.current += 1; };
-  }, [loadRequests, refreshKey]);
+  }, [loadRequests]);
+
+  useEffect(() => {
+    if (refreshKey > 0) loadRef.current?.({ silent: true });
+  }, [refreshKey]);
 
   // Keep the board live: poll quietly and tick the SLA timers every second.
   useEffect(() => {
@@ -884,9 +893,9 @@ export default function VisitRequestsPage() {
       }
     }
 
-    // Optimistic: reflect the change in the UI immediately, then reconcile with
-    // the server (and roll back to server truth if the request fails).
-    setRequests((current) =>
+    // Keep the operator detail panel open until the server confirms dispatch.
+    // Existing board views keep their optimistic update and rollback behaviour.
+    if (!isOperator) setRequests((current) =>
       current.map((request) => (request.id === id ? { ...request, ...payload } : request)),
     );
     try {
@@ -914,7 +923,7 @@ export default function VisitRequestsPage() {
       throw error;
     }
     await loadRequests({ silent: true });
-  }, [isAdmin, isDoctor, loadRequests, navigate, requests]);
+  }, [isAdmin, isDoctor, isOperator, loadRequests, navigate, requests]);
 
   const activeDoctors = useMemo(
     () => doctors.filter((doctor) => doctor.is_active !== 0 && !doctor.deleted_at),
@@ -945,8 +954,8 @@ export default function VisitRequestsPage() {
     setDateError("");
   }
 
-  const dateFilterForm = (
-    <form onSubmit={applyDates} className="space-y-3 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-4">
+  const renderDateFilter = (guard = action => action()) => (
+    <form onSubmit={event => { event.preventDefault(); guard(() => applyDates(event)); }} className="space-y-3 rounded-2xl border border-[rgba(65,200,198,0.22)] bg-white/80 p-4">
       <p className="text-sm font-semibold text-slate-700">Requested date <span className="font-normal text-slate-500">· Mauritius time</span></p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex">
@@ -961,7 +970,7 @@ export default function VisitRequestsPage() {
         </div>
         <div className="flex gap-2">
           <button type="submit" className="flex-1 rounded-xl bg-[#2d8f98] px-4 py-2 text-sm font-semibold text-white sm:flex-none">Apply dates</button>
-          {hasDateFilter || dateDraft.from || dateDraft.to ? <button type="button" onClick={clearDates} className="rounded-xl border border-[rgba(65,200,198,0.25)] px-4 py-2 text-sm font-semibold text-[#2d8f98]">Clear dates</button> : null}
+          {hasDateFilter || dateDraft.from || dateDraft.to ? <button type="button" onClick={() => guard(clearDates)} className="rounded-xl border border-[rgba(65,200,198,0.25)] px-4 py-2 text-sm font-semibold text-[#2d8f98]">Clear dates</button> : null}
         </div>
       </div>
       {dateError ? <p role="alert" className="text-sm text-red-700">{dateError}</p> : null}
@@ -976,6 +985,18 @@ export default function VisitRequestsPage() {
   const displayedRequests = isDoctorMobile && statusFilter !== "active"
     ? requests.filter((request) => CLOSED_STATUSES.includes(request.status))
     : requests;
+
+  if (isOperator) {
+    return <OperatorVisitRequests
+      requests={requests} doctors={activeDoctors} doctorError={doctorError} onRetryDoctors={loadDoctors}
+      onUpdate={handleUpdate} now={now} isMobile={isOperatorCompact} loading={loading} refreshing={refreshing}
+      loadError={loadError} lastUpdated={lastUpdated} onRefresh={() => { loadRequests({ silent: true }); loadDoctors(); }}
+      statusFilter={statusFilter} onStatusFilter={setStatusFilter} appointmentChangeCount={appointmentChangeCount}
+      arrivalNotice={arrivalNotice} renderDateFilter={renderDateFilter} hasDateFilter={hasDateFilter}
+      readOnly={Boolean(user.is_read_only)} UrgencyBadge={UrgencyBadge} InsuranceCoverageBadge={InsuranceCoverageBadge}
+      SlaChip={SlaChip} formatRequestDate={formatRequestDate} visitForLabel={visitForLabel}
+    />;
+  }
 
   return (
     <div className={isDoctorMobile ? "mx-auto max-w-md space-y-4" : "space-y-6"}>
@@ -1062,9 +1083,9 @@ export default function VisitRequestsPage() {
               {hasDateFilter ? "Date filter applied" : "Filter by date"}
               <ChevronDown className="ml-auto size-4 transition group-open:rotate-180" />
             </summary>
-            {dateFilterForm}
+            {renderDateFilter()}
           </details>
-        ) : dateFilterForm
+        ) : renderDateFilter()
       ) : null}
 
       {!isDoctor && statusFilter === "active" && appointmentChangeCount > 0 ? (

@@ -1,0 +1,12 @@
+/* Native-control reset otherwise overrides the compact operator type scale. */
+.operator-visit-requests button {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.operator-visit-requests button h2 { font-weight: 700; }
+.operator-visit-requests summary:focus-visible,
+.operator-visit-requests a:focus-visible {
+  outline: 2px solid #137b80;
+  outline-offset: 3px;
+}

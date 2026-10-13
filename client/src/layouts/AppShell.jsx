@@ -157,6 +157,7 @@ function AppShell() {
   const hideBottomNav = false;
   const hideLinkhamTopHeader = isLinkhamPortal;
   const userRole = user?.role;
+  const isOperatorVisitRequests = userRole === "operator" && location.pathname === "/visit-requests";
   const alwaysHideTopHeader =
     (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
@@ -302,7 +303,7 @@ function AppShell() {
           >
             {user?.role ? (
               <>
-                {!(isDashboard && userRole === "doctor") ? <AppUpdateBanner /> : null}
+                {!(isDashboard && userRole === "doctor") && !isOperatorVisitRequests ? <AppUpdateBanner /> : null}
                 {user.is_read_only ? (
                   <div
                     className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm"
@@ -314,7 +315,7 @@ function AppShell() {
                       changes from this account can be saved.
                     </p>
                   </div>
-                ) : !(isDashboard && ["operator", "doctor"].includes(userRole)) ? (
+                ) : !(isDashboard && ["operator", "doctor"].includes(userRole)) && !isOperatorVisitRequests ? (
                   <PushNotificationBanner role={user.role} className="mb-2 max-w-3xl sm:mb-4" />
                 ) : null}
               </>
