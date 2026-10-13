@@ -608,6 +608,7 @@ function buildHealthRecordsPayload({
 
   const consultations = consultationRows.map((row) => ({
     id: row.id,
+    visit_type: row.visit_type || "Home Visit",
     date: row.consultation_date,
     doctor_name: row.doctor_name,
     diagnosis: resolveConsultationDiagnosis(row),

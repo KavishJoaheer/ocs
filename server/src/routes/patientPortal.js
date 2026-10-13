@@ -420,7 +420,8 @@ router.get("/appointments", (req, res) => {
       SELECT
         a.*,
         d.full_name AS doctor_name,
-        c.id AS consultation_id
+        c.id AS consultation_id,
+        CASE WHEN EXISTS (SELECT 1 FROM teleconsultation_requests t WHERE t.consultation_id=c.id) THEN 'teleconsultation' ELSE NULL END AS kind
       FROM appointments a
       JOIN doctors d ON d.id = a.doctor_id
       LEFT JOIN consultations c ON c.appointment_id = a.id
@@ -791,7 +792,8 @@ router.get("/health-records", (req, res) => {
         c.clinical_note,
         c.patient_diagnosis,
         c.patient_prescription,
-        d.full_name AS doctor_name
+        d.full_name AS doctor_name,
+        CASE WHEN EXISTS (SELECT 1 FROM teleconsultation_requests t WHERE t.consultation_id=c.id) THEN 'Teleconsultation' ELSE 'Home Visit' END AS visit_type
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?

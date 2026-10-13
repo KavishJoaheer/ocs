@@ -75,9 +75,9 @@ function PastAppointmentCard({ appointment }) {
             ) : (
               <Link
                 to={summaryPath}
-                className="flex min-h-[44px] items-center gap-0.5 text-[15px] font-semibold text-brand-gold no-underline transition-opacity active:opacity-80"
+                className="flex min-h-[44px] items-center gap-0.5 text-[15px] font-semibold text-teal-800 no-underline transition-opacity active:opacity-80"
               >
-                <span>View Visit Summary</span>
+                <span>{appointment.kind === "teleconsultation" ? "View consultation" : "View Visit Summary"}</span>
                 <ChevronRight className="size-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               </Link>
             )}
@@ -126,7 +126,7 @@ function PastAppointmentCard({ appointment }) {
             </a>
           ) : (
             <Link to={summaryPath} className="visits-summary-link group hidden text-ocs-yellow lg:flex">
-              <span>View Visit Summary</span>
+              <span>{appointment.kind === "teleconsultation" ? "View consultation" : "View Visit Summary"}</span>
               <ChevronRight
                 className="visits-summary-arrow size-[18px] shrink-0 text-ocs-yellow"
                 strokeWidth={1.75}

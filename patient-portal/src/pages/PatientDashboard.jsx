@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Video } from "lucide-react";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import { api } from "../lib/api.js";
 import { CLINIC_TEL_HREF } from "../lib/clinicContact.js";
@@ -356,10 +356,10 @@ function PatientDashboard() {
 
   return (
     <>
-    <div className="mx-4 my-4 rounded-2xl border border-slate-200 bg-white p-4 lg:mx-8">
-      <Link to="/teleconsultation" className="flex items-center justify-between gap-3 font-semibold text-brand-teal">Request a teleconsultation <ArrowRight className="size-5" /></Link>
-      <p className="mt-1 text-sm text-slate-600">WhatsApp consultation after OCS hotline screening. View your code and follow-up here.</p>
-    </div>
+    <Link to="/teleconsultation" aria-label="Request a teleconsultation" className="care-tele-entry mx-4 my-4 block overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-sm transition active:bg-teal-50 lg:mx-8">
+      <div className="flex items-center gap-3 p-4"><span className="shrink-0 rounded-2xl bg-teal-50 p-3 text-teal-800"><Video className="size-6" /></span><div><h2 className="text-base font-bold text-brand-dark-grey">Teleconsultation</h2><p className="mt-1 text-sm leading-relaxed text-slate-500">Speak to an OCS doctor on WhatsApp.</p></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-teal-50 bg-teal-50/40 px-4 py-3"><span className="text-xs text-teal-800">After hotline screening</span><span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-dark-grey">Request or view status<ArrowRight className="size-4" /></span></div>
+    </Link>
     {activeVisitError ? (
       <ActiveVisitStatusWarning message={activeVisitError} onRetry={handleRetryDashboard} />
     ) : null}

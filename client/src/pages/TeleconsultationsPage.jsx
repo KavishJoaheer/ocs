@@ -78,7 +78,7 @@ function RequestCard({ request, user, doctors, expanded, visible, onToggle, onOp
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link to={`/patients/${request.patient_id}`} className="break-words text-base font-bold text-ocs-slate hover:text-ocs-teal hover:underline">{request.patient_name}</Link>
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.color}`}>{status.label}</span>
+          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.color}`}>{request.status === "pending" && !request.accepted_at ? "Awaiting acceptance" : status.label}</span>
         </div>
         <p className="mt-1.5 text-xs text-slate-500">{request.patient_identifier} · Request #{request.id} <span title="Mauritius time">· {formatTime(request.created_at)}</span></p>
         {!expanded && <p className="mt-2 line-clamp-1 text-sm text-slate-600">{request.reason}</p>}
@@ -107,10 +107,13 @@ function RequestCard({ request, user, doctors, expanded, visible, onToggle, onOp
 
       {error && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-xl bg-red-50 p-3 text-sm text-red-800 outline-none">{error}</p>}
 
-      {isDispatch && ["pending", "assigned"].includes(request.status) && <form onSubmit={event => { event.preventDefault(); void action("assign", { doctor_id: Number(doctorId ?? request.assigned_doctor_id) }); }}>
+      {isDispatch && request.accepted_at && <p className="text-xs text-emerald-800">Accepted by {request.accepted_by_name || "OCS dispatch"} · {formatTime(request.accepted_at)}</p>}
+      {isDispatch && request.status === "pending" && !request.accepted_at && <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-950">Accept this request in the notification above before assigning a doctor.</p>}
+
+      {isDispatch && request.accepted_at && ["pending", "assigned"].includes(request.status) && <form onSubmit={event => { event.preventDefault(); void action("assign", { doctor_id: Number(doctorId ?? request.assigned_doctor_id) }); }}>
         <fieldset disabled={busy || user.is_read_only} className="space-y-3 rounded-xl border border-slate-200 p-4">
           <legend className="px-1 text-sm font-semibold text-ocs-slate">{request.status === "assigned" ? "Doctor assignment" : "Assign a doctor"}</legend>
-          <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-sm font-medium text-slate-600">Assign doctor<select required value={doctorId ?? String(request.assigned_doctor_id || "")} onChange={event => setDoctorId(event.target.value)} className={`${input} mt-2`}><option value="">Choose doctor</option>{doctors.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}</select></label><button className={primary}>{busy ? "Assigning…" : request.status === "assigned" ? "Update assignment" : "Assign"}</button></div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end"><label className="min-w-0 w-full text-sm font-medium text-slate-600 sm:flex-1">Assign doctor<select required value={doctorId ?? String(request.assigned_doctor_id || "")} onChange={event => setDoctorId(event.target.value)} className={`${input} mt-2`}><option value="">Choose doctor</option>{doctors.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>)}</select></label><button className={`${primary} w-full sm:w-auto`}>{busy ? "Assigning…" : request.status === "assigned" ? "Update assignment" : "Assign"}</button></div>
         </fieldset>
       </form>}
 

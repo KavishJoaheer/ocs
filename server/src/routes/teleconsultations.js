@@ -24,8 +24,9 @@ patientRouter.get("/", (req, res) => {
   const id = patientId(req);
   const patient = db.prepare("SELECT * FROM patients WHERE id=? AND deleted_at IS NULL").get(id);
   const review = screening(id);
+  const eligible = Boolean(id === Number(req.patientAuth.patient_id) && patient && review && review.mobile_snapshot === normalizeMobile(patient.patient_contact_number));
   return res.json({ consent_version: CONSENT_VERSION, consent: CONSENT,
-    eligible: Boolean(patient && review && review.mobile_snapshot === normalizeMobile(patient.patient_contact_number)),
+    eligible, confirmed_mobile: eligible ? review.mobile_snapshot : null,
     requests: db.prepare(`${SELECT} WHERE t.patient_id=? ORDER BY t.id DESC LIMIT 20`).all(id).map(row => serializeTeleconsultation(row)) });
 });
 patientRouter.post("/", (req, res) => {
@@ -47,7 +48,7 @@ patientRouter.post("/", (req, res) => {
   const row = getTeleconsultation(result.lastInsertRowid);
   changed(row);
   for (const role of ["operator", "admin"]) {
-    void sendPushToRole(role, { title: "New teleconsultation request", body: "A patient has accepted consent and is awaiting doctor assignment.", url: "/teleconsultations" }).catch(() => {});
+    void sendPushToRole(role, { title: "New teleconsultation request", body: "Open VP and accept the new patient request before assigning a doctor.", url: "/teleconsultations", tag: `teleconsultation-request-${row.id}`, requireInteraction: true }).catch(() => {});
   }
   return res.status(201).json({ request: serializeTeleconsultation(row) });
 });
@@ -63,13 +64,37 @@ staffRouter.get("/", (req, res) => {
   const where = req.auth.role === "doctor" ? " AND t.assigned_doctor_id=?" : "";
   const params = req.auth.role === "doctor" ? [req.auth.doctor_id || -1] : [];
   const rows = db.prepare(`${SELECT} WHERE 1=1 ${where} ORDER BY CASE WHEN t.status IN ('pending','assigned','in_consultation') THEN 0 ELSE 1 END, t.id DESC LIMIT 100`).all(...params);
-  return res.json({ requests: rows.map(row => serializeTeleconsultation(row, { clinical: req.auth.role !== "operator" })) });
+  return res.json({ requests: rows.map(row => serializeTeleconsultation(row, { staff: true, clinical: req.auth.role !== "operator" })) });
+});
+staffRouter.get("/unaccepted", (req, res) => {
+  if (!dispatch(req)) return res.status(403).json({ error: "Only dispatch staff can view request alerts." });
+  res.set("Cache-Control", "no-store");
+  // Independent of the management page's history limit: every waiting request stays visible.
+  const rows = db.prepare(`${SELECT} WHERE t.status='pending' AND t.accepted_at IS NULL ORDER BY t.created_at, t.id`).all();
+  return res.json({ requests: rows.map(row => serializeTeleconsultation(row, { staff: true })) });
+});
+staffRouter.post("/:id/accept", (req, res) => {
+  if (!dispatch(req)) return res.status(403).json({ error: "Only dispatch staff can accept a request." });
+  const result = db.prepare(`UPDATE teleconsultation_requests SET accepted_by=?, accepted_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+    WHERE id=? AND status='pending' AND accepted_at IS NULL
+      AND EXISTS (SELECT 1 FROM patients p WHERE p.id=teleconsultation_requests.patient_id AND p.deleted_at IS NULL)`).run(req.auth.id, Number(req.params.id));
+  const row = getTeleconsultation(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: "Request not found." });
+  if (!result.changes) {
+    if (row.accepted_at && Number(row.accepted_by) === Number(req.auth.id) && row.status === "pending") {
+      return res.json({ request: serializeTeleconsultation(row, { staff: true }) });
+    }
+    return res.status(409).json({ error: row.accepted_at ? "This request has already been accepted by the OCS team." : "This request is no longer awaiting acceptance." });
+  }
+  changed(row);
+  return res.json({ request: serializeTeleconsultation(row, { staff: true }) });
 });
 staffRouter.post("/:id/assign", (req, res) => {
   if (!dispatch(req)) return res.status(403).json({ error: "Only dispatch staff can assign a doctor." });
   const row = getTeleconsultation(Number(req.params.id));
   if (!row) return res.status(404).json({ error: "Request not found." });
   if (!["pending", "assigned"].includes(row.status)) return res.status(409).json({ error: "This request cannot be reassigned." });
+  if (!row.accepted_at) return res.status(409).json({ error: "Accept this request before assigning a doctor." });
   const doctorId = Number(req.body.doctor_id);
   const doctor = db.prepare(`SELECT d.id, u.id AS user_id FROM doctors d JOIN users u ON u.doctor_id=d.id
     WHERE d.id=? AND d.is_active=1 AND d.deleted_at IS NULL AND u.role='doctor' AND u.is_active=1 AND u.deleted_at IS NULL`).get(doctorId);
@@ -80,7 +105,7 @@ staffRouter.post("/:id/assign", (req, res) => {
   changed({ ...row, assigned_doctor_id: doctorId });
   publishPatientDataChange(row.patient_id, { reason: "teleconsultation", notifyDoctorIds: [row.assigned_doctor_id, doctorId] });
   void sendPushToUser(doctor.user_id, { title: "Teleconsultation assigned", body: "Open VP to review your assigned request and contact the patient.", url: "/teleconsultations" }).catch(() => {});
-  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id)) });
+  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true }) });
 });
 staffRouter.post("/:id/start", (req, res) => {
   const row = getTeleconsultation(Number(req.params.id));

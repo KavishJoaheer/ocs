@@ -19,7 +19,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     patient_contact_number: "52520142", patient_id_number: `TELE-E2E-${Date.now()}`, address: "Moka", location: "Moka", location_tags: [{ category: "Town", name: "Moka" }],
   } });
   expect(created.ok(), await created.text()).toBeTruthy(); const patient = await created.json();
-  const opContext = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] }); const patientContext = await browser.newContext({ viewport: { width: 390, height: 844 } }); const doctorContext = await browser.newContext();
+  const opContext = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] }); const patientContext = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ["clipboard-read", "clipboard-write"] }); const doctorContext = await browser.newContext();
   try {
     const opPage = await staffPage(opContext, operator);
     await opPage.goto(`${STAFF}/patients/${patient.id}`);
@@ -69,10 +69,21 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage).toHaveURL(/\/dashboard$/);
     await expect(carePage.getByRole("link", { name: "Request a teleconsultation", exact: true })).toBeVisible();
+    await carePage.getByRole("link", { name: "Request a teleconsultation", exact: true }).screenshot({ path: testInfo.outputPath("patient-teleconsultation-card-mobile.png") });
     await carePage.getByRole("link", { name: "Request a teleconsultation", exact: true }).click();
     await carePage.getByLabel("Reason for consultation").fill("Review an existing report");
     await carePage.getByLabel("Your current location").fill("Moka, home");
-    await carePage.getByLabel("Mobile confirmed with OCS").fill("52520142");
+    await expect(carePage.getByLabel("Mobile confirmed with OCS")).toHaveValue("+23052520142");
+    expect(await carePage.getByLabel("Reason for consultation").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+    expect(await carePage.getByLabel("Your current location").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+    await expect(carePage.locator("#ocs-patient-bottom-nav")).toBeHidden();
+    await carePage.getByRole("heading", { name: "Request a teleconsultation", exact: true }).click();
+    await expect(carePage.locator("#ocs-patient-bottom-nav")).toBeVisible();
+    await carePage.screenshot({ path: testInfo.outputPath("patient-teleconsultation-details-mobile.png") });
+    await carePage.getByRole("button", { name: "Continue to consent" }).click();
+    await carePage.getByRole("button", { name: "Edit details" }).click();
+    await expect(carePage.getByLabel("Reason for consultation")).toHaveValue("Review an existing report");
+    await carePage.getByRole("button", { name: "Continue to consent" }).click();
     await expect(carePage.getByRole("button", { name: "Accept & request teleconsultation" })).toBeDisabled();
     await carePage.getByLabel("I have read and accept these service terms and limitations.").check();
     await carePage.getByLabel("I understand the benefits and limitations, have had the opportunity to ask questions, and consent to teleconsultation.").check();
@@ -80,6 +91,20 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(carePage.getByText("Your OCS consultation code", { exact: true })).toBeVisible();
     const code = await carePage.locator("section").first().locator("p").filter({ hasText: /^\d{6}$/ }).innerText();
     await opPage.getByRole("button", { name: "Close dialog", exact: true }).click();
+    const alerts = opPage.getByRole("complementary", { name: "Teleconsultation request alerts" });
+    await expect(alerts).toContainText(patientName);
+    await opPage.goto(`${STAFF}/patients`); await opPage.reload();
+    await expect(alerts).toContainText(patientName);
+    await opPage.setViewportSize({ width: 390, height: 844 });
+    await opPage.route("**/api/teleconsultations/*/accept", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Acceptance unavailable. Please retry." }) }));
+    await alerts.getByRole("button", { name: `Accept request for ${patientName}`, exact: true }).click();
+    await expect(alerts).toContainText(patientName);
+    await opPage.unroute("**/api/teleconsultations/*/accept");
+    await alerts.screenshot({ path: testInfo.outputPath("operator-request-alert-mobile.png") });
+    await alerts.getByRole("button", { name: `Accept request for ${patientName}`, exact: true }).click();
+    await expect(alerts).toHaveCount(0);
+    await expect(carePage.getByRole("heading", { name: "Request accepted by OCS", exact: true })).toBeVisible();
+    await opPage.setViewportSize({ width: 1280, height: 900 });
     await opPage.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
     await expect(opPage.getByRole("heading", { name: "Manage teleconsultations", exact: true, level: 1 })).toBeVisible();
     await opPage.getByLabel("Search teleconsultations").fill(patientName);
@@ -87,8 +112,16 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(card).toContainText(code);
     await opPage.getByRole("heading", { name: "Manage teleconsultations", exact: true, level: 1 }).scrollIntoViewIfNeeded();
     await opPage.screenshot({ path: testInfo.outputPath("teleconsultations-desktop.png") });
+    await opPage.setViewportSize({ width: 390, height: 844 });
+    expect(await card.getByLabel("Assign doctor").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
     await card.getByLabel("Assign doctor").selectOption(String(doctor.user.doctor_id)); await card.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(card).toContainText("Doctor assigned");
+    await expect(carePage.getByRole("heading", { name: "Doctor assigned", exact: true })).toBeVisible();
+    await carePage.bringToFront();
+    await carePage.getByRole("button", { name: "Copy code", exact: true }).click();
+    await expect(carePage.getByRole("button", { name: "Code copied", exact: true })).toBeVisible();
+    expect(await carePage.evaluate(() => navigator.clipboard.readText())).toBe(code);
+    await carePage.locator("section").first().screenshot({ path: testInfo.outputPath("patient-doctor-assigned-mobile.png") });
     const doctorPage = await staffPage(doctorContext, doctor); await doctorPage.goto(`${STAFF}/teleconsultations`);
     await doctorPage.getByLabel("Search teleconsultations").fill(patientName);
     const doctorCard = doctorPage.locator("section").filter({ has: doctorPage.getByRole("link", { name: patientName, exact: true }) });
@@ -127,6 +160,11 @@ test("hotline invitation, patient consent, doctor verification and published car
     const recordForm = doctorCard.locator("form").filter({ has: doctorPage.getByRole("heading", { name: "Consultation record", exact: true }) });
     await recordForm.screenshot({ path: testInfo.outputPath("consultation-record-desktop.png") });
     await doctorPage.setViewportSize({ width: 390, height: 844 });
+    expect(await privateNote.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+    await privateNote.focus();
+    await expect(doctorPage.locator("#ocs-bottom-nav")).toBeHidden();
+    await doctorPage.getByRole("heading", { name: "Consultation record", exact: true }).click();
+    await expect(doctorPage.locator("#ocs-bottom-nav")).toBeVisible();
     expect(await doctorPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await recordForm.screenshot({ path: testInfo.outputPath("consultation-record-mobile.png") });
     await doctorPage.route("**/api/teleconsultations/*/complete", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Could not save. Please retry." }) }));
@@ -145,6 +183,13 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.getByRole("link", { name: "View consultation and prescription" }).click();
     await expect(carePage.getByText("Demonstration prescription instructions", { exact: false }).first()).toBeVisible();
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
+    for (const [route, endpoint] of [["dashboard", "dashboard"], ["health-records", "health-records"], ["appointments", "appointments"], ["care", "care-feed"], ["profile", "profile"]]) {
+      const loaded = carePage.waitForResponse(response => response.url().includes(`/api/patient-portal/${endpoint}`) && response.request().method() === "GET");
+      await carePage.goto(`${CARE}/${route}`); await loaded;
+      await expect(carePage.locator(".care-app")).toBeVisible();
+      expect(await carePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await carePage.screenshot({ path: testInfo.outputPath(`care-${route}-mobile.png`), animations: "disabled" });
+    }
     await carePage.goto(magicUrl.replace(new URL(magicUrl).origin, CARE));
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage.getByRole("alert")).toContainText("invalid, expired or already used");

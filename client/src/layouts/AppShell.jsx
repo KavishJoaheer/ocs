@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import BottomNav from "../components/BottomNav.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
+import TeleconsultationAlerts from "../components/TeleconsultationAlerts.jsx";
 import Sidebar from "../components/Sidebar.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import {
@@ -15,6 +16,7 @@ import {
   stopInventoryRealtimeSync,
 } from "../lib/inventoryRealtimeSync.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { useMobileTyping } from "../hooks/useMobileTyping.js";
 
 const pageMeta = {
   "/teleconsultations": { label: "Manage teleconsultations", helper: "Assign doctors and manage consultation records." },
@@ -141,6 +143,7 @@ const pageMeta = {
 };
 
 function AppShell() {
+  useMobileTyping();
   const location = useLocation();
   const { user } = useAuth();
   const isMobile = useIsMobile();
@@ -316,6 +319,7 @@ function AppShell() {
                 )}
               </>
             ) : null}
+            {["admin", "operator"].includes(user?.role) && !user.is_read_only && <TeleconsultationAlerts key={user.id} />}
             <Outlet />
             {!hideBottomNav && (
               <div

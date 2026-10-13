@@ -1,0 +1,96 @@
+/* OCS Care: colour marks actions and progress; health information stays clear. */
+.care-app {
+  --native-canvas: #edf7f3;
+  --desktop-canvas: #edf7f3;
+  --native-card-shadow: 0 6px 24px rgba(10, 79, 73, 0.07);
+  --native-shadow-hero: 0 14px 32px rgba(7, 91, 85, 0.16);
+}
+.care-app #app-main-scroll {
+  background: radial-gradient(ellipse at 100% 0%, #c8eee6 0, transparent 34rem), radial-gradient(ellipse at 0% 90%, #fff1d2 0, transparent 30rem), #edf7f3;
+}
+.care-app .mobile-identity-header {
+  background: rgba(249, 255, 252, 0.96);
+  border-bottom: 2px solid #c5e8dc;
+}
+.care-app .care-page-title,
+.care-app .care-page-hero,
+.care-app .care-tele-hero {
+  background: radial-gradient(circle at 105% -20%, rgba(247,186,36,.24), transparent 45%), linear-gradient(120deg, #073d42, #087e76);
+  box-shadow: 0 12px 30px rgba(7, 79, 73, .12);
+  color: #fff;
+}
+.care-app .care-page-title {
+  position: relative;
+  margin: 12px 16px 20px;
+  padding: 24px 20px;
+  border-radius: 24px;
+}
+.care-app .care-page-title h1 > span:first-child,
+.care-app .care-page-hero h1 > span:first-child { color: #fff; }
+.care-app .care-page-title h1 > span:last-child:not(:first-child),
+.care-app .care-page-hero h1 > span:last-child:not(:first-child) { color: #ffd36c; }
+.care-app .care-page-title > p,
+.care-app .care-page-hero p { color: #d1eee6; line-height: 1.6; }
+.care-app .care-tele-hero { border-radius: 24px; padding: 22px 20px; }
+.care-app .care-tele-hero h1 { color: #fff; }
+.care-app .care-tele-hero > p { color: #d1eee6; }
+.care-app .care-tele-hero > div > span { background: #ffffff18; color: #ffd36c; }
+.care-app .care-tele-hero > div > div > p { color: #ffd36c; }
+.care-app .care-tele-entry {
+  border: 1px solid #70c4b4;
+  background: radial-gradient(circle at 100% 0, #ffc85940, transparent 50%), linear-gradient(115deg, #075b59, #09877b);
+  box-shadow: 0 10px 24px #075b591c;
+}
+.care-app .care-tele-entry h2 { color: #fff; }
+.care-app .care-tele-entry p { color: #d2f1e8; }
+.care-app .care-tele-entry > div:first-child > span { background: #ffffff18; color: #ffda80; }
+.care-app .care-tele-entry > div:last-child { background: #fff2d4; border-color: #ffda80; }
+.care-app .care-tele-entry > div:last-child span { color: #124d47; }
+.care-app .care-consultation-card { border-color: #9bd7c7; box-shadow: 0 12px 28px #075b5910; }
+.care-app .care-consultation-status { background: linear-gradient(120deg, #075b59, #0b8177); color: #fff; }
+.care-app .care-consultation-status h2 { color: #fff; }
+.care-app .care-consultation-status p { color: #d1eee6; }
+.care-app .care-consultation-status > span { background: #ffffff1c; color: #ffda80; }
+.care-app .care-consultation-code-panel {
+  background: radial-gradient(circle at 0 0, #ffdf8a80, transparent 65%), #fff5dc;
+  border: 1px solid #f4dca0;
+}
+.care-app .care-consultation-code { font-variant-numeric: tabular-nums; color: #084f4b; }
+.care-app .care-doctor-card { background: linear-gradient(125deg, #e0f4eb, #f4fbf7); border: 1px solid #c1e4d4; }
+.care-app .care-primary-button { background: linear-gradient(110deg, #075b59, #087d71); box-shadow: 0 6px 16px #075b5920; }
+.care-app .native-dashboard > header {
+  padding: 20px;
+  margin: 4px 0 22px;
+  border-radius: 22px;
+  border-left: 4px solid #f7ba24;
+  background: linear-gradient(120deg, #fff9e9, #e4f5ec);
+}
+.care-app .native-dashboard > header .text-brand-gold { color: #966000; }
+.care-app .native-dashboard .ocs-elevate-hero { background: linear-gradient(125deg, #073d42, #087568); }
+.care-app .native-carousel > .squircle-outer { border-top: 3px solid #087e76; background: linear-gradient(145deg, #fff, #f0faf5); }
+.care-app .native-carousel > .squircle-outer:nth-child(even) { border-top-color: #e8ae27; background: linear-gradient(145deg, #fff, #fff8e9); }
+.care-app .desktop-card,
+.care-app .health-records-crafted-card,
+.care-app .visits-crafted-card,
+.care-app .profile-crafted-card {
+  border: 1px solid #c7e6d9;
+  background: linear-gradient(145deg, #fff 65%, #f1faf5);
+  box-shadow: 0 7px 25px rgba(7, 91, 85, .065);
+}
+.care-app .profile-list-card-tinted { background: linear-gradient(140deg, #fff6df, #ecf8f0); }
+.care-app .profile-concierge-avatar { background: linear-gradient(135deg, #087e76, #073d42); color: #fff; box-shadow: 0 0 0 5px #fff, 0 0 0 7px #f2c76b, 0 12px 28px #075b5920; }
+.care-app .visits-date-block-upcoming { background: #08695f; }
+.care-app .visits-date-block-upcoming .visits-date-day { color: #fff; }
+.care-app .visits-date-block-upcoming .visits-date-month { color: #ffe09b; }
+.care-app [aria-label="Health records sections"] [aria-selected="true"] { background: #08695f; border-color: #08695f; color: #fff; box-shadow: 0 4px 12px #08695f20; }
+@media (max-width: 1023px) {
+  .care-app [aria-label="Health records sections"] [role="tab"] { min-height: 44px; padding-inline: 8px; font-size: 12px; line-height: 1.4; }
+  .care-app .visits-summary-link { display: none; }
+}
+.care-app #ocs-patient-bottom-nav > div { border-color: #b5ddce; box-shadow: 0 12px 36px #064e4625; background: rgba(252,255,253,.96); }
+.care-app .mobile-nav-item[aria-current="page"] { background: linear-gradient(130deg, #087e76, #073d42); box-shadow: inset 0 3px #ffd36c, 0 5px 15px #075b5920; }
+.care-app .sidebar-nav-link-active { background: linear-gradient(120deg, #075b59, #087e76); color: #fff; }
+.care-app .sidebar-nav-link-active svg { color: #ffda80; }
+@media (prefers-reduced-motion: reduce) {
+  .care-app *, .care-app *::before, .care-app *::after { scroll-behavior: auto; }
+}

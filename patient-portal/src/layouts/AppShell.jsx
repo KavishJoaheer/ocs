@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
+import { useMobileTyping } from "../hooks/useMobileTyping.js";
 import Sidebar from "../components/Sidebar.jsx";
 import MobileIdentityHeader from "../components/MobileIdentityHeader.jsx";
 import PatientAttentionCenter from "../components/PatientAttentionCenter.jsx";
@@ -44,6 +45,7 @@ function ServiceWorkerBridge() {
 }
 
 function AppShellContent() {
+  useMobileTyping();
   const { pathname } = useLocation();
   const isNativeDashboard = pathname === "/dashboard";
   const isVisitStatus = pathname === "/request-visit/tracking";
@@ -59,7 +61,7 @@ function AppShellContent() {
     isProfile ||
     isDesktopHeroPage;
   return (
-    <div className="flex h-dvh min-h-0 flex-col lg:h-auto lg:min-h-screen lg:flex-row">
+    <div className="care-app flex h-dvh min-h-0 flex-col lg:h-auto lg:min-h-screen lg:flex-row">
       <Sidebar />
       <main
         id="app-main-scroll"

@@ -24,6 +24,7 @@ function formatTime(time) {
 function formatTimeWindow(time, kind) {
   const value = String(time || "").trim();
   if (!value) return "";
+  if (kind === "teleconsultation") return formatTime(time);
   const start = dayjs(`2000-01-01T${value}`);
   if (!start.isValid()) return formatTime(time);
   const end = start.add(kind === "review" ? 90 : 60, "minute");
@@ -31,6 +32,7 @@ function formatTimeWindow(time, kind) {
 }
 
 function typeLabel(status, kind) {
+  if (kind === "teleconsultation") return "Teleconsultation";
   if (kind === "review") return "Follow-up Review";
   if (status === "completed") return "Home Visit Consultation";
   if (status === "cancelled") return "Cancelled";

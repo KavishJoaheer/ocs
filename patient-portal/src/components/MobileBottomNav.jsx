@@ -4,6 +4,7 @@ import { MOBILE_PATIENT_NAV_ITEMS } from "../lib/navConfig.js";
 function MobileBottomNav() {
   return (
     <nav
+      id="ocs-patient-bottom-nav"
       className="pointer-events-none fixed bottom-0 left-0 right-0 z-50 w-full px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden"
       aria-label="Main navigation"
     >

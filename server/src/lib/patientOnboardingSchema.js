@@ -66,6 +66,23 @@ function ensurePatientOnboardingSchema(db) {
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_teleconsultation_active_patient ON teleconsultation_requests(patient_id)
-    WHERE status IN ('pending','assigned','in_consultation');`);
+    WHERE status IN ('pending','assigned','in_consultation');
+  CREATE INDEX IF NOT EXISTS idx_teleconsultation_consultation ON teleconsultation_requests(consultation_id)
+    WHERE consultation_id IS NOT NULL;`);
+  const requestColumns = db.prepare("PRAGMA table_info(teleconsultation_requests)").all();
+  db.transaction(() => {
+    if (!requestColumns.some(column => column.name === "accepted_by")) {
+      db.exec("ALTER TABLE teleconsultation_requests ADD COLUMN accepted_by INTEGER REFERENCES users(id) ON DELETE SET NULL");
+    }
+    if (!requestColumns.some(column => column.name === "accepted_at")) {
+      db.exec("ALTER TABLE teleconsultation_requests ADD COLUMN accepted_at TEXT");
+      // One-time backfill only where old records show actual doctor assignment.
+      // A patient cancelling an unaccepted request must never create an acceptance.
+      db.exec(`UPDATE teleconsultation_requests SET accepted_at=COALESCE(assigned_at, code_verified_at, updated_at), accepted_by=assigned_by
+        WHERE assigned_at IS NOT NULL OR status IN ('assigned','in_consultation','completed')`);
+    }
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_teleconsultation_unaccepted ON teleconsultation_requests(created_at)
+      WHERE status='pending' AND accepted_at IS NULL`);
+  })();
 }
 module.exports = { ensurePatientOnboardingSchema };

@@ -1,7 +1,7 @@
 /** Desktop architectural hero — static, authoritative band with vertical spine. */
 function PageHeroHeader({ primaryText, secondaryText, subtitle, className = "" }) {
   return (
-      <header className={`relative hidden overflow-hidden border-b border-brand-teal/20 bg-white/72 py-12 backdrop-blur-xl lg:flex lg:flex-col lg:gap-2 lg:px-10 ${className}`.trim()}>
+      <header className={`care-page-hero relative hidden overflow-hidden border-b border-brand-teal/20 bg-white/72 py-12 backdrop-blur-xl lg:flex lg:flex-col lg:gap-2 lg:px-10 ${className}`.trim()}>
         <div className="pointer-events-none absolute -right-24 -top-36 size-80 rounded-full bg-brand-teal/16 blur-3xl" aria-hidden="true" />
         <div className="pointer-events-none absolute -bottom-28 right-1/4 size-56 rounded-full bg-brand-gold/10 blur-3xl" aria-hidden="true" />
         <div

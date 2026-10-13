@@ -154,6 +154,8 @@ test("consent and hotline screening are required; assignment, code checks, recor
   const stored = db.prepare("SELECT consent_snapshot FROM teleconsultation_requests WHERE id=?").get(r.id); assert.ok(JSON.parse(stored.consent_snapshot).length);
   const queue = await api("GET", "/teleconsultations", null, operator); assert.equal(queue.data.requests.find(row => row.id===r.id).consultation_code, r.consultation_code);
   assert.equal((await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, doctor)).status, 403);
+  assert.equal((await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator)).status, 409);
+  assert.equal((await api("POST", `/teleconsultations/${r.id}/accept`, {}, operator)).status, 200);
   assert.equal((await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator)).status, 200);
   assert.equal((await api("GET", "/teleconsultations", null, otherDoctor)).data.requests.some(row=>row.id===r.id), false);
   assert.equal((await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code:r.consultation_code, checks_confirmed:true }, otherDoctor)).status, 403);
@@ -174,6 +176,7 @@ test("consent and hotline screening are required; assignment, code checks, recor
 test("completion requires private note and diagnosis, while prescription, summary and follow-up are optional", async () => {
   const p = await patient(); const login = await redeem(await invite(p));
   const r = (await request(login)).data.request;
+  await api("POST", `/teleconsultations/${r.id}/accept`, {}, operator);
   await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator);
   await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code: r.consultation_code, checks_confirmed: true }, doctor);
   const body = { clinical_note: "PRIVATE-MINIMAL: findings and reasoning", patient_diagnosis: "Assessment discussed with patient" };
@@ -193,12 +196,16 @@ test("completion requires private note and diagnosis, while prescription, summar
   assert.deepEqual(consultation, { ...body, patient_prescription: "" });
   const records = await api("GET", "/patient-portal/health-records", null, login);
   assert.ok(JSON.stringify(records.data).includes(body.patient_diagnosis));
+  assert.equal(records.data.consultations.find(row => row.id === completed.data.consultation_id).visit_type, "Teleconsultation");
+  const appointments = await api("GET", "/patient-portal/appointments", null, login);
+  assert.equal(appointments.data.appointments.find(row => row.consultation_id === completed.data.consultation_id).kind, "teleconsultation");
   assert.ok(!JSON.stringify(records.data).includes("PRIVATE-MINIMAL"));
   assert.equal((await api("POST", `/teleconsultations/${r.id}/complete`, body, doctor)).status, 409);
 });
 
 test("wrong codes are limited; cancellation and referral remove codes and preserve next steps", async () => {
   const p=await patient(); const login=await redeem(await invite(p)); const r=(await request(login)).data.request;
+  await api("POST", `/teleconsultations/${r.id}/accept`, {}, operator);
   await api("POST", `/teleconsultations/${r.id}/assign`, {doctor_id:doctor.user.doctor_id}, operator);
   for(let i=0;i<5;i++) assert.equal((await api("POST", `/teleconsultations/${r.id}/start`, {consultation_code:"000000",checks_confirmed:true}, doctor)).status,400);
   assert.equal((await api("POST", `/teleconsultations/${r.id}/start`, {consultation_code:r.consultation_code,checks_confirmed:true}, doctor)).status,429);
@@ -219,6 +226,66 @@ test("account schema migration preserves existing sessions and relationships and
   assert.equal(temp.prepare("PRAGMA foreign_key_check").all().length,0);
   assert.equal(temp.pragma("foreign_keys",{simple:true}),1);
   temp.prepare("INSERT INTO patient_users (email,password_hash,patient_id) VALUES (NULL,NULL,1)").run(); temp.close();
+});
+
+test("operator acceptance is durable, first-wins, role restricted and separate from viewing or assignment", async () => {
+  const p = await patient(); const login = await redeem(await invite(p)); const r = (await request(login)).data.request;
+  const inbox = () => api("GET", "/teleconsultations/unaccepted", null, operator);
+  assert.ok((await inbox()).data.requests.some(row => row.id === r.id));
+  await api("GET", "/teleconsultations", null, operator);
+  assert.ok((await inbox()).data.requests.some(row => row.id === r.id));
+  for (const actor of [doctor, accountant, training]) assert.equal((await api("POST", `/teleconsultations/${r.id}/accept`, {}, actor)).status, 403);
+  assert.equal((await api("GET", "/teleconsultations/unaccepted", null, doctor)).status, 403);
+  const results = await Promise.all([api("POST", `/teleconsultations/${r.id}/accept`, {}, operator), api("POST", `/teleconsultations/${r.id}/accept`, {}, admin)]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  const winner = results[0].status === 200 ? operator : admin;
+  const accepted = db.prepare("SELECT accepted_by, accepted_at FROM teleconsultation_requests WHERE id=?").get(r.id);
+  assert.equal(accepted.accepted_by, winner.user.id); assert.ok(accepted.accepted_at);
+  assert.equal((await api("POST", `/teleconsultations/${r.id}/accept`, {}, winner)).status, 200);
+  assert.deepEqual(db.prepare("SELECT accepted_by, accepted_at FROM teleconsultation_requests WHERE id=?").get(r.id), accepted);
+  assert.ok(!(await inbox()).data.requests.some(row => row.id === r.id));
+  const visible = (await api("GET", "/patient-portal/teleconsultations", null, login)).data.requests.find(row => row.id === r.id);
+  assert.equal(visible.accepted_at, accepted.accepted_at);
+  assert.equal(visible.accepted_by, undefined); assert.equal(visible.accepted_by_name, undefined);
+  const cancelled = (await request(await redeem(await invite(await patient())))).data.request;
+  const closed = await api("POST", `/teleconsultations/${cancelled.id}/close`, { outcome: "cancelled", outcome_note: "Patient chose another appointment", follow_up: "Contact OCS if care is needed" }, operator);
+  assert.equal(closed.status, 200);
+  assert.equal((await api("POST", `/teleconsultations/${cancelled.id}/accept`, {}, operator)).status, 409);
+  assert.ok(!(await inbox()).data.requests.some(row => row.id === cancelled.id));
+  assert.equal((await api("POST", "/teleconsultations/999999/accept", {}, operator)).status, 404);
+});
+
+test("acceptance migration preserves old processed requests and leaves pending requests for explicit acceptance", () => {
+  const Database = require("better-sqlite3"); const temp = new Database(":memory:"); temp.pragma("foreign_keys=ON");
+  temp.exec(`CREATE TABLE patients(id INTEGER PRIMARY KEY); CREATE TABLE users(id INTEGER PRIMARY KEY);
+    CREATE TABLE patient_users(id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT);
+    CREATE TABLE teleconsultation_requests(id INTEGER PRIMARY KEY, patient_id INTEGER, status TEXT,
+      assigned_by INTEGER, assigned_at TEXT, code_verified_at TEXT, created_at TEXT, updated_at TEXT, consultation_id INTEGER);
+    INSERT INTO users VALUES(1);
+    INSERT INTO teleconsultation_requests VALUES(1,1,'pending',NULL,NULL,NULL,'2026-10-12','2026-10-12',NULL);
+    INSERT INTO teleconsultation_requests VALUES(2,2,'assigned',1,'2026-10-12 10:00:00',NULL,'2026-10-12','2026-10-12',NULL);
+    INSERT INTO teleconsultation_requests VALUES(3,3,'cancelled',NULL,NULL,NULL,'2026-10-12','2026-10-12',NULL);`);
+  ensurePatientOnboardingSchema(temp); ensurePatientOnboardingSchema(temp);
+  assert.equal(temp.prepare("SELECT accepted_at FROM teleconsultation_requests WHERE id=1").get().accepted_at, null);
+  assert.deepEqual(temp.prepare("SELECT accepted_by, accepted_at FROM teleconsultation_requests WHERE id=2").get(), { accepted_by: 1, accepted_at: "2026-10-12 10:00:00" });
+  assert.equal(temp.prepare("SELECT accepted_at FROM teleconsultation_requests WHERE id=3").get().accepted_at, null);
+  temp.exec("UPDATE teleconsultation_requests SET status='cancelled' WHERE id=1");
+  ensurePatientOnboardingSchema(temp);
+  assert.equal(temp.prepare("SELECT accepted_at FROM teleconsultation_requests WHERE id=1").get().accepted_at, null);
+  assert.equal(temp.prepare("PRAGMA foreign_key_check").all().length, 0); temp.close();
+});
+
+test("request alerts include older unaccepted patients beyond the 100-row management view", async () => {
+  const ids = [];
+  for (let index = 0; index < 101; index += 1) {
+    const login = await redeem(await invite(await patient()));
+    const created = await request(login);
+    assert.equal(created.status, 201); ids.push(created.data.request.id);
+  }
+  const list = (await api("GET", "/teleconsultations", null, operator)).data.requests;
+  assert.equal(list.length, 100); assert.ok(!list.some(row => row.id === ids[0]));
+  const alerts = (await api("GET", "/teleconsultations/unaccepted", null, operator)).data.requests;
+  assert.ok(ids.every(id => alerts.some(row => row.id === id)));
 });
 test("production invitation works without a newly added environment setting", async t => {
   const p = await patient();

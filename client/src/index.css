@@ -176,15 +176,15 @@ textarea {
   clip: auto;
 }
 
-/* iOS Safari auto-zooms when a focused input's computed font-size is < 16px.
-   Pin the form-control font-size to 16px on coarse pointers (touch devices)
-   so phones never zoom the layout on focus. Desktop visual rhythm (text-sm
-   etc.) is unaffected because the rule is gated to pointer:coarse. */
-@media (pointer: coarse) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
-  select,
-  textarea {
-    font-size: 16px;
+/* Keep mobile text entry at the iOS no-auto-zoom size, including fields with
+   page-specific font rules. Pinch zoom remains available for accessibility. */
+@media (max-width: 1023px), (pointer: coarse) {
+  html body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+  html body select, html body textarea, html body [contenteditable="true"], html body [contenteditable=""] {
+    font-size: 16px !important;
+  }
+  body[data-mobile-typing] #ocs-bottom-nav {
+    display: none !important;
   }
 }
 
