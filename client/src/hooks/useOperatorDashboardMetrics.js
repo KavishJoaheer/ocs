@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api.js";
+import { useLiveRefreshKey } from "./useLiveRefreshKey.js";
 
 const POLL_INTERVAL_MS = 60_000;
 
 export function useOperatorDashboardMetrics(enabled) {
+  const refreshKey = useLiveRefreshKey();
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(Boolean(enabled));
 
@@ -42,7 +44,7 @@ export function useOperatorDashboardMetrics(enabled) {
       ignore = true;
       window.clearInterval(intervalId);
     };
-  }, [enabled]);
+  }, [enabled, refreshKey]);
 
   return {
     metrics: enabled ? metrics : null,

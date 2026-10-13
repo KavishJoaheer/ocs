@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import {
   ArrowUpRight,
   CalendarClock,
+  ClipboardList,
   Package,
   ReceiptText,
   UserPlus,
@@ -11,72 +12,13 @@ import HcmBulletinBanner from "../HcmBulletinBanner.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
 import { cx } from "../../lib/utils.js";
 import OperatorPolicyVerifier from "./OperatorPolicyVerifier.jsx";
+import OperatorTeleconsultationPanel from "./OperatorTeleconsultationPanel.jsx";
 import {
   formatReviewCardSupport,
   getOperatorDisplayName,
   getTimeOfDayGreeting,
 } from "./operatorDashboardCopy.js";
 import "./operatorDashboard.css";
-
-const CARE_NETWORK_C_NODES = [
-  [51, 8],
-  [22, 17],
-  [6, 45],
-  [12, 76],
-  [39, 93],
-  [68, 84],
-  [83, 60],
-];
-
-const CARE_NETWORK_X_NODES = [
-  [66.5, 7.5],
-  [90.5, 7.5],
-  [67.5, 31.5],
-  [91.5, 31.5],
-];
-
-function OperatorCareNetworkArtwork() {
-  return (
-    <div className="ocs-cc-network-art" aria-hidden="true">
-      <img
-        alt=""
-        className="ocs-cc-network-island"
-        decoding="async"
-        src="/ocs-mauritius-cinematic-v1.webp"
-      />
-      <div className="ocs-cc-network-mark">
-        <span className="ocs-cc-network-mark-texture ocs-cc-network-mark-texture--c" />
-        <svg className="ocs-cc-network-routes ocs-cc-network-routes--c" viewBox="0 0 100 100">
-          <path
-            className="ocs-cc-network-route ocs-cc-network-route--c"
-            d="M 51 8 C 24 8, 6 25, 6 51 C 6 78, 25 94, 48 93 C 68 92, 80 79, 83 60"
-          />
-        </svg>
-        {CARE_NETWORK_C_NODES.map(([left, top], index) => (
-          <span
-            className="ocs-cc-network-node ocs-cc-network-node--c"
-            key={`c-node-${left}-${top}`}
-            style={{ "--node-delay": `${0.64 + index * 0.08}s`, left: `${left}%`, top: `${top}%` }}
-          />
-        ))}
-        <div className="ocs-cc-network-x">
-          <span className="ocs-cc-network-mark-texture ocs-cc-network-mark-texture--x" />
-          <svg className="ocs-cc-network-routes ocs-cc-network-routes--x" viewBox="0 0 100 100">
-            <path className="ocs-cc-network-route ocs-cc-network-route--x" d="M 66.5 7.5 L 91.5 31.5" />
-            <path className="ocs-cc-network-route ocs-cc-network-route--x" d="M 90.5 7.5 L 67.5 31.5" />
-          </svg>
-          {CARE_NETWORK_X_NODES.map(([left, top], index) => (
-            <span
-              className="ocs-cc-network-node ocs-cc-network-node--x"
-              key={`x-node-${left}-${top}`}
-              style={{ "--node-delay": `${1.48 + index * 0.07}s`, left: `${left}%`, top: `${top}%` }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function OperatorWorkflowCard({
   to,
@@ -108,14 +50,9 @@ function OperatorWorkflowCard({
         <p className="font-display text-[0.95rem] font-semibold tracking-tight text-[#203f42]">{title}</p>
         {status ? <p className="mt-0.5 text-sm font-medium text-[#203f42]">{status}</p> : null}
         {support ? <p className="mt-0.5 text-xs leading-5 text-[#5f7476]">{support}</p> : null}
-      </div>
-      <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right">
-        {value != null ? (
-          <p className="font-display text-2xl font-semibold tabular-nums leading-none text-[#203f42]">{value}</p>
-        ) : null}
         <span
           className={cx(
-            "inline-flex items-center gap-1 text-xs font-semibold",
+            "mt-2 inline-flex items-center gap-1 text-xs font-semibold",
             variant === "amber" ? "text-[#8a6a12]" : "text-[#1a7f7a]",
           )}
         >
@@ -123,6 +60,9 @@ function OperatorWorkflowCard({
           <ArrowUpRight className="size-3.5" strokeWidth={2.2} aria-hidden="true" />
         </span>
       </div>
+      {value != null ? (
+        <p className="shrink-0 font-display text-2xl font-semibold tabular-nums leading-none text-[#203f42]">{value}</p>
+      ) : null}
     </Link>
   );
 }
@@ -235,21 +175,6 @@ function OperatorOperationalPulse({ counts, lowStockAlert }) {
         Operational pulse
       </h2>
       <div className="mt-3 space-y-1">
-        {counts.overdueReviews > 0 ? (
-          <OperatorPulseRow
-            icon={CalendarClock}
-            label="Overdue reviews"
-            tone="warning"
-            to="/operator/long-term-review"
-            value={counts.overdueReviews}
-          />
-        ) : null}
-        <OperatorPulseRow
-          icon={CalendarClock}
-          label="Review appointments due"
-          to="/operator/long-term-review"
-          value={counts.reviews}
-        />
         <OperatorPulseRow
           icon={Package}
           label="Low stock alert"
@@ -280,43 +205,38 @@ export default function OperatorCommandCentre({
   const firstName = getOperatorDisplayName(user);
   const greeting = getTimeOfDayGreeting();
   const reviews = Number(counts.reviews || 0);
+  const overdueReviews = Number(counts.overdueReviews || 0);
+  const reviewSupport = [
+    formatReviewCardSupport(reviews),
+    overdueReviews > 0 ? `${overdueReviews} overdue` : null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <div className="ocs-cc space-y-4">
-      <section className="ocs-cc-hero px-5 py-5 lg:px-6 lg:py-5">
-        <div className="ocs-cc-hero-body">
-          <div className="min-w-0">
-            <h1 className="font-display text-[1.7rem] font-semibold leading-tight tracking-tight text-white lg:text-[1.85rem]">
-              {greeting}, {firstName}.
-            </h1>
-            <p className="mt-1.5 text-sm font-medium text-[#d5ecea]">Your OCS care network is ready.</p>
-            <p className="mt-1.5 text-sm font-medium text-[#f7ba24]">{dayjs().format("dddd D MMMM")}</p>
-            <div className="mt-3 inline-flex rounded-xl border border-white/12 bg-white/8 px-2.5 py-1.5">
-              <OperationStatusSelector
-                align="left"
-                className="mt-0"
-                disabled={isSavingStatus}
-                onChange={onStatusChange}
-                options={["active", "offline"]}
-                tone="onDark"
-                value={user.operation_status}
-              />
-            </div>
-          </div>
-          <OperatorCareNetworkArtwork />
-          <div className="ocs-cc-hero-summary relative z-[2] min-w-0 lg:text-right">
-            <div className="ocs-cc-hero-on-call">
-              <p className="font-display text-4xl font-semibold tabular-nums leading-none text-white lg:text-[2.65rem]">
-                {counts.availableNow}
-              </p>
-              <p className="mt-1.5 text-xs font-medium text-[#d5ecea]">Doctors available now</p>
-            </div>
-            <p className="ocs-cc-hero-tagline">Connecting homes through care</p>
-          </div>
+      <header className="ocs-cc-header" aria-label="Operator overview">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-[#203f42]">
+            {greeting}, {firstName}.
+          </h1>
+          <p className="mt-1 text-sm text-[#5f7476]">{dayjs().format("dddd D MMMM")}</p>
         </div>
-      </section>
+        <div className="ocs-cc-header-tools">
+          <div className="ocs-cc-availability">
+            <span className="font-display text-2xl font-semibold tabular-nums text-[#203f42]">{counts.availableNow}</span>
+            <span className="text-xs text-[#5f7476]">Doctors available now</span>
+          </div>
+          <OperationStatusSelector
+            align="left"
+            disabled={isSavingStatus}
+            onChange={onStatusChange}
+            options={["active", "offline"]}
+            showLabel={false}
+            value={user.operation_status}
+          />
+        </div>
+      </header>
 
-      <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <section aria-label="Operator workflows" className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <OperatorWorkflowCard
           action="Start intake"
           icon={UserPlus}
@@ -326,10 +246,16 @@ export default function OperatorCommandCentre({
           variant="create"
         />
         <OperatorWorkflowCard
+          action="Manage calls"
+          icon={ClipboardList}
+          title="Manage teleconsultations"
+          to="/teleconsultations"
+        />
+        <OperatorWorkflowCard
           action="Review now"
           icon={CalendarClock}
           status={reviews > 0 ? null : "Review queue clear"}
-          support={formatReviewCardSupport(reviews)}
+          support={reviewSupport}
           title="Review appointments"
           to="/operator/long-term-review"
           value={reviews > 0 ? reviews : null}
@@ -337,14 +263,17 @@ export default function OperatorCommandCentre({
         />
       </section>
 
-      <OperatorPolicyVerifier />
-
-      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
+      <div className="grid w-full grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <OperatorLiveMonitoringPanel metrics={operatorMetrics} />
+        <OperatorTeleconsultationPanel readOnly={Boolean(user.is_read_only)} />
+      </div>
 
       <div className="grid w-full grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.65fr)_minmax(16rem,0.9fr)]">
-        <OperatorLiveMonitoringPanel metrics={operatorMetrics} />
+        <OperatorPolicyVerifier />
         <OperatorOperationalPulse counts={counts} lowStockAlert={lowStockAlert} />
       </div>
+
+      {latestHcmPost ? <HcmBulletinBanner post={latestHcmPost} /> : null}
 
     </div>
   );

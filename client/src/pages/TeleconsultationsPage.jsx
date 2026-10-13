@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList, FileText, MapPin, Phone, Plus, RefreshCw, Search, ShieldCheck, Stethoscope } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
@@ -174,6 +174,7 @@ function RequestCard({ request, user, doctors, expanded, visible, onToggle, onOp
 
 export default function TeleconsultationsPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const refreshKey = useLiveRefreshKey();
   const [requests, setRequests] = useState([]);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -184,7 +185,10 @@ export default function TeleconsultationsPage() {
   const [doctorError, setDoctorError] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("active");
-  const [expandedId, setExpandedId] = useState(undefined);
+  const [expandedId, setExpandedId] = useState(() => {
+    const requestedId = Number(searchParams.get("request"));
+    return Number.isSafeInteger(requestedId) && requestedId > 0 ? requestedId : undefined;
+  });
   const loadVersion = useRef(0);
   const isDispatch = ["admin", "operator"].includes(user.role);
 
