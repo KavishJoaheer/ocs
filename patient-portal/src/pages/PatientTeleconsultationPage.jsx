@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronRight, Clock3, Copy, FileText, Phone, ShieldCheck, Stethoscope, Video } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronRight, Clock3, Copy, Phone, ShieldCheck, Stethoscope, Video } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
 import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
@@ -49,7 +49,6 @@ function TeleconsultationContent({ isPrimary }) {
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [requesting, setRequesting] = useState(false);
   const [step, setStep] = useState("details");
   const [form, setForm] = useState(emptyForm);
   const version = useRef(0);
@@ -72,7 +71,7 @@ function TeleconsultationContent({ isPrimary }) {
   useEffect(() => {
     topRef.current?.focus({ preventScroll: true });
     topRef.current?.scrollIntoView({ block: "start" });
-  }, [step, activeId, requesting]);
+  }, [step, activeId]);
   useEffect(() => { if (actionError) errorRef.current?.focus(); }, [actionError]);
 
   function setDetail(key, value) { setForm(current => ({ ...current, [key]: value, terms: false, consent: false })); }
@@ -85,7 +84,7 @@ function TeleconsultationContent({ isPrimary }) {
     try {
       const response = await api.post("/patient-portal/teleconsultations", { reason: form.reason, current_location: form.current_location, callback_number: data.confirmed_mobile, consent_version: form.consent_version, terms_accepted: form.terms, clinical_consent: form.consent });
       setData(current => ({ ...current, requests: [response.request, ...current.requests.filter(request => request.id !== response.request.id)] }));
-      setForm(emptyForm); setRequesting(false); setStep("details"); await load();
+      setForm(emptyForm); setStep("details"); await load();
     } catch (err) { setActionError(err.message); } finally { setBusy(false); }
   }
   async function cancel(id) {
@@ -97,8 +96,11 @@ function TeleconsultationContent({ isPrimary }) {
       await load();
     } catch (err) { setActionError(err.message); } finally { setBusy(false); }
   }
-  const history = data?.requests.filter(request => !ACTIVE.includes(request.status)) || [];
-  const showForm = data && !active && (data.requests.length === 0 || requesting);
+  const showForm = data && !active;
+  // Keep only the latest actionable outcome visible. The request screen does
+  // not need a history list, but a referral push must still lead to next steps.
+  const latest = data?.requests[0];
+  const nextSteps = !active && latest && ["referred", "cancelled"].includes(latest.status) && (latest.outcome_note || latest.follow_up) ? latest : null;
   const eligible = isPrimary && data?.eligible && data?.confirmed_mobile;
   const currentConsent = data?.consent_version === form.consent_version;
 
@@ -110,6 +112,11 @@ function TeleconsultationContent({ isPrimary }) {
     {actionError && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-xl bg-red-50 p-4 text-sm text-red-800 outline-none">{actionError}</p>}
     {!data && !loadError && <p role="status" className="rounded-2xl bg-white p-5 text-sm text-slate-500">Loading your consultations…</p>}
     {active && <RequestRecord request={active} busy={busy} onCancel={cancel} />}
+    {nextSteps && <section aria-label="Latest next steps from OCS" className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
+      <h2 className="font-semibold text-amber-950">Next steps from OCS</h2>
+      {nextSteps.outcome_note && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-amber-950">{nextSteps.outcome_note}</p>}
+      {nextSteps.follow_up && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-amber-950">{nextSteps.follow_up}</p>}
+    </section>}
 
     {showForm && (eligible ? <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 p-4 sm:p-5"><h2 className="text-lg font-semibold text-brand-dark-grey">Request a teleconsultation</h2><ol aria-label="Request steps" className="mt-4 grid grid-cols-2 gap-3">{[ ["details", "Your details"], ["consent", "Review & consent"] ].map(([key, title], index) => <li key={key} aria-current={step === key ? "step" : undefined} className={`flex items-center gap-2 text-xs font-semibold ${step === key ? "text-teal-800" : "text-slate-400"}`}><span className={`flex size-7 shrink-0 items-center justify-center rounded-full ${step === key ? "bg-teal-700 text-white" : "bg-slate-100"}`}>{index + 1}</span>{title}</li>)}</ol></div>
@@ -131,8 +138,6 @@ function TeleconsultationContent({ isPrimary }) {
       </form>}
     </div> : <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5"><Phone className="size-6 text-teal-700" /><h2 className="font-semibold text-brand-dark-grey">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h2><p className="text-sm leading-relaxed text-slate-600">{isPrimary ? "Our operator will check whether teleconsultation is suitable. If your last screening was more than 24 hours ago, please call again." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p><a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4" />Call the OCS hotline</a></div>)}
 
-    {data && !active && history.length > 0 && !requesting && <button type="button" onClick={() => { setStep("details"); setRequesting(true); }} className={primary}>Request another teleconsultation<ArrowRight className="size-4" /></button>}
-    {history.length > 0 && <details open={!active} className="space-y-4"><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold text-brand-dark-grey"><FileText className="size-4" />Past consultations ({history.length})</summary><div className="mt-4 space-y-4">{history.map(request => <RequestRecord key={request.id} request={request} busy={busy} onCancel={cancel} />)}</div></details>}
     <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />Ask OCS a question · {CLINIC_TEL_DISPLAY}</a>
   </div>;
 }

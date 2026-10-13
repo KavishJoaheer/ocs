@@ -180,11 +180,12 @@ test("hotline invitation, patient consent, doctor verification and published car
     await doctorCard.getByRole("button", { name: "Save & complete consultation" }).click();
     await expect(doctorCard).toContainText("Completed");
     await expect(doctorPage.getByLabel("Filter by status")).toHaveValue("completed");
-    await carePage.reload(); await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+    await carePage.reload(); await expect(carePage.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
+    await expect(carePage.getByText(/Past consultations/)).toHaveCount(0);
     await expect(carePage.getByText("Your OCS consultation code", { exact: true })).toHaveCount(0);
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
     expect(await carePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await carePage.getByRole("link", { name: "View consultation and prescription" }).click();
+    await carePage.locator("#ocs-patient-bottom-nav").getByRole("link", { name: "Records", exact: true }).click();
     await expect(carePage.getByText("Demonstration prescription instructions", { exact: false }).first()).toBeVisible();
     const expandDetails = carePage.getByRole("button", { name: /Expand visit details/ }).first();
     if (await expandDetails.isVisible()) await expandDetails.click();

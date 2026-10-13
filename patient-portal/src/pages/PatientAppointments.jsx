@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
@@ -122,9 +123,9 @@ function PatientAppointments() {
   return (
     <DesktopPageFrame className="mobile-hero-page visits-screen font-sans">
       <MobilePageTitle
-        primaryText="Your"
+        primaryText="Upcoming"
         secondaryText="Appointments."
-        subtitle="Scheduled by your OCS care team."
+        subtitle="Your next visits with the OCS care team."
       />
 
       <PageHeroHeader
@@ -154,7 +155,7 @@ function PatientAppointments() {
       ) : (
         <>
           {overdue.length > 0 ? (
-            <section className="animate-fade-in-up stagger-1 mt-5 lg:mt-6">
+            <section className="hidden animate-fade-in-up stagger-1 mt-5 lg:mt-6 lg:block">
               <SectionLabel>Needs attention</SectionLabel>
               <div className="mt-4 flex flex-col gap-4">
                 {overdue.map((appointment) => (
@@ -190,7 +191,7 @@ function PatientAppointments() {
           </section>
 
           <section
-            className={`animate-fade-in-up mt-10 lg:mt-12 ${
+            className={`hidden animate-fade-in-up mt-10 lg:mt-12 lg:block ${
               upcoming.length > 0 ? `stagger-${Math.min(upcoming.length + 2, 6)}` : "stagger-2"
             }`}
           >
@@ -210,6 +211,9 @@ function PatientAppointments() {
               </div>
             )}
           </section>
+          <Link to="/health-records" className="mt-6 inline-flex min-h-11 items-center text-sm font-medium text-brand-teal lg:hidden">
+            View past visits in Records
+          </Link>
         </>
       )}
       </DesktopPageBody>
