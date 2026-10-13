@@ -11,6 +11,7 @@ services:
       HOST: 0.0.0.0
       PORT: 3001
       DB_PATH: /data/clinic.db
+      PATIENT_PORTAL_ORIGIN: ${PATIENT_PORTAL_ORIGIN:-https://ocsvp.com}
       # Full billing + inventory integration requires SQLite (createApp). Do not set DATABASE_URL here.
       USE_POSTGRES: "false"
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}

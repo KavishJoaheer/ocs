@@ -8,7 +8,7 @@ The VP **Teleconsultations** queue lets dispatch assign an active doctor. The as
 
 ## Configuration
 
-Set `PATIENT_PORTAL_ORIGIN=https://ocsvp.com` on the API server, replacing the example if the public Care origin differs. Production invitation issuance requires an explicit HTTPS Care origin and does not trust the request Host header. The patient portal and API must use the existing credentialed cookie arrangement.
+Production invitations default to the established Care origin, `https://ocsvp.com`, including on existing NAS deployments without a `PATIENT_PORTAL_ORIGIN` setting. Both Compose files also supply this default. Set `PATIENT_PORTAL_ORIGIN` explicitly only if the public Care domain differs. An override must be an HTTPS origin without a path, credentials, query or fragment. The resolver never uses the staff portal's `CLIENT_ORIGIN` or request headers. Development defaults to `http://localhost:5174`. The patient portal and API must use the existing credentialed cookie arrangement.
 
 Review the versioned patient terms in `server/src/lib/teleconsultations.js` with the OCS clinical lead before offering the service. They disclose WhatsApp, remote-assessment limitations, emergency exclusions, connection failure, patient choice and fee confirmation. They do not set a new fee or guarantee a response time. Existing billing creates a fee-review-required bill unless an existing consultation category is explicitly supplied. The workflow does not add call recording or ID-image storage.
 

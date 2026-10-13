@@ -12,9 +12,6 @@ function fail(message, status = 400) { const error = new Error(message); error.s
 function issuePatientMagicLink(patientId, actor, body) {
   if (!["admin", "operator"].includes(actor.role) || actor.is_read_only) fail("Only authorised operators and administrators can issue invitations.", 403);
   const portalUrl = new URL(getPatientPortalOrigin());
-  if (process.env.NODE_ENV === "production" && (!process.env.PATIENT_PORTAL_ORIGIN || portalUrl.protocol !== "https:")) {
-    fail("Configure PATIENT_PORTAL_ORIGIN with the HTTPS OCS Care address before issuing invitations.", 503);
-  }
   if (body.identity_confirmed !== true || body.mobile_confirmed !== true) fail("Confirm the patient’s identity and personal mobile number first.");
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ");

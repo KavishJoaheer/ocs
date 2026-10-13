@@ -127,3 +127,21 @@ test("account schema migration preserves existing sessions and relationships and
   assert.equal(temp.pragma("foreign_keys",{simple:true}),1);
   temp.prepare("INSERT INTO patient_users (email,password_hash,patient_id) VALUES (NULL,NULL,1)").run(); temp.close();
 });
+test("production invitation works without a newly added environment setting", async t => {
+  const p = await patient();
+  const previous = { nodeEnv: process.env.NODE_ENV, origin: process.env.PATIENT_PORTAL_ORIGIN, staffOrigin: process.env.CLIENT_ORIGIN };
+  t.after(() => {
+    process.env.NODE_ENV = previous.nodeEnv;
+    process.env.PATIENT_PORTAL_ORIGIN = previous.origin;
+    if (previous.staffOrigin === undefined) delete process.env.CLIENT_ORIGIN;
+    else process.env.CLIENT_ORIGIN = previous.staffOrigin;
+  });
+  process.env.NODE_ENV = "production";
+  delete process.env.PATIENT_PORTAL_ORIGIN;
+  process.env.CLIENT_ORIGIN = "https://staff.ocsvp.com";
+  const invitation = await invite(p);
+  assert.equal(invitation.status, 201, JSON.stringify(invitation.data));
+  assert.equal(new URL(invitation.data.url).origin, "https://ocsvp.com");
+  assert.equal(new URL(invitation.data.url).pathname, "/sign-in-link");
+  assert.equal(invitation.data.expires_in_seconds, 600);
+});

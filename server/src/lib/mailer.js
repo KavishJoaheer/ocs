@@ -1,9 +1,23 @@
 function getPatientPortalOrigin() {
-  return String(
-    process.env.PATIENT_PORTAL_ORIGIN ||
-      process.env.CLIENT_ORIGIN ||
-      "http://localhost:5174",
-  ).replace(/\/$/, "");
+  // Existing NAS environments predate PATIENT_PORTAL_ORIGIN. Use OCS Care's
+  // canonical address in production, never the staff portal or request headers.
+  const production = process.env.NODE_ENV === "production";
+  const configured = String(process.env.PATIENT_PORTAL_ORIGIN || "").trim();
+  const fallback = production ? "https://ocsvp.com" : "http://localhost:5174";
+  let url;
+  try {
+    url = new URL(configured || fallback);
+  } catch {
+    throw Object.assign(new Error("Set PATIENT_PORTAL_ORIGIN to the OCS Care HTTPS origin, for example https://ocsvp.com."), { status: 503 });
+  }
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    (production && url.protocol !== "https:") ||
+    url.username || url.password || url.search || url.hash || url.pathname !== "/"
+  ) {
+    throw Object.assign(new Error("PATIENT_PORTAL_ORIGIN must be the OCS Care origin without a path or credentials, using HTTPS in production."), { status: 503 });
+  }
+  return url.origin;
 }
 
 function isSmtpConfigured() {
