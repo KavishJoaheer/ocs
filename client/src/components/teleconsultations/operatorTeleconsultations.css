@@ -1,0 +1,18 @@
+/* Preserve the compact operator type scale over the global native-control reset. */
+.operator-teleconsultations button {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.operator-teleconsultations button h2 { font-weight: 700; }
+.operator-teleconsultations nav button[aria-pressed="true"] {
+  background: #137b80;
+  border-color: #137b80;
+  color: #fff;
+}
+.operator-teleconsultations summary:focus-visible,
+.operator-teleconsultations a:focus-visible,
+.operator-teleconsultations button:focus-visible {
+  outline: 2px solid #137b80;
+  outline-offset: 3px;
+}

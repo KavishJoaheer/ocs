@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import OperatorTeleconsultations from "../components/teleconsultations/OperatorTeleconsultations.jsx";
 
 const ACTIVE = ["pending", "assigned", "in_consultation"];
 const statuses = {
@@ -174,6 +175,10 @@ function RequestCard({ request, user, doctors, expanded, visible, onToggle, onOp
 
 export default function TeleconsultationsPage() {
   const { user } = useAuth();
+  return user.role === "operator" ? <OperatorTeleconsultations user={user} /> : <ClinicalTeleconsultationsPage user={user} />;
+}
+
+function ClinicalTeleconsultationsPage({ user }) {
   const [searchParams] = useSearchParams();
   const refreshKey = useLiveRefreshKey();
   const [requests, setRequests] = useState([]);

@@ -70,7 +70,7 @@ for (const width of [360, 430]) {
     await expect(live.getByText("Completed request should stay off Home")).toHaveCount(0);
     await page.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
     await expect(page).toHaveURL(/\/teleconsultations$/);
-    await expect(page.getByRole("heading", { name: "Manage teleconsultations", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Teleconsultations", exact: true })).toBeVisible();
     await bottom.getByRole("link", { name: "Home", exact: true }).click();
     await expect(live).toBeVisible();
     await live.getByRole("link", { name: "View visits", exact: true }).click();
@@ -122,7 +122,7 @@ for (const width of [360, 430]) {
     await menu.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
     await expect(page).toHaveURL(/\/teleconsultations$/);
     await expect(menu).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Manage teleconsultations", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Teleconsultations", exact: true })).toBeVisible();
     await bottom.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(`${STAFF}/`);
     await expect(live).toBeVisible();

@@ -3,10 +3,13 @@ import { openE2eDb } from "./e2eDb.cjs";
 const STAFF = `http://127.0.0.1:${process.env.E2E_STAFF_PORT || "4173"}`;
 const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "3001"}/api`;
 const patientIds = [], visitIds = [], callIds = [];
+const appointmentSnapshots = [];
 test.use({ actionTimeout: 15_000 });
 test.afterEach(() => {
   const db = openE2eDb();
   try {
+    for (const appointment of appointmentSnapshots) db.prepare("UPDATE appointments SET appointment_date=? WHERE id=?").run(appointment.appointment_date, appointment.id);
+    appointmentSnapshots.length = 0;
     for (const id of visitIds) db.prepare("DELETE FROM visit_requests WHERE id=?").run(id);
     for (const id of callIds) db.prepare("DELETE FROM teleconsultation_requests WHERE id=?").run(id);
     for (const id of patientIds) db.prepare("UPDATE patients SET deleted_at=CURRENT_TIMESTAMP, is_under_review=0 WHERE id=?").run(id);
@@ -29,6 +32,9 @@ async function prepare(page, request) {
   const db = openE2eDb();
   let visitId, callId;
   try {
+    // Keep seeded appointments from becoming the next visit when this test runs before 09:30.
+    appointmentSnapshots.push(...db.prepare("SELECT id, appointment_date FROM appointments WHERE doctor_id=? AND status='scheduled'").all(actor.user.doctor_id));
+    db.prepare("UPDATE appointments SET appointment_date=date('now','+4 hours','+7 days') WHERE doctor_id=? AND status='scheduled'").run(actor.user.doctor_id);
     const assignedSlot = db.prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status) VALUES (?, ?, date('now','+4 hours'), '23:59', 'scheduled')").run(patients[0].id, actor.user.doctor_id).lastInsertRowid;
     db.prepare("INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status) VALUES (?, ?, date('now','+4 hours','+1 day'), '16:00', 'scheduled')").run(patients[2].id, actor.user.doctor_id);
     db.prepare("UPDATE patients SET is_under_review=1, review_assigned_doctor_id=?, review_due_date='2040-12-31' WHERE id=?").run(actor.user.doctor_id, patients[2].id);

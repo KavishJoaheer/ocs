@@ -147,8 +147,8 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   await expect(row.getByRole("button", { name: `Accept request for ${first.name}`, exact: true })).toHaveCount(0);
   await row.getByRole("link", { name: `Manage teleconsultation for ${first.name}`, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/teleconsultations\\?request=${first.id}$`));
-  const details = page.locator("section").filter({ has: page.getByRole("link", { name: first.name, exact: true }) });
-  await expect(details.getByRole("button", { name: "Hide details", exact: true })).toBeVisible();
+  const details = page.getByRole(width < 1024 ? "dialog" : "complementary", { name: "Request details", exact: true });
+  await expect(details.getByRole("link", { name: first.name, exact: true })).toBeVisible();
   await expect(details.getByRole("group", { name: "Assign a doctor", exact: true })).toBeVisible();
   await page.goto(`${STAFF}/`);
   await expect(queue.getByText(first.name, { exact: true })).toBeVisible();
