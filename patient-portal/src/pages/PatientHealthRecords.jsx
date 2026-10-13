@@ -5,7 +5,7 @@ import { api } from "../lib/api.js";
 import { exportHealthRecordsPdf } from "../lib/healthRecordsExport.js";
 import { dispatchPatientDataChange } from "../lib/patientDataSync.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
-import { usePatientAuth } from "../hooks/usePatientAuth.jsx";
+import { useFamilyProfile } from "../hooks/useFamilyProfile.jsx";
 import PageHeroHeader from "../components/PageHeroHeader.jsx";
 import MobilePageTitle from "../components/MobilePageTitle.jsx";
 import { DesktopPageBody, DesktopPageFrame } from "../components/DesktopPageFrame.jsx";
@@ -25,9 +25,8 @@ function HealthRecordsTabPanel({ activeTab, consultations, reports, clinicalHist
   return <ClinicalHistoryView clinicalHistory={clinicalHistory} />;
 }
 
-function PatientHealthRecords() {
+function HealthRecordsContent({ patientName }) {
   const { consultationId } = useParams();
-  const { user } = usePatientAuth();
   const [activeTab, setActiveTab] = useState("consultations");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [consultations, setConsultations] = useState([]);
@@ -36,6 +35,7 @@ function PatientHealthRecords() {
   const [summary, setSummary] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [retryToken, setRetryToken] = useState(0);
   const refreshKey = useLiveRefreshKey();
@@ -48,7 +48,6 @@ function PatientHealthRecords() {
 
   useEffect(() => {
     let ignore = false;
-    setLoading(true);
     setLoadError(null);
 
     async function loadRecords() {
@@ -82,6 +81,7 @@ function PatientHealthRecords() {
         setClinicalHistory(data.clinical || {});
         setSummary(data.summary || null);
         setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
+        setHasLoaded(true);
       } catch (error) {
         if (!ignore) {
           setLoadError(
@@ -137,17 +137,14 @@ function PatientHealthRecords() {
   }
 
   function handleRetry() {
+    if (!hasLoaded) setLoading(true);
     setRetryToken((token) => token + 1);
   }
 
   function handleExportPdf() {
-    exportHealthRecordsPdf({
-      patientName: user?.full_name || "Patient",
-      summary,
-      clinical: clinicalHistory,
-      consultations,
-      timeline,
-    });
+    try {
+      exportHealthRecordsPdf({ patientName: patientName || "Patient", summary, clinical: clinicalHistory, consultations, timeline });
+    } catch (error) { toast.error(error.message || "Could not export your records. Please try again."); }
   }
 
   return (
@@ -176,6 +173,7 @@ function PatientHealthRecords() {
       />
 
       <DesktopPageBody>
+        {loadError && hasLoaded && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">Could not refresh your records. Showing the last loaded information.<button type="button" onClick={handleRetry} className="ml-2 min-h-11 font-semibold underline">Retry</button></p>}
         <div className="mb-5 lg:hidden">
           <HealthRecordsSegmentedControl activeTab={activeTab} onChange={setActiveTab} />
         </div>
@@ -209,7 +207,7 @@ function PatientHealthRecords() {
                 <div className="h-28 animate-pulse rounded-2xl bg-white/70" />
               </div>
             </>
-          ) : loadError ? (
+          ) : loadError && !hasLoaded ? (
             <div className="flex flex-col items-center px-4 py-16 text-center">
               <p className="text-[20px] font-bold text-brand-dark-grey">Couldn&apos;t load health records</p>
               <p className="mt-2 max-w-xs text-[14px] leading-relaxed text-gray-500 lg:text-brand-cool-grey">{loadError}</p>
@@ -243,4 +241,7 @@ function PatientHealthRecords() {
   );
 }
 
-export default PatientHealthRecords;
+export default function PatientHealthRecords() {
+  const { activeProfile } = useFamilyProfile();
+  return <HealthRecordsContent key={activeProfile?.id} patientName={activeProfile?.name} />;
+}

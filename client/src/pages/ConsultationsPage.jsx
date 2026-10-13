@@ -6,6 +6,8 @@ import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
+import StructuredConsultationFields from "../components/StructuredConsultationFields.jsx";
+import { consultationFormValues } from "../lib/consultationForm.js";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -59,11 +61,7 @@ function ConsultationModal({
     if (open) {
       setForm(
         consultation
-          ? {
-              appointment_id: String(consultation.appointment_id),
-              consultation_date: consultation.consultation_date,
-              doctor_notes: consultation.doctor_notes,
-            }
+          ? consultationFormValues(consultation)
           : emptyConsultation,
       );
     }
@@ -173,7 +171,7 @@ function ConsultationModal({
           </div>
         ) : null}
 
-        <div className="space-y-3">
+        {Object.hasOwn(form, "clinical_note") ? <StructuredConsultationFields form={form} setForm={setForm} /> : <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {noteTemplates.map((template) => (
               <button
@@ -200,7 +198,7 @@ function ConsultationModal({
               className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
             />
           </label>
-        </div>
+        </div>}
 
         <div className="flex justify-end gap-3">
           <button

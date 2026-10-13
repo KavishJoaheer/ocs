@@ -4,6 +4,7 @@ const { db, ensureBillingForConsultation } = require("../db");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { parseBillingRow, toNumber } = require("../lib/utils");
 const { canViewConsultationNotes } = require("../lib/patientAccess");
+const { hasStructuredConsultationFields, normalizeConsultationNotesPayload } = require("../lib/consultationNotes");
 
 const router = express.Router();
 
@@ -50,6 +51,8 @@ function getConsultationById(consultationId) {
     .prepare(`
       SELECT
         c.*,
+        (SELECT t.id FROM teleconsultation_requests t WHERE t.consultation_id=c.id LIMIT 1) AS teleconsultation_id,
+        (SELECT t.patient_summary FROM teleconsultation_requests t WHERE t.consultation_id=c.id LIMIT 1) AS patient_summary,
         p.full_name AS patient_name,
         p.patient_identifier,
         p.patient_id_number,
@@ -197,6 +200,8 @@ router.get("/", (req, res) => {
     .prepare(`
       SELECT
         c.*,
+        (SELECT t.id FROM teleconsultation_requests t WHERE t.consultation_id=c.id LIMIT 1) AS teleconsultation_id,
+        (SELECT t.patient_summary FROM teleconsultation_requests t WHERE t.consultation_id=c.id LIMIT 1) AS patient_summary,
         p.full_name AS patient_name,
         d.full_name AS doctor_name,
         d.specialization,
@@ -337,8 +342,29 @@ router.put("/:id", (req, res) => {
     return res.status(403).json({ error: UNAUTHORIZED_EDIT_MESSAGE });
   }
 
+  // Older editors sent one combined note. A structured record must retain its
+  // explicit private/patient boundary when it is amended after completion.
+  if (hasStructuredConsultationFields(existing) &&
+      (!Object.hasOwn(req.body, "clinical_note") || !Object.hasOwn(req.body, "patient_diagnosis"))) {
+    return res.status(409).json({ error: "Edit the consultation note and patient-facing diagnosis in their separate fields. Refresh the page to load the current editor." });
+  }
+  const structured = Boolean(hasStructuredConsultationFields(existing) || hasStructuredConsultationFields(req.body));
+  const notePayload = structured ? { ...existing, ...req.body } : req.body;
+  if (structured && (!String(notePayload.clinical_note || "").trim() || !String(notePayload.patient_diagnosis || "").trim())) {
+    return res.status(400).json({ error: "Consultation note and patient-facing diagnosis are required." });
+  }
+  const notes = normalizeConsultationNotesPayload(notePayload);
+  if (notes.error) return res.status(400).json({ error: notes.error });
+  if ([notes.clinical_note, notes.patient_diagnosis, notes.patient_prescription].some(value => value.length > 10000)) {
+    return res.status(400).json({ error: "Keep each consultation field to 10,000 characters or fewer." });
+  }
+  const hasSummary = Object.hasOwn(req.body, "patient_summary");
+  const patientSummary = String(req.body.patient_summary || "").trim();
+  if (patientSummary.length > 10000) return res.status(400).json({ error: "Keep the patient care summary to 10,000 characters or fewer." });
+
   const validationError = validateConsultationPayload({
     ...req.body,
+    doctor_notes: notes.doctor_notes,
     appointment_id: existing.appointment_id,
   }, {
     requireAppointment: false,
@@ -359,7 +385,7 @@ router.put("/:id", (req, res) => {
   }
 
   const nextConsultationDate = String(req.body.consultation_date).trim();
-  const nextDoctorNotes = String(req.body.doctor_notes).trim();
+  const nextDoctorNotes = notes.doctor_notes;
   const financialDimensionsChanged =
     Number(nextDoctorId) !== Number(existing.doctor_id) ||
     nextConsultationDate !== String(existing.consultation_date || "");
@@ -387,9 +413,16 @@ router.put("/:id", (req, res) => {
       SET
         doctor_id = ?,
         consultation_date = ?,
-        doctor_notes = ?
+        doctor_notes = ?,
+        clinical_note = ?,
+        patient_diagnosis = ?,
+        patient_prescription = ?
       WHERE id = ?
-    `).run(nextDoctorId, nextConsultationDate, nextDoctorNotes, consultationId);
+    `).run(nextDoctorId, nextConsultationDate, nextDoctorNotes, notes.clinical_note, notes.patient_diagnosis, notes.patient_prescription, consultationId);
+
+    if (hasSummary) {
+      db.prepare("UPDATE teleconsultation_requests SET patient_summary=?, updated_at=CURRENT_TIMESTAMP WHERE consultation_id=?").run(patientSummary, consultationId);
+    }
 
     db.prepare(`
       UPDATE appointments
@@ -403,7 +436,7 @@ router.put("/:id", (req, res) => {
 
   const consultation = getConsultationById(consultationId);
 
-  publishPatientDataChange(existing.patient_id, { reason: "consultation" });
+  publishPatientDataChange(existing.patient_id, { reason: "consultation", notifyDoctorIds: [existing.doctor_id, nextDoctorId] });
 
   res.json(consultation);
 });

@@ -20,7 +20,7 @@ function RequestRecord({ request, busy, onCancel }) {
     catch { toast.error("Select the consultation code to copy it, or read it to your doctor."); }
   }
   const active = ACTIVE.includes(request.status);
-  const title = request.status === "pending" ? request.accepted_at ? "Request accepted by OCS" : "Request sent to OCS" : {
+  const title = request.record_withdrawn ? "Consultation record withdrawn" : request.status === "pending" ? request.accepted_at ? "Request accepted by OCS" : "Request sent to OCS" : {
     assigned: "Doctor assigned", in_consultation: "Consultation in progress", completed: "Consultation completed", cancelled: "Request cancelled", referred: "In-person assessment recommended",
   }[request.status];
   const stage = request.status === "assigned" || request.status === "in_consultation" ? 2 : request.accepted_at ? 1 : 0;
@@ -34,6 +34,7 @@ function RequestRecord({ request, busy, onCancel }) {
       {request.consultation_code && <div className="care-consultation-code-panel rounded-2xl p-4 text-center"><p className="text-xs font-semibold text-teal-800">Your OCS consultation code</p><p className="care-consultation-code mt-2 select-all text-4xl font-bold tracking-[0.2em]">{request.consultation_code}</p><button type="button" onClick={copyCode} className="mx-auto mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-amber-300 bg-white/70 px-4 text-xs font-semibold text-teal-900">{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}{copied ? "Code copied" : "Copy code"}</button><p className="mt-3 text-xs leading-relaxed text-teal-900">Give this code to the doctor when they call. Keep your sign-in link, password and WhatsApp registration code private.</p></div>}
       {request.status === "pending" && <p className="text-sm leading-relaxed text-slate-600">{request.accepted_at ? "The OCS team has accepted your request and will assign a doctor. Keep your phone available." : "Your request is waiting for an OCS operator to accept it. Keep your phone available; call OCS if you need an update."}</p>}
       {request.status === "assigned" && <p className="text-sm leading-relaxed text-slate-600">Keep WhatsApp available on your confirmed mobile. Your doctor will contact you for the consultation.</p>}
+      {request.record_withdrawn && <p className="rounded-xl bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">OCS has withdrawn this consultation record. Contact the hotline if you need help or an updated record.</p>}
       {request.patient_summary && <div><h3 className="text-sm font-semibold text-brand-dark-grey">Your care summary</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{request.patient_summary}</p></div>}
       {request.outcome_note && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{request.outcome_note}</p>}
       {request.follow_up && <div><h3 className="text-sm font-semibold text-brand-dark-grey">Follow-up and next steps</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">{request.follow_up}</p></div>}

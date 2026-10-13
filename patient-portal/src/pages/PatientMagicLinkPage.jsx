@@ -8,6 +8,7 @@ export default function PatientMagicLinkPage() {
   const [token] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("token") || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [unavailable, setUnavailable] = useState(false);
   const { redeemMagicLink, isBootstrapping } = usePatientAuth();
   const navigate = useNavigate();
   useEffect(() => {
@@ -17,7 +18,10 @@ export default function PatientMagicLinkPage() {
     if (busy) return;
     setBusy(true); setError("");
     try { await redeemMagicLink(token); navigate("/dashboard", { replace: true }); }
-    catch (err) { setError(err.message); }
+    catch (err) {
+      setUnavailable([400, 401, 404, 410].includes(err.status));
+      setError(err.status ? err.message : "Could not connect to OCS Care. Check your connection and try again.");
+    }
     finally { setBusy(false); }
   }
   return <PatientAuthShell pill="Personal invitation" title="Welcome to OCS Care">
@@ -25,7 +29,7 @@ export default function PatientMagicLinkPage() {
       <p className="text-sm leading-relaxed text-slate-600">Your OCS team has prepared your patient profile. Continue to sign in securely without a password.</p>
       <p className="text-sm text-slate-600">This personal link works once and expires 10 minutes after it was created. Keep it private.</p>
       <div role="alert" className="text-sm text-red-700">{error || (!token ? "This link is incomplete. Please ask OCS for a new invitation." : "")}</div>
-      <button type="button" disabled={!token || busy || isBootstrapping || Boolean(error)} onClick={enter} className="w-full rounded-xl bg-brand-teal px-4 py-3 font-semibold text-white disabled:opacity-50">{busy ? "Signing in…" : "Continue to OCS Care"}</button>
+      <button type="button" disabled={!token || busy || isBootstrapping || unavailable} onClick={enter} className="w-full rounded-xl bg-brand-teal px-4 py-3 font-semibold text-white disabled:opacity-50">{busy ? "Signing in…" : "Continue to OCS Care"}</button>
       <a href={CLINIC_TEL_HREF} className="block text-center text-sm font-semibold text-brand-teal">Contact OCS for help or a new link</a>
     </div>
   </PatientAuthShell>;

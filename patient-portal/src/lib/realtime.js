@@ -11,6 +11,7 @@ let reconnectTimer = null;
 let isConnected = false;
 let connecting = false;
 let sessionActive = false;
+let generation = 0;
 
 function clearReconnectTimer() {
   if (reconnectTimer) {
@@ -54,11 +55,13 @@ export function startPatientRealtime() {
 
   isConnected = false;
   connecting = true;
+  const current = ++generation;
 
   void (async () => {
     try {
       const minted = await api.post("/patient-portal/stream-token");
       const streamToken = minted?.token;
+      if (current !== generation || !sessionActive) return;
       if (!streamToken || eventSource) {
         if (!streamToken) {
           scheduleReconnect();
@@ -71,15 +74,20 @@ export function startPatientRealtime() {
       eventSource = source;
 
       source.addEventListener("connected", () => {
+        if (current !== generation || eventSource !== source) return;
         isConnected = true;
         clearReconnectTimer();
+        // SSE has no replay: refetch changes made while this device was offline.
+        window.dispatchEvent(new CustomEvent(PATIENT_DATA_EVENT));
       });
 
       source.addEventListener("patient_data_change", () => {
+        if (current !== generation || eventSource !== source) return;
         window.dispatchEvent(new CustomEvent(PATIENT_DATA_EVENT));
       });
 
       source.onerror = () => {
+        if (current !== generation || eventSource !== source) return;
         isConnected = false;
 
         if (eventSource === source) {
@@ -90,14 +98,15 @@ export function startPatientRealtime() {
         scheduleReconnect();
       };
     } catch {
-      scheduleReconnect();
+      if (current === generation) scheduleReconnect();
     } finally {
-      connecting = false;
+      if (current === generation) connecting = false;
     }
   })();
 }
 
 export function stopPatientRealtime() {
+  generation += 1;
   sessionActive = false;
   connecting = false;
   clearReconnectTimer();

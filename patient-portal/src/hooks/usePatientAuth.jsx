@@ -151,15 +151,16 @@ export function AuthProvider({ children }) {
 
   // Keep the realtime stream tied to the session lifecycle so the patient's
   // dashboard/records refresh live when staff or the insurer make changes.
+  const sessionUserId = user?.id;
   useEffect(() => {
-    if (token && user) {
+    if (token && sessionUserId) {
       startPatientRealtime();
     } else {
       stopPatientRealtime();
     }
 
     return () => stopPatientRealtime();
-  }, [token, user]);
+  }, [token, sessionUserId]);
 
   // Refresh the session user when staff links or updates the patient record so
   // link banners and visit-request guards clear without a manual re-login.

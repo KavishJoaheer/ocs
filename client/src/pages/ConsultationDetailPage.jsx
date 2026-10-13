@@ -16,6 +16,8 @@ import LoadingState from "../components/LoadingState.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import StructuredConsultationFields from "../components/StructuredConsultationFields.jsx";
+import { consultationFormValues } from "../lib/consultationForm.js";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -62,8 +64,7 @@ function ConsultationDetailPage() {
   const hasUnsavedNote =
     isEditing &&
     consultation != null &&
-    (form.doctor_notes !== (consultation.doctor_notes ?? "") ||
-      form.consultation_date !== (consultation.consultation_date ?? ""));
+    Object.entries(consultationFormValues(consultation)).some(([key, value]) => form[key] !== value);
 
   useEffect(() => {
     let ignore = false;
@@ -81,14 +82,11 @@ function ConsultationDetailPage() {
           // doctor is told when it moved underneath them.
           if (isEditingRef.current) {
             const baseline = editBaselineRef.current;
-            if (baseline && (data.doctor_notes ?? "") !== baseline.doctor_notes) {
+            if (baseline && ((data.doctor_notes ?? "") !== baseline.doctor_notes || (data.patient_summary ?? "") !== baseline.patient_summary)) {
               setNoteChangedElsewhere(true);
             }
           } else {
-            setForm({
-              consultation_date: data.consultation_date ?? "",
-              doctor_notes: data.doctor_notes ?? "",
-            });
+            setForm(consultationFormValues(data));
           }
         }
       } catch (error) {
@@ -194,6 +192,7 @@ function ConsultationDetailPage() {
     editBaselineRef.current = {
       consultation_date: consultation?.consultation_date ?? "",
       doctor_notes: consultation?.doctor_notes ?? "",
+      patient_summary: consultation?.patient_summary ?? "",
     };
     isEditingRef.current = true;
     setNoteChangedElsewhere(false);
@@ -214,10 +213,7 @@ function ConsultationDetailPage() {
     try {
       const updated = await api.put(`/consultations/${id}`, form);
       setConsultation(updated);
-      setForm({
-        consultation_date: updated.consultation_date ?? "",
-        doctor_notes: updated.doctor_notes ?? "",
-      });
+      setForm(consultationFormValues(updated));
       stopEditing();
       toast.success("Consultation updated.");
     } catch (error) {
@@ -544,7 +540,7 @@ function ConsultationDetailPage() {
                 />
               </label>
 
-              <label className="block space-y-2">
+              {Object.hasOwn(form, "clinical_note") ? <StructuredConsultationFields form={form} setForm={setForm} /> : <label className="block space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Doctor notes</span>
                 <textarea
                   required
@@ -558,17 +554,14 @@ function ConsultationDetailPage() {
                   }
                   className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 leading-7 outline-none transition focus:border-sky-400 focus:bg-white"
                 />
-              </label>
+              </label>}
 
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     stopEditing();
-                    setForm({
-                      consultation_date: consultation.consultation_date ?? "",
-                      doctor_notes: consultation.doctor_notes ?? "",
-                    });
+                    setForm(consultationFormValues(consultation));
                   }}
                   className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                 >

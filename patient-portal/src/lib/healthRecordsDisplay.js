@@ -100,6 +100,17 @@ export function shouldShowPlainSummary(diagnosis, plainSummary) {
   return summary.toLowerCase() !== dx.toLowerCase();
 }
 
+export function formatPrescriptionSummary(consultation) {
+  // Preserve every line written for the patient. Legacy parsing can omit a
+  // second medicine or instruction that does not contain a recognised dose.
+  const supplied = String(consultation.patient_prescription || "").trim();
+  if (supplied) return supplied;
+  const formatted = (consultation.prescriptions || [])
+    .map(item => [item.name, item.instructions || (item.dosage !== item.name ? item.dosage : "")].filter(Boolean).join(" "))
+    .filter(Boolean);
+  return [...new Set(formatted)].join("\n") || null;
+}
+
 export function countVitalsDataPoints(vitalsTrends) {
   return (
     (vitalsTrends?.blood_pressure?.length || 0) +

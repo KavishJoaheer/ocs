@@ -507,7 +507,7 @@ function createApp() {
       express.static(clientDistPath, {
         setHeaders(res, filePath) {
           const relativePath = path.relative(clientDistPath, filePath).split(path.sep).join("/");
-          if (relativePath === "index.html") {
+          if (relativePath === "index.html" || relativePath === "version.json") {
             res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
             return;
           }

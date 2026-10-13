@@ -57,13 +57,16 @@ if [[ "$MODE" == "hub" ]]; then
   docker compose pull
   docker compose up -d
 else
+  EXPECTED_DEPLOY_SHA="$(git rev-parse HEAD)"
+  export GIT_SHA="${EXPECTED_DEPLOY_SHA}"
   echo "Building and starting from source (docker-compose.local.yml)..."
   docker compose -f docker-compose.local.yml up -d --build
 fi
 
 echo "Waiting for health check..."
 for i in $(seq 1 30); do
-  if EXPECTED_GIT_SHA="${EXPECTED_DEPLOY_SHA}" node scripts/docker-health-check.mjs "http://127.0.0.1:${APP_PORT}" 2>/dev/null; then
+  CARE_VERSION_JSON="$(docker exec clinicflow-patient-portal cat /usr/share/nginx/html/version.json 2>/dev/null || true)"
+  if OCS_CARE_VERSION_JSON="${CARE_VERSION_JSON}" EXPECTED_GIT_SHA="${EXPECTED_DEPLOY_SHA}" node scripts/docker-health-check.mjs "http://127.0.0.1:${APP_PORT}" 2>/dev/null; then
     echo ""
     echo "Ready: http://127.0.0.1:${APP_PORT}"
     echo "Health: http://127.0.0.1:${APP_PORT}/api/health"
@@ -72,7 +75,7 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-echo "Container started but health check did not pass yet. Run:"
+echo "Containers started but API health or the Care/API release match did not pass. Run:"
 echo "  npm run docker:logs"
 echo "  npm run docker:health"
 exit 1

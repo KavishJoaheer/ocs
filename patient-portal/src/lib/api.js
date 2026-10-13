@@ -86,7 +86,7 @@ async function apiRequest(path, options = {}) {
   const data = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    if (response.status === 401) {
+    if (response.status === 401 && !options.skipAuth) {
       if (authToken && getStoredAuthToken() === authToken) {
         setStoredAuthToken(null);
       }

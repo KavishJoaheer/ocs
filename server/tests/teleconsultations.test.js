@@ -5,6 +5,8 @@ const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 process.env.DB_PATH = path.join(os.tmpdir(), `ocs-teleconsultation-${process.pid}.db`);
 process.env.NODE_ENV = "test";
+// The overflow fixture deliberately creates >100 complete onboarding journeys.
+process.env.API_RATE_LIMIT_PER_MINUTE = "10000";
 process.env.PATIENT_PORTAL_ORIGIN = "http://localhost:5174";
 const { createApp } = require("../src/app");
 const { db } = require("../src/db");
@@ -275,7 +277,7 @@ test("acceptance migration preserves old processed requests and leaves pending r
   assert.equal(temp.prepare("PRAGMA foreign_key_check").all().length, 0); temp.close();
 });
 
-test("request alerts include older unaccepted patients beyond the 100-row management view", async () => {
+test("every active request stays manageable after acceptance even with more than 100 waiting patients", async () => {
   const ids = [];
   for (let index = 0; index < 101; index += 1) {
     const login = await redeem(await invite(await patient()));
@@ -283,10 +285,117 @@ test("request alerts include older unaccepted patients beyond the 100-row manage
     assert.equal(created.status, 201); ids.push(created.data.request.id);
   }
   const list = (await api("GET", "/teleconsultations", null, operator)).data.requests;
-  assert.equal(list.length, 100); assert.ok(!list.some(row => row.id === ids[0]));
+  assert.ok(ids.every(id => list.some(row => row.id === id)));
   const alerts = (await api("GET", "/teleconsultations/unaccepted", null, operator)).data.requests;
   assert.ok(ids.every(id => alerts.some(row => row.id === id)));
+  assert.equal((await api("POST", `/teleconsultations/${ids[0]}/accept`, {}, operator)).status, 200);
+  assert.equal((await api("POST", `/teleconsultations/${ids[0]}/assign`, { doctor_id: doctor.user.doctor_id }, operator)).status, 200);
+  const updated = (await api("GET", "/teleconsultations", null, operator)).data.requests.find(row => row.id === ids[0]);
+  assert.equal(updated.status, "assigned");
+  assert.ok((await api("GET", "/teleconsultations", null, doctor)).data.requests.some(row => row.id === ids[0]));
 });
+
+test("completed record amendments update Care, preserve private notes, and never infer an omitted prescription", async () => {
+  const p = await patient(); const login = await redeem(await invite(p)); const r = (await request(login)).data.request;
+  await api("POST", `/teleconsultations/${r.id}/accept`, {}, operator);
+  await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator);
+  await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code: r.consultation_code, checks_confirmed: true }, doctor);
+  const completed = await api("POST", `/teleconsultations/${r.id}/complete`, {
+    clinical_note: "PRIVATE: considered Amoxicillin 500mg - take three times daily but NOT prescribed", patient_diagnosis: "Initial assessment", patient_summary: "Your agreed plan",
+  }, doctor);
+  assert.equal(completed.status, 200); const id = completed.data.consultation_id;
+  let records = (await api("GET", "/patient-portal/health-records", null, login)).data;
+  let record = records.consultations.find(row => row.id === id);
+  assert.deepEqual(record.prescriptions, []); assert.equal(record.plain_summary, "Your agreed plan");
+  assert.ok(!JSON.stringify(records).includes("Amoxicillin"));
+  const saved = (await api("GET", `/consultations/${id}`, null, doctor)).data;
+  assert.equal(saved.teleconsultation_id, r.id); assert.equal(saved.patient_summary, "Your agreed plan");
+  const list = (await api("GET", "/consultations", null, doctor)).data.find(row => row.id === id);
+  assert.equal(list.teleconsultation_id, r.id);
+  assert.equal((await api("PUT", `/consultations/${id}`, { consultation_date: saved.consultation_date, doctor_notes: "Combined replacement" }, doctor)).status, 409);
+  const amendment = { consultation_date: saved.consultation_date, clinical_note: "PRIVATE: amended reasoning", patient_diagnosis: "Updated assessment", patient_prescription: "Patient prescription", patient_summary: "Updated agreed plan" };
+  assert.equal((await api("PUT", `/consultations/${id}`, { ...amendment, clinical_note: "", patient_diagnosis: "", patient_prescription: "" }, doctor)).status, 400);
+  assert.equal((await api("PUT", `/consultations/${id}`, amendment, otherDoctor)).status, 403);
+  assert.equal((await api("PUT", `/consultations/${id}`, amendment, operator)).status, 403);
+  const amended = await api("PUT", `/consultations/${id}`, amendment, doctor);
+  assert.equal(amended.status, 200, JSON.stringify(amended.data));
+  records = (await api("GET", "/patient-portal/health-records", null, login)).data;
+  record = records.consultations.find(row => row.id === id);
+  assert.equal(record.diagnosis, amendment.patient_diagnosis); assert.equal(record.patient_prescription, amendment.patient_prescription); assert.equal(record.plain_summary, amendment.patient_summary);
+  assert.ok(!JSON.stringify(records).includes("PRIVATE"));
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, login)).data.requests.find(row => row.id === r.id).patient_summary, amendment.patient_summary);
+  const dashboard = (await api("GET", "/patient-portal/dashboard", null, login)).data;
+  assert.ok(JSON.stringify(dashboard).includes(amendment.patient_diagnosis)); assert.ok(!JSON.stringify(dashboard).includes("PRIVATE"));
+  // Clearing a prescription after amendment must also stay blank in Care.
+  assert.equal((await api("PUT", `/consultations/${id}`, { ...amendment, clinical_note: "PRIVATE: Paracetamol 500mg - considered only", patient_prescription: "" }, doctor)).status, 200);
+  records = (await api("GET", "/patient-portal/health-records", null, login)).data;
+  assert.deepEqual(records.consultations.find(row => row.id === id).prescriptions, []);
+  assert.ok(!JSON.stringify(records).includes("Paracetamol"));
+  const billCount = db.prepare("SELECT count(*) AS n FROM billing WHERE consultation_id=?").get(id).n;
+  assert.equal(billCount, 1, "amendments do not create a second bill");
+  const voided = await api("DELETE", `/consultations/${id}`, { reason: "Duplicate record entered in error" }, admin);
+  assert.equal(voided.status, 204, JSON.stringify(voided.data));
+  assert.ok(!(await api("GET", "/patient-portal/health-records", null, login)).data.consultations.some(row => row.id === id));
+  assert.ok(!(await api("GET", "/patient-portal/appointments", null, login)).data.appointments.some(row => row.consultation_id === id));
+  assert.ok(!JSON.stringify((await api("GET", "/patient-portal/dashboard", null, login)).data).includes(amendment.patient_diagnosis));
+  const withdrawn = (await api("GET", "/patient-portal/teleconsultations", null, login)).data.requests.find(row => row.id === r.id);
+  assert.equal(withdrawn.record_withdrawn, true); assert.equal(withdrawn.consultation_id, null); assert.equal(withdrawn.patient_summary, "");
+  assert.ok((await api("GET", `/consultations/${id}`, null, admin)).data.voided_at, "staff retain the audit record");
+});
+
+test("closed history is bounded independently from all active work and doctor scope", async () => {
+  const p = await patient(); const login = await redeem(await invite(p));
+  const created = (await request(login)).data.request;
+  // One patient's earlier closed records cannot displace any active request.
+  const insert = db.prepare(`INSERT INTO teleconsultation_requests (patient_id,patient_user_id,reason,current_location,callback_number,consultation_code,consent_version,consent_snapshot,status,assigned_doctor_id) VALUES (?,?, 'Earlier request','Moka','23052520142','123456',?,'[]','cancelled',?)`);
+  db.transaction(() => { for (let i = 0; i < 101; i++) insert.run(p.id, login.data.user.id, CONSENT_VERSION, doctor.user.doctor_id); })();
+  const all = (await api("GET", "/teleconsultations", null, operator)).data;
+  assert.equal(all.has_more_history, true); assert.equal(all.requests.filter(row => !["pending", "assigned", "in_consultation"].includes(row.status)).length, 100);
+  assert.ok(all.requests.some(row => row.id === created.id));
+  const scoped = (await api("GET", "/teleconsultations", null, otherDoctor)).data.requests;
+  assert.ok(scoped.every(row => row.assigned_doctor_id === otherDoctor.user.doctor_id));
+});
+
+test("referral and cancellation reject oversized next steps without closing the request", async () => {
+  const login = await redeem(await invite(await patient())); const r = (await request(login)).data.request;
+  const body = { outcome: "cancelled", outcome_note: "Patient requested a different route", follow_up: "Call OCS" };
+  for (const field of ["outcome_note", "follow_up"]) assert.equal((await api("POST", `/teleconsultations/${r.id}/close`, { ...body, [field]: "x".repeat(2001) }, operator)).status, 400);
+  assert.equal(db.prepare("SELECT status FROM teleconsultation_requests WHERE id=?").get(r.id).status, "pending");
+});
+test("request, acceptance, reassignment and completion notify the patient and correct staff without duplicate events", async () => {
+  const { EventEmitter } = require("node:events");
+  const { addInventoryStreamClient, addPatientStreamClient } = require("../src/lib/inventoryRealtime");
+  const p = await patient(); const login = await redeem(await invite(p)); const otherPatient = await patient();
+  function capture(actor, id) {
+    const res = new EventEmitter(); res.frames = ""; res.write = value => { res.frames += value; return true; };
+    if (actor) addInventoryStreamClient(res, actor.user); else addPatientStreamClient(res, id);
+    res.frames = ""; return res;
+  }
+  const streams = { operator: capture(operator), admin: capture(admin), doctor: capture(doctor), otherDoctor: capture(otherDoctor), patient: capture(null, p.id), otherPatient: capture(null, otherPatient.id) };
+  const count = name => (streams[name].frames.match(/event: patient_data_change/g) || []).length;
+  const clear = () => Object.values(streams).forEach(res => { res.frames = ""; });
+  try {
+    const r = (await request(login)).data.request;
+    assert.equal(count("operator"), 1); assert.equal(count("patient"), 1); assert.equal(count("doctor"), 0); assert.equal(count("otherPatient"), 0);
+    clear(); await api("POST", `/teleconsultations/${r.id}/accept`, {}, operator);
+    assert.equal(count("admin"), 1); assert.equal(count("patient"), 1);
+    clear(); await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: doctor.user.doctor_id }, operator);
+    assert.equal(count("doctor"), 1); assert.equal(count("otherDoctor"), 0); assert.equal(count("patient"), 1);
+    clear(); await api("POST", `/teleconsultations/${r.id}/assign`, { doctor_id: otherDoctor.user.doctor_id }, operator);
+    assert.equal(count("doctor"), 1, "old doctor removes the reassigned request"); assert.equal(count("otherDoctor"), 1, "new doctor receives the request"); assert.equal(count("patient"), 1);
+    assert.equal((await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code: r.consultation_code, checks_confirmed: true }, doctor)).status, 403);
+    clear(); await api("POST", `/teleconsultations/${r.id}/start`, { consultation_code: r.consultation_code, checks_confirmed: true }, otherDoctor);
+    assert.equal(count("otherDoctor"), 1); assert.equal(count("doctor"), 0); assert.equal(count("patient"), 1);
+    clear(); const completed = await api("POST", `/teleconsultations/${r.id}/complete`, { clinical_note: "PRIVATE findings", patient_diagnosis: "Shared assessment" }, otherDoctor);
+    assert.equal(completed.status, 200); assert.equal(count("operator"), 1); assert.equal(count("otherDoctor"), 1); assert.equal(count("patient"), 1); assert.equal(count("otherPatient"), 0);
+    for (const res of Object.values(streams)) assert.ok(!res.frames.includes("PRIVATE"), "refresh events carry no consultation content");
+    assert.equal((await api("POST", `/teleconsultations/${r.id}/complete`, { clinical_note: "Retry", patient_diagnosis: "Retry" }, otherDoctor)).status, 409);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM consultations WHERE patient_id=?").get(p.id).n, 1);
+    assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+    assert.equal(db.pragma("quick_check", { simple: true }), "ok");
+  } finally { Object.values(streams).forEach(res => res.emit("close")); }
+});
+
 test("production invitation works without a newly added environment setting", async t => {
   const p = await patient();
   const previous = { nodeEnv: process.env.NODE_ENV, origin: process.env.PATIENT_PORTAL_ORIGIN, staffOrigin: process.env.CLIENT_ORIGIN };

@@ -574,10 +574,19 @@ function resolveConsultationPrescriptions(row) {
     return extractPrescriptionsFromNotes(`Prescribed: ${structuredRx}`);
   }
 
+  // An empty optional prescription is intentional on a structured record.
+  // Its legacy storage also contains the private note: never parse that note
+  // as a patient prescription when a clinician has not supplied one.
+  if (String(row.clinical_note || "").trim() || String(row.patient_diagnosis || "").trim()) {
+    return [];
+  }
+
   return extractPrescriptionsFromNotes(row.doctor_notes);
 }
 
 function resolveConsultationPlainSummary(row) {
+  const patientSummary = String(row.patient_summary || "").trim();
+  if (patientSummary) return patientSummary;
   const clinicalNote = String(row.clinical_note || "").trim();
   const patientDiagnosis = String(row.patient_diagnosis || "").trim();
   const structuredRx = String(row.patient_prescription || "").trim();

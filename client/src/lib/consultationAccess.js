@@ -12,7 +12,7 @@ export function isOperatorConsultationViewOnly(user) {
 }
 
 export function canEditConsultationNote(user, consultation) {
-  if (!user || !consultation) {
+  if (!user || !consultation || consultation.voided_at) {
     return false;
   }
 

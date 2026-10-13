@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { formatPrescriptionSummary } from "./healthRecordsDisplay.js";
 
 function escapeHtml(value) {
   return String(value || "")
@@ -53,6 +54,7 @@ export function exportHealthRecordsPdf({
   const consultationHtml = (consultations || [])
     .slice(0, 15)
     .map((visit) => {
+      const prescription = formatPrescriptionSummary(visit);
       const reports = (visit.reports || [])
         .map((report) => `<li>${escapeHtml(report.name)}</li>`)
         .join("");
@@ -61,7 +63,8 @@ export function exportHealthRecordsPdf({
           <p class="event-date">${dayjs(visit.date).format("D MMM YYYY")}</p>
           <h3>${escapeHtml(visit.diagnosis)}</h3>
           <p class="event-sub">${escapeHtml(visit.doctor_name)}</p>
-          ${visit.plain_summary ? `<p>${escapeHtml(visit.plain_summary)}</p>` : ""}
+          ${visit.plain_summary ? `<p style="white-space:pre-wrap">${escapeHtml(visit.plain_summary)}</p>` : ""}
+          ${prescription ? `<h4>Prescription</h4><p style="white-space:pre-wrap">${escapeHtml(prescription)}</p>` : ""}
           ${reports ? `<ul>${reports}</ul>` : ""}
         </article>
       `;
@@ -106,17 +109,23 @@ export function exportHealthRecordsPdf({
     <p><strong>Current medications</strong></p>
     ${buildList(clinical?.drug_history)}
 
-    <h2>Care Timeline</h2>
-    ${timelineHtml || consultationHtml || "<p><em>No visits recorded yet.</em></p>"}
+    <h2>Consultation Records</h2>
+    ${consultationHtml || "<p><em>No visits recorded yet.</em></p>"}
+    ${timelineHtml ? `<h2>Care Timeline</h2>${timelineHtml}` : ""}
 
     <p class="meta">Read-only export from OCS Médecins patient portal. For clinical questions, contact your care team.</p>
   </body>
 </html>`;
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+  // noopener makes window.open return null even for a permitted blank tab.
+  // Keep the handle long enough to render the escaped document, then sever the
+  // opener explicitly so the export cannot navigate the patient's app.
+  const printWindow = window.open("", "_blank", "width=900,height=700");
   if (!printWindow) {
     throw new Error("Pop-up blocked. Allow pop-ups to download your health summary.");
   }
+
+  printWindow.opener = null;
 
   printWindow.document.open();
   printWindow.document.write(html);

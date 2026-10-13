@@ -63,13 +63,18 @@ patientRouter.post("/:id/cancel", (req, res) => {
 staffRouter.get("/", (req, res) => {
   const where = req.auth.role === "doctor" ? " AND t.assigned_doctor_id=?" : "";
   const params = req.auth.role === "doctor" ? [req.auth.doctor_id || -1] : [];
-  const rows = db.prepare(`${SELECT} WHERE 1=1 ${where} ORDER BY CASE WHEN t.status IN ('pending','assigned','in_consultation') THEN 0 ELSE 1 END, t.id DESC LIMIT 100`).all(...params);
-  return res.json({ requests: rows.map(row => serializeTeleconsultation(row, { staff: true, clinical: req.auth.role !== "operator" })) });
+  // Never let the history limit hide work that still needs dispatch or a doctor.
+  const active = db.prepare(`${SELECT} WHERE t.status IN ('pending','assigned','in_consultation') ${where} ORDER BY t.id DESC`).all(...params);
+  const history = db.prepare(`${SELECT} WHERE t.status NOT IN ('pending','assigned','in_consultation') ${where} ORDER BY t.id DESC LIMIT 101`).all(...params);
+  return res.json({
+    requests: [...active, ...history.slice(0, 100)].map(row => serializeTeleconsultation(row, { staff: true, clinical: req.auth.role !== "operator" })),
+    has_more_history: history.length > 100,
+  });
 });
 staffRouter.get("/unaccepted", (req, res) => {
   if (!dispatch(req)) return res.status(403).json({ error: "Only dispatch staff can view request alerts." });
   res.set("Cache-Control", "no-store");
-  // Independent of the management page's history limit: every waiting request stays visible.
+  // Every waiting request stays visible until explicitly accepted or closed.
   const rows = db.prepare(`${SELECT} WHERE t.status='pending' AND t.accepted_at IS NULL ORDER BY t.created_at, t.id`).all();
   return res.json({ requests: rows.map(row => serializeTeleconsultation(row, { staff: true })) });
 });
@@ -102,7 +107,6 @@ staffRouter.post("/:id/assign", (req, res) => {
   db.prepare(`UPDATE teleconsultation_requests SET assigned_doctor_id=?, assigned_by=?, assigned_at=CURRENT_TIMESTAMP,
     status='assigned', code_attempts=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doctorId, req.auth.id, row.id);
   notifyPatient(row, "Doctor assigned", "Your OCS teleconsultation has been assigned. Open Care to see your doctor and consultation code.");
-  changed({ ...row, assigned_doctor_id: doctorId });
   publishPatientDataChange(row.patient_id, { reason: "teleconsultation", notifyDoctorIds: [row.assigned_doctor_id, doctorId] });
   void sendPushToUser(doctor.user_id, { title: "Teleconsultation assigned", body: "Open VP to review your assigned request and contact the patient.", url: "/teleconsultations" }).catch(() => {});
   return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true }) });
@@ -120,7 +124,7 @@ staffRouter.post("/:id/start", (req, res) => {
   }
   db.prepare("UPDATE teleconsultation_requests SET status='in_consultation', code_verified_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?").run(row.id);
   changed(row);
-  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id)) });
+  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true, clinical: true }) });
 });
 staffRouter.post("/:id/complete", (req, res) => {
   const row = getTeleconsultation(Number(req.params.id));
@@ -149,7 +153,7 @@ staffRouter.post("/:id/complete", (req, res) => {
   })();
   changed(row);
   notifyPatient(row, "Your consultation record is ready", "Your diagnosis and any prescription or care summary are available in OCS Care.");
-  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id)), consultation_id: Number(consultationId) });
+  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true, clinical: true }), consultation_id: Number(consultationId) });
 });
 staffRouter.post("/:id/close", (req, res) => {
   const row = getTeleconsultation(Number(req.params.id));
@@ -160,9 +164,10 @@ staffRouter.post("/:id/close", (req, res) => {
   const note = String(req.body.outcome_note || "").trim();
   const followUp = String(req.body.follow_up || "").trim();
   if (!note || !followUp) return res.status(400).json({ error: "Provide the patient-facing reason and next step / responsible team member." });
+  if (note.length > 2000 || followUp.length > 2000) return res.status(400).json({ error: "Keep the reason and next step to 2,000 characters each or fewer." });
   db.prepare("UPDATE teleconsultation_requests SET status=?, outcome_note=?, follow_up=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").run(referred ? "referred" : "cancelled", note, followUp, row.id);
   changed(row);
   notifyPatient(row, referred ? "Next step for your care" : "Teleconsultation cancelled", "Open OCS Care to review the next steps from your care team.");
-  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id)) });
+  return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true, clinical: req.auth.role !== "operator" }) });
 });
 module.exports = { patientRouter, staffRouter };

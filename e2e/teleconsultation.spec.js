@@ -66,6 +66,11 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(carePage.getByRole("button", { name: "Continue to OCS Care" })).toBeEnabled();
     expect(new URL(carePage.url()).hash).toBe("");
     expect((await patientContext.request.get(`${API}/patient-auth/me`)).status()).toBe(401);
+    await carePage.route("**/api/patient-auth/magic-link/redeem", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Sign-in temporarily unavailable. Please retry." }) }));
+    await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
+    await expect(carePage.getByRole("alert")).toContainText("temporarily unavailable");
+    await expect(carePage.getByRole("button", { name: "Continue to OCS Care" })).toBeEnabled();
+    await carePage.unroute("**/api/patient-auth/magic-link/redeem");
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage).toHaveURL(/\/dashboard$/);
     await expect(carePage.getByRole("link", { name: "Request a teleconsultation", exact: true })).toBeVisible();
@@ -153,7 +158,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(doctorPage.getByRole("alert")).toHaveCount(0);
     await doctorCard.getByLabel("Patient-facing diagnosis / assessment", { exact: true }).fill("Report reviewed");
     await expect(doctorCard.getByLabel("Prescription (optional)", { exact: true })).toHaveJSProperty("required", false);
-    await doctorCard.getByLabel("Prescription (optional)", { exact: true }).fill("Demonstration prescription instructions");
+    await doctorCard.getByLabel("Prescription (optional)", { exact: true }).fill("Demonstration prescription instructions\nKeep the second line exactly as written.");
     await expect(doctorCard.getByLabel("Patient care summary (optional)", { exact: true })).toHaveJSProperty("required", false);
     await expect(doctorCard.getByLabel("Patient care summary (optional)", { exact: true })).toHaveValue("");
     await expect(doctorCard.getByLabel("Follow-up: responsible person, timing and contact route", { exact: true })).toHaveCount(0);
@@ -179,10 +184,46 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(carePage.getByText("Your OCS consultation code", { exact: true })).toHaveCount(0);
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
     expect(await carePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await carePage.screenshot({ path: testInfo.outputPath("patient-care-plan-mobile.png"), fullPage: true });
     await carePage.getByRole("link", { name: "View consultation and prescription" }).click();
     await expect(carePage.getByText("Demonstration prescription instructions", { exact: false }).first()).toBeVisible();
+    const expandDetails = carePage.getByRole("button", { name: /Expand visit details/ }).first();
+    if (await expandDetails.isVisible()) await expandDetails.click();
+    await expect(carePage.getByText(/Keep the second line exactly as written/).filter({ visible: true }).first()).toBeVisible();
+    await patientContext.addInitScript(() => { window.print = () => {}; });
+    const popupReady = patientContext.waitForEvent("page");
+    await carePage.getByRole("button", { name: "Export PDF", exact: true }).filter({ visible: true }).click();
+    const exported = await popupReady;
+    await expect(exported.getByText(/Keep the second line exactly as written/)).toBeVisible();
+    await expect(exported.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
+    await exported.close();
+    await carePage.screenshot({ path: testInfo.outputPath("patient-care-plan-mobile.png"), fullPage: true });
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
+    await doctorCard.getByRole("link", { name: "Open saved consultation", exact: true }).click();
+    await doctorPage.getByRole("button", { name: "Edit consultation", exact: true }).click();
+    await doctorPage.getByLabel("Consultation note (not visible to patient)", { exact: true }).fill("PRIVATE CLINICAL NOTE: amended findings and Paracetamol 500mg - considered only");
+    await doctorPage.getByLabel("Patient-facing diagnosis / assessment", { exact: true }).fill("Report reviewed and assessment updated");
+    await doctorPage.getByLabel("Prescription (optional)", { exact: true }).fill("");
+    await doctorPage.getByLabel("Patient care summary (optional)", { exact: true }).fill("The updated care plan agreed with your doctor.");
+    await doctorPage.getByRole("button", { name: "Save consultation", exact: true }).click();
+    await expect(doctorPage.getByRole("button", { name: "Edit consultation", exact: true })).toBeVisible();
+    await expect(carePage.getByText("Report reviewed and assessment updated", { exact: true }).first()).toBeVisible();
+    // Background record updates preserve the already-expanded patient card.
+    await expect(carePage.getByRole("button", { name: /Collapse visit details/ })).toBeVisible();
+    await expect(carePage.getByText("The updated care plan agreed with your doctor.", { exact: false }).filter({ visible: true }).first()).toBeVisible();
+    await expect(carePage.getByText(/PRIVATE CLINICAL NOTE|Paracetamol|Demonstration prescription instructions/)).toHaveCount(0);
+    await carePage.route("**/api/patient-portal/health-records", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Records temporarily unavailable" }) }));
+    await carePage.evaluate(() => window.dispatchEvent(new CustomEvent("patient:data")));
+    await expect(carePage.getByRole("alert")).toContainText("Showing the last loaded information");
+    await expect(carePage.getByText("The updated care plan agreed with your doctor.", { exact: false }).filter({ visible: true }).first()).toBeVisible();
+    await carePage.unroute("**/api/patient-portal/health-records");
+    await carePage.getByRole("alert").getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(carePage.getByRole("alert")).toHaveCount(0);
+    await doctorPage.goto(`${STAFF}/consultations`);
+    const savedCard = doctorPage.locator("article").filter({ hasText: patientName });
+    await savedCard.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(doctorPage.getByRole("dialog").getByLabel("Patient-facing diagnosis / assessment", { exact: true })).toHaveValue("Report reviewed and assessment updated");
+    await expect(doctorPage.getByRole("dialog").getByLabel("Patient care summary (optional)", { exact: true })).toHaveValue("The updated care plan agreed with your doctor.");
+    await doctorPage.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
     for (const [route, endpoint] of [["dashboard", "dashboard"], ["health-records", "health-records"], ["appointments", "appointments"], ["care", "care-feed"], ["profile", "profile"]]) {
       const loaded = carePage.waitForResponse(response => response.url().includes(`/api/patient-portal/${endpoint}`) && response.request().method() === "GET");
       await carePage.goto(`${CARE}/${route}`); await loaded;
@@ -193,5 +234,21 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.goto(magicUrl.replace(new URL(magicUrl).origin, CARE));
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage.getByRole("alert")).toContainText("invalid, expired or already used");
+    expect((await patientContext.request.get(`${API}/patient-auth/me`)).status()).toBe(200);
   } finally { await opContext.close(); await patientContext.close(); await doctorContext.close(); }
+});
+
+test("a referral or staff cancellation gives the patient actionable next steps", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    let json = {};
+    if (path === "/api/patient-auth/me") json = { user: { id: 1, patient_id: 1, full_name: "Test patient", link_status: "verified", has_password: true } };
+    if (path === "/api/patient-portal/dependents") json = { dependents: [] };
+    if (path === "/api/patient-portal/teleconsultations") json = { eligible: false, requests: [{ id: 1, status: "referred", outcome_note: "An in-person assessment is needed", follow_up: "Call OCS to arrange the assessment today" }] };
+    return route.fulfill({ json });
+  });
+  await page.goto(`${CARE}/teleconsultation`);
+  await expect(page.getByText("Call OCS to arrange the assessment today", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Ask OCS a question/ })).toBeVisible();
 });

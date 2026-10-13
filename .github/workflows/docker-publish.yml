@@ -122,6 +122,7 @@ jobs:
             --build-arg GIT_SHA="${GIT_SHA}" \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:sha-${SHORT_SHA}" \
+            --tag "${IMAGE}:sha-${GIT_SHA}" \
             --push \
             .
 
@@ -137,5 +138,6 @@ jobs:
             --build-arg GIT_SHA="${GIT_SHA}" \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:sha-${SHORT_SHA}" \
+            --tag "${IMAGE}:sha-${GIT_SHA}" \
             --push \
             .

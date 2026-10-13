@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import dayjs from "dayjs";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { formatDoctorName, shouldShowPlainSummary } from "../../lib/healthRecordsDisplay.js";
+import { formatDoctorName, formatPrescriptionSummary, shouldShowPlainSummary } from "../../lib/healthRecordsDisplay.js";
 
 const MAX_CHAR_LIMIT = 80;
 
@@ -15,19 +15,6 @@ function doctorInitials(name) {
 
 function formatConsultationDate(date) {
   return dayjs(date).isValid() ? dayjs(date).format("D MMMM YYYY") : date;
-}
-
-function formatPrescriptionSummary(consultation) {
-  const prescriptions = consultation.prescriptions;
-  if (Array.isArray(prescriptions) && prescriptions.length > 0) {
-    const formatted = prescriptions
-      .map((item) => [item.name, item.dosage].filter(Boolean).join(" "))
-      .filter(Boolean);
-    return formatted.filter((value, index) => (
-      formatted.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index
-    )).join(", ");
-  }
-  return consultation.patient_prescription?.trim() || null;
 }
 
 function resolvePatientDoctorNotes(consultation) {
@@ -50,7 +37,7 @@ function ExpandedVisitDetails({ prescription, patientNotes }) {
       {prescription ? (
         <section>
           <h3 className="text-ocs-slate mb-2 text-base font-semibold">Prescription</h3>
-          <p className="text-ocs-slate break-words text-sm font-medium leading-relaxed">
+          <p className="text-ocs-slate whitespace-pre-wrap break-words text-sm font-medium leading-relaxed">
             {prescription}
           </p>
         </section>
@@ -60,8 +47,8 @@ function ExpandedVisitDetails({ prescription, patientNotes }) {
         <section
           className={prescription ? "mt-4 border-t border-slate-100 pt-4" : undefined}
         >
-          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Doctor&apos;s Notes</h3>
-          <p className="text-ocs-slate/80 break-words text-sm leading-relaxed">{patientNotes}</p>
+          <h3 className="text-ocs-slate mb-2 text-base font-semibold">Patient care summary</h3>
+          <p className="text-ocs-slate/80 whitespace-pre-wrap break-words text-sm leading-relaxed">{patientNotes}</p>
         </section>
       ) : null}
     </div>

@@ -9,6 +9,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+        APP_VERSION: ${GIT_SHA:-unknown}
     image: ocs-clinicflow:local
     container_name: clinicflow-app
     restart: unless-stopped
@@ -52,6 +55,8 @@ services:
     build:
       context: .
       dockerfile: patient-portal.Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: clinicflow-patient-portal
     restart: unless-stopped
     ports:
@@ -63,6 +68,8 @@ services:
     build:
       context: .
       dockerfile: linkham-portal.Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     container_name: clinicflow-linkham-portal
     restart: unless-stopped
     ports:

@@ -15,11 +15,13 @@ function resolveClientBuildSha() {
   }
 }
 
+const buildSha = resolveClientBuildSha();
 export default defineConfig({
   define: {
-    __OCS_CLIENT_BUILD_SHA__: JSON.stringify(resolveClientBuildSha()),
+    __OCS_CLIENT_BUILD_SHA__: JSON.stringify(buildSha),
   },
   plugins: [
+    { name: "ocs-build-version", generateBundle() { this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ portal: "staff", git_sha: buildSha }) }); } },
     react(),
     tailwindcss(),
     VitePWA({

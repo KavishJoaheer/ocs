@@ -38,6 +38,15 @@ async function main() {
     process.exit(1);
   }
 
+  if (process.env.OCS_CARE_VERSION_JSON !== undefined) {
+    let care;
+    try { care = JSON.parse(process.env.OCS_CARE_VERSION_JSON); } catch { care = null; }
+    if (!care || care.portal !== "care" || !body.git_sha || body.git_sha === "unknown" || care.git_sha !== body.git_sha) {
+      console.error(`FAIL: Care frontend ${care?.git_sha || "missing"} does not match API ${body.git_sha || "missing"}. Update the patient portal image too.`);
+      process.exit(1);
+    }
+  }
+
   console.log("OK:", url);
   console.log(JSON.stringify(body, null, 2));
 }

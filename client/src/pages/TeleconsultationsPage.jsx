@@ -161,6 +161,7 @@ function RequestCard({ request, user, doctors, expanded, visible, onToggle, onOp
       </details>}
 
       {!active && <div className="space-y-3 rounded-xl bg-slate-50 p-4">
+        {request.record_withdrawn && <p className="text-sm font-semibold text-amber-900">This consultation record has been voided. It is no longer shared in OCS Care.</p>}
         {request.status === "completed" && <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800"><CheckCircle2 className="size-4 shrink-0" />Consultation saved to the patient record.</p>}
         {request.patient_summary && <div><h3 className="text-xs font-semibold text-slate-500">Patient care summary</h3><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{request.patient_summary}</p></div>}
         {request.follow_up && <p className="whitespace-pre-wrap break-words text-sm text-slate-700"><strong>Next steps: </strong>{request.follow_up}</p>}
@@ -175,6 +176,7 @@ export default function TeleconsultationsPage() {
   const { user } = useAuth();
   const refreshKey = useLiveRefreshKey();
   const [requests, setRequests] = useState([]);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -190,7 +192,7 @@ export default function TeleconsultationsPage() {
     const version = ++loadVersion.current;
     try {
       const response = await api.get("/teleconsultations");
-      if (version === loadVersion.current) { setRequests(response.requests); setError(""); }
+      if (version === loadVersion.current) { setRequests(response.requests); setHasMoreHistory(Boolean(response.has_more_history)); setError(""); }
     } catch (err) { if (version === loadVersion.current) setError(err.message); }
     finally { if (version === loadVersion.current) setLoading(false); }
   }, []);
@@ -201,7 +203,7 @@ export default function TeleconsultationsPage() {
   }, [load, refreshKey]);
 
   const loadDoctors = useCallback(async () => {
-    try { setDoctors(await api.get("/doctors")); setDoctorError(""); }
+    try { setDoctors((await api.get("/doctors")).filter(doctor => doctor.user_id && doctor.login_active)); setDoctorError(""); }
     catch (err) { setDoctorError(err.message); }
   }, []);
   useEffect(() => { if (isDispatch) void loadDoctors(); }, [isDispatch, loadDoctors]);
@@ -251,7 +253,7 @@ export default function TeleconsultationsPage() {
     {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}<button onClick={load} type="button" className="ml-3 font-semibold underline">Retry</button></p>}
     {doctorError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Doctor list unavailable: {doctorError}<button onClick={loadDoctors} type="button" className="ml-3 font-semibold underline">Retry doctor list</button></p>}
     {loading ? <p role="status" className="rounded-2xl bg-white p-6 text-sm text-slate-500">Loading requests…</p> : <>
-      {(!error || requests.length > 0) && <p role="status" className="text-xs text-slate-500">{visible.length} {visible.length === 1 ? "request" : "requests"}{requests.length >= 100 ? " · Showing up to 100 requests" : ""} · Updates automatically</p>}
+      {(!error || requests.length > 0) && <p role="status" className="text-xs text-slate-500">{visible.length} {visible.length === 1 ? "request" : "requests"}{hasMoreHistory ? " · All active requests and the latest 100 closed requests" : ""} · Updates automatically</p>}
       {!visible.length && !error && <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-10 text-center"><ClipboardList className="mx-auto size-8 text-slate-300" /><h2 className="mt-3 font-semibold text-ocs-slate">{query || filter !== "active" ? "No matching requests" : "No active teleconsultations"}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">{query ? "Try another patient name, mobile number or consultation reason." : filter === "active" ? isDispatch ? "Open a patient profile to send an OCS Care link. Requests appear here after the patient accepts consent." : "New teleconsultations will appear here when they are assigned to you." : "Choose a different status to see other consultations."}</p>{(query || filter !== "all") && <button type="button" onClick={() => { setQuery(""); setFilter("all"); setExpandedId(undefined); }} className={`${secondary} mt-4`}>View all requests</button>}</div>}
       <div className="space-y-4">
         {/* Keep cards mounted so filtering, folding and live refresh preserve entered notes. */}

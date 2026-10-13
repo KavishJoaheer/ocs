@@ -344,6 +344,7 @@ router.get("/dashboard", (req, res) => {
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
+        AND c.voided_at IS NULL
       ORDER BY c.consultation_date DESC, c.id DESC
       LIMIT 1
     `)
@@ -359,7 +360,7 @@ router.get("/dashboard", (req, res) => {
     : null;
 
   const totalVisits = db
-    .prepare("SELECT COUNT(*) AS count FROM consultations WHERE patient_id = ?")
+    .prepare("SELECT COUNT(*) AS count FROM consultations WHERE patient_id = ? AND voided_at IS NULL")
     .get(patientId);
 
   const recentConsultationRows = db
@@ -372,6 +373,7 @@ router.get("/dashboard", (req, res) => {
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
+        AND c.voided_at IS NULL
       ORDER BY c.consultation_date DESC, c.id DESC
       LIMIT 5
     `)
@@ -426,6 +428,7 @@ router.get("/appointments", (req, res) => {
       JOIN doctors d ON d.id = a.doctor_id
       LEFT JOIN consultations c ON c.appointment_id = a.id
       WHERE a.patient_id = ?
+        AND (c.id IS NULL OR c.voided_at IS NULL)
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `)
     .all(patientId);
@@ -792,11 +795,13 @@ router.get("/health-records", (req, res) => {
         c.clinical_note,
         c.patient_diagnosis,
         c.patient_prescription,
+        (SELECT t.patient_summary FROM teleconsultation_requests t WHERE t.consultation_id=c.id AND t.status='completed' LIMIT 1) AS patient_summary,
         d.full_name AS doctor_name,
         CASE WHEN EXISTS (SELECT 1 FROM teleconsultation_requests t WHERE t.consultation_id=c.id) THEN 'Teleconsultation' ELSE 'Home Visit' END AS visit_type
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
+        AND c.voided_at IS NULL
       ORDER BY c.consultation_date DESC, c.id DESC
     `)
     .all(patientId);
