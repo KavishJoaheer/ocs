@@ -52,10 +52,6 @@ async function injectStaffSession(page, token) {
   }, token);
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function advanceOperatorInvoiceToReview(page, request, token) {
   const doctorResponse = await request.get(`${API_BASE}/billing/quick/picker-options`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -96,8 +92,11 @@ async function advanceOperatorInvoiceToReview(page, request, token) {
   const patientPickerButton = page.getByRole("button", { name: /Select patient/i });
   await expect(patientPickerButton).toBeVisible();
   await patientPickerButton.click();
+  // Several patients can share a name; the OCS number identifies this patient.
+  expect(patient.patient_identifier).toBeTruthy();
   await page
-    .getByRole("option", { name: new RegExp(escapeRegExp(patient.patient_name), "i") })
+    .getByRole("option")
+    .filter({ has: page.getByText(patient.patient_identifier, { exact: true }) })
     .click();
 
   const consultationSelect = page.getByLabel("2. Consultation");
