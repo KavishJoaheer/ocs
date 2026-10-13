@@ -51,6 +51,7 @@ export default defineConfig({
         GIT_SHA,
         APP_VERSION: GIT_SHA,
         DB_PATH: E2E_DB_PATH,
+        PATIENT_PORTAL_ORIGIN: `http://127.0.0.1:${PATIENT_PORT}`,
         CLIENT_ORIGINS: `http://127.0.0.1:${STAFF_PORT},http://127.0.0.1:${PATIENT_PORT},http://localhost:${STAFF_PORT},http://localhost:${PATIENT_PORT}`,
       },
     },

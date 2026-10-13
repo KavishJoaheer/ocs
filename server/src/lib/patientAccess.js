@@ -32,6 +32,10 @@ function doctorCanAccessPatient(patient, auth) {
         WHERE patient_id = ? AND assigned_doctor_id = ?
       )
       OR EXISTS (
+        SELECT 1 FROM teleconsultation_requests
+        WHERE patient_id = ? AND assigned_doctor_id = ?
+      )
+      OR EXISTS (
         SELECT 1 FROM consultations
         WHERE patient_id = ? AND doctor_id = ?
       )
@@ -42,7 +46,7 @@ function doctorCanAccessPatient(patient, auth) {
       LIMIT 1
     `,
     )
-    .get(patientId, doctorId, patientId, doctorId, patientId, doctorId);
+    .get(patientId, doctorId, patientId, doctorId, patientId, doctorId, patientId, doctorId);
 
   return Boolean(linked);
 }
@@ -74,6 +78,10 @@ function getDoctorCaseloadFilterSql(alias = "p") {
       OR EXISTS (
         SELECT 1 FROM visit_requests vr
         WHERE vr.patient_id = ${alias}.id AND vr.assigned_doctor_id = @caseloadDoctorId
+      )
+      OR EXISTS (
+        SELECT 1 FROM teleconsultation_requests tr
+        WHERE tr.patient_id = ${alias}.id AND tr.assigned_doctor_id = @caseloadDoctorId
       )
       OR EXISTS (
         SELECT 1 FROM consultations cx

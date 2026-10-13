@@ -701,6 +701,7 @@ function resolveAssignedDoctorIdForCreate(payload, auth) {
     return { assignedDoctorId: Number(auth.doctor_id) };
   }
 
+  if (!payload.assigned_doctor_id) return { assignedDoctorId: null };
   const assignedDoctor = getAssignedDoctorById(payload.assigned_doctor_id);
 
   if (!assignedDoctor) {
@@ -1389,6 +1390,7 @@ const PATIENT_CHILD_TABLES = [
   "visit_requests",
   "patient_users",
   "appointment_change_requests",
+  "teleconsultation_requests",
 ];
 
 // Merge a duplicate patient record (source) into the canonical one (target).
@@ -1422,7 +1424,13 @@ router.post("/:id/merge", (req, res) => {
     return res.status(404).json({ error: "Source (duplicate) patient not found." });
   }
 
+  const activeTeleconsultations = db.prepare("SELECT COUNT(*) AS count FROM teleconsultation_requests WHERE patient_id IN (?, ?) AND status IN ('pending','assigned','in_consultation')").get(targetId, sourceId).count;
+  if (activeTeleconsultations > 1) {
+    return res.status(409).json({ error: "Resolve one of the active teleconsultation requests before merging these records." });
+  }
   const merge = db.transaction(() => {
+    db.prepare("UPDATE patient_magic_links SET revoked_at=CURRENT_TIMESTAMP WHERE patient_id IN (?, ?) AND used_at IS NULL").run(targetId, sourceId);
+    db.prepare("DELETE FROM teleconsultation_screenings WHERE patient_id IN (?, ?)").run(targetId, sourceId);
     for (const table of PATIENT_CHILD_TABLES) {
       db.prepare(`UPDATE ${table} SET patient_id = ? WHERE patient_id = ?`).run(targetId, sourceId);
     }
@@ -1626,7 +1634,7 @@ router.post("/", (req, res) => {
   const payload = normalizePatientPayload(req.body);
   const validationError = validatePatientPayload(payload, {
     isCreate: true,
-    requireAssignedDoctor: ["admin", "operator"].includes(req.auth.role),
+    requireAssignedDoctor: false,
     requireDispatchLocation: ["admin", "operator"].includes(req.auth.role),
   });
 
@@ -1969,6 +1977,16 @@ router.put("/:id", (req, res) => {
   };
   publishPatientDataChange(patientId, { reason: "patient" });
   res.json(updated);
+});
+
+router.post("/:id/care-invitation", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    return res.status(201).json(require("../lib/patientMagicLinks").issuePatientMagicLink(Number(req.params.id), req.auth, req.body));
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
 });
 
 router.post("/:id/consultations", (req, res) => {

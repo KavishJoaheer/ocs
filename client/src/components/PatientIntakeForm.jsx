@@ -506,13 +506,12 @@ function PatientFormModal({
                   <label className="block">
                     <span className={MOBILE_FIELD_LABEL}>Assigned doctor</span>
                     <select
-                      required
                       name="assigned_doctor_id"
                       value={form.assigned_doctor_id}
                       onChange={handleChange}
                       className={MOBILE_INPUT}
                     >
-                      <option value="">Select doctor</option>
+                      <option value="">Assign later</option>
                       {doctors.map((doctor) => (
                         <option key={doctor.id} value={doctor.id}>
                           {doctor.full_name} - {doctor.specialization}
@@ -895,13 +894,12 @@ function PatientFormModal({
                 <label className="space-y-2 md:col-span-2">
                   <span className="text-sm font-semibold text-slate-700">Assigned doctor</span>
                   <select
-                    required
                     name="assigned_doctor_id"
                     value={form.assigned_doctor_id}
                     onChange={handleChange}
                     className={DESKTOP_INPUT}
                   >
-                    <option value="">Select doctor</option>
+                    <option value="">Assign later</option>
                     {doctors.map((doctor) => (
                       <option key={doctor.id} value={doctor.id}>
                         {doctor.full_name} - {doctor.specialization}

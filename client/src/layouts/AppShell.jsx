@@ -17,6 +17,7 @@ import {
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const pageMeta = {
+  "/teleconsultations": { label: "Teleconsultations", helper: "Manage remote consultations and follow-up." },
   "/": {
     label: "Dashboard",
     helper: "",

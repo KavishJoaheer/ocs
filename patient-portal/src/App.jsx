@@ -9,6 +9,8 @@ import PatientForgotPasswordPage from "./pages/PatientForgotPasswordPage.jsx";
 import PatientResetPasswordPage from "./pages/PatientResetPasswordPage.jsx";
 
 // Lazy-load the in-app screens so the first paint (login/register) stays light.
+const PatientMagicLinkPage = lazy(() => import("./pages/PatientMagicLinkPage.jsx"));
+const PatientTeleconsultationPage = lazy(() => import("./pages/PatientTeleconsultationPage.jsx"));
 const PatientDashboard = lazy(() => import("./pages/PatientDashboard.jsx"));
 const PatientAppointments = lazy(() => import("./pages/PatientAppointments.jsx"));
 const PatientHealthRecords = lazy(() => import("./pages/PatientHealthRecords.jsx"));
@@ -36,6 +38,7 @@ function App() {
     <Routes>
       <Route path="/" element={<HomeGate />} />
       <Route path="/welcome" element={<Navigate to="/" replace />} />
+      <Route path="/sign-in-link" element={<PatientMagicLinkPage />} />
       <Route path="/login" element={<PatientLoginPage />} />
       <Route path="/register" element={<PatientRegisterPage />} />
       <Route path="/forgot-password" element={<PatientForgotPasswordPage />} />
@@ -47,6 +50,7 @@ function App() {
           </ProtectedRoute>
         }
       >
+        <Route path="teleconsultation" element={<PatientTeleconsultationPage />} />
         <Route path="dashboard" element={<PatientDashboard />} />
         <Route path="active-visit" element={<Navigate to="/request-visit/tracking" replace />} />
         <Route path="request-visit" element={<RequestVisitLayout />}>

@@ -27,6 +27,7 @@ const PatientProfilePage = lazy(() => import("./pages/PatientProfilePage.jsx"));
 const PatientAddPage = lazy(() => import("./pages/PatientAddPage.jsx"));
 const PatientsPage = lazy(() => import("./pages/PatientsPage.jsx"));
 const StockActivityPage = lazy(() => import("./pages/StockActivityPage.jsx"));
+const TeleconsultationsPage = lazy(() => import("./pages/TeleconsultationsPage.jsx"));
 const VisitRequestsPage = lazy(() => import("./pages/VisitRequestsPage.jsx"));
 
 function RouteFallback() {
@@ -74,6 +75,7 @@ function App() {
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator"]} />}>
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/teleconsultations" element={<TeleconsultationsPage />} />
             <Route path="/visit-requests" element={<VisitRequestsPage />} />
           </Route>
           <Route element={<ProtectedRoute roles={["admin", "operator", "doctor"]} />}>

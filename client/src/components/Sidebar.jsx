@@ -36,6 +36,7 @@ function formatMobileDrawerDisplayName(user) {
 }
 
 const navItems = [
+  { to: "/teleconsultations", label: "Teleconsultations", icon: ClipboardList, roles: ["admin", "doctor", "operator"] },
   {
     to: "/",
     label: "Dashboard",

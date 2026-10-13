@@ -19,6 +19,7 @@ function serializePatientUser(row) {
   return {
     id: Number(row.id),
     email: row.email,
+    has_password: Boolean(row.has_password ?? row.password_hash),
     full_name: row.full_name,
     patient_id: row.patient_id ? Number(row.patient_id) : null,
     link_status: row.link_status != null ? String(row.link_status) : null,
@@ -87,6 +88,7 @@ function getPatientSessionUserByToken(token) {
         s.id AS session_id,
         u.id,
         u.email,
+        (u.password_hash IS NOT NULL) AS has_password,
         u.full_name,
         u.patient_id,
         u.phone,

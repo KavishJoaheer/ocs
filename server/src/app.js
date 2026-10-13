@@ -33,6 +33,7 @@ const restockRequestsRouter = require("./routes/restockRequests");
 const visitRequestsRouter = require("./routes/visitRequests");
 const appointmentChangeRequestsRouter = require("./routes/appointmentChangeRequests");
 const patientAuthRouter = require("./routes/patientAuth");
+const teleconsultations = require("./routes/teleconsultations");
 const patientPortalRouter = require("./routes/patientPortal");
 const patientCareContentRouter = require("./routes/patientCareContent");
 const { authorizeByMethod, authorizeRoles, requireAuth, requireAuthFlexible } = require("./lib/auth");
@@ -287,6 +288,7 @@ function createApp() {
   app.use("/api/auth/login", loginLimiter);
   app.use("/api/patient-auth/login", loginLimiter);
   app.use("/api/patient-auth/register", loginLimiter);
+  app.use("/api/patient-auth/magic-link/redeem", loginLimiter);
   app.use("/api/patient-auth/forgot-password", loginLimiter);
 
   app.use("/api/auth", authRouter);
@@ -480,6 +482,8 @@ function createApp() {
     appointmentChangeRequestsRouter,
   );
 
+  app.use("/api/teleconsultations", requireAuth, authorizeRoles("admin", "operator", "doctor"), teleconsultations.staffRouter);
+  app.use("/api/patient-portal/teleconsultations", requirePatientAuth, requireConfirmedChartAccess, teleconsultations.patientRouter);
   app.use("/api/patient-auth", patientAuthRouter);
   // Realtime stream must be registered before the bearer-only router so it can
   // authenticate via ?access_token= (EventSource cannot send headers).

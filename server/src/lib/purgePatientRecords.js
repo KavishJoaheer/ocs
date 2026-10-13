@@ -38,6 +38,9 @@ function purgePatientRecordsSync(patientId) {
     db.prepare("DELETE FROM patient_lifecycle_events WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM patient_operator_access WHERE patient_id = ?").run(id);
     db.prepare("DELETE FROM visit_requests WHERE patient_id = ?").run(id);
+    db.prepare("DELETE FROM patient_magic_links WHERE patient_id = ?").run(id);
+    db.prepare("DELETE FROM teleconsultation_requests WHERE patient_id = ?").run(id);
+    db.prepare("DELETE FROM teleconsultation_screenings WHERE patient_id = ?").run(id);
     // Visits a guardian booked for this patient are this patient's clinical data.
     db.prepare("DELETE FROM visit_requests WHERE dependent_patient_id = ?").run(id);
     db.prepare("DELETE FROM patient_locations WHERE patient_id = ?").run(id);

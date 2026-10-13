@@ -46,6 +46,16 @@ export function AuthProvider({ children }) {
     return payload.user;
   }, []);
 
+  const redeemMagicLink = useCallback(async (tokenValue) => {
+    const payload = await api.post("/patient-auth/magic-link/redeem", { token: tokenValue }, { skipAuth: true });
+    setStoredAuthToken(null);
+    setActingPatientId(null);
+    setToken(COOKIE_SESSION);
+    setUser(payload.user);
+    void syncPushSubscriptionIfGranted();
+    return payload.user;
+  }, []);
+
   const register = useCallback(async ({ email, password, full_name, phone, national_id, gender }) => {
     const payload = await api.post(
       "/patient-auth/register",
@@ -160,11 +170,12 @@ export function AuthProvider({ children }) {
       isBootstrapping,
       login,
       register,
+      redeemMagicLink,
       logout,
       changePassword,
       updateUser,
     }),
-    [isBootstrapping, login, register, logout, changePassword, token, updateUser, user],
+    [isBootstrapping, login, register, redeemMagicLink, logout, changePassword, token, updateUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

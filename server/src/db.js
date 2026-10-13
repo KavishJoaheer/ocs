@@ -471,8 +471,8 @@ function createPatientUsersTable() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS patient_users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
+      email TEXT UNIQUE,
+      password_hash TEXT,
       patient_id INTEGER,
       full_name TEXT NOT NULL,
       phone TEXT NOT NULL DEFAULT '',
@@ -1816,6 +1816,7 @@ function initializeDatabase() {
   createInventoryMovementsTable();
   createPatientUsersTable();
   ensurePatientUserColumns();
+  require("./lib/patientOnboardingSchema").ensurePatientOnboardingSchema(db);
   createPatientAuthSessionsTable();
   createPatientPushSubscriptionsTable();
   createVisitRequestsTable();

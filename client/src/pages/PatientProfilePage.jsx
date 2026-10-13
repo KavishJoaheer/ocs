@@ -85,6 +85,7 @@ import {
   isPatientUnderReview,
 } from "../lib/patientReview.js";
 import { cx } from "../lib/utils.js";
+import PatientCareInvitation from "../components/PatientCareInvitation.jsx";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
 function LongTermReviewAlertBanner({ note, dueDate, actions }) {
@@ -2017,6 +2018,7 @@ function PatientProfilePage() {
 
   return (
     <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4 md:bg-slate-50">
+      {["admin", "operator"].includes(user.role) && <PatientCareInvitation key={data.patient.id} patient={data.patient} readOnly={user.is_read_only} />}
       {isMobile && (
         <div
           className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"

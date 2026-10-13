@@ -253,6 +253,18 @@ router.post("/register", (req, res) => {
   }
 });
 
+router.post("/magic-link/redeem", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const { user, token } = require("../lib/patientMagicLinks").redeemPatientMagicLink(req.body?.token);
+    res.cookie(PATIENT_SESSION_COOKIE, token, getSessionCookieOptions());
+    return res.json({ user: enrichPatientUserRow(user) });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+});
+
 router.post("/login", (req, res) => {
   const email = String(req.body.email ?? "").trim().toLowerCase();
   const password = String(req.body.password ?? "");

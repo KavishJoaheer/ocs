@@ -5,7 +5,7 @@ import { usePatientAuth } from "../../hooks/usePatientAuth.jsx";
 import ProfileListCard from "./ProfileListCard.jsx";
 
 function ProfilePasswordCard() {
-  const { changePassword } = usePatientAuth();
+  const { changePassword, user } = usePatientAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -40,6 +40,10 @@ function ProfilePasswordCard() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (user?.has_password === false) {
+    return <ProfileListCard title="Account security"><p className="px-5 pb-5 pt-3 text-[13px] leading-relaxed text-[#6e8587]">You sign in using a personal, one-time link from OCS. Keep it private. Contact the hotline if you need a new sign-in link.</p></ProfileListCard>;
   }
 
   return (

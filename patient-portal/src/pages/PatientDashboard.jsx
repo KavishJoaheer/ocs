@@ -356,6 +356,10 @@ function PatientDashboard() {
 
   return (
     <>
+    <div className="mx-4 my-4 rounded-2xl border border-slate-200 bg-white p-4 lg:mx-8">
+      <Link to="/teleconsultation" className="flex items-center justify-between gap-3 font-semibold text-brand-teal">Request a teleconsultation <ArrowRight className="size-5" /></Link>
+      <p className="mt-1 text-sm text-slate-600">WhatsApp consultation after OCS hotline screening. View your code and follow-up here.</p>
+    </div>
     {activeVisitError ? (
       <ActiveVisitStatusWarning message={activeVisitError} onRetry={handleRetryDashboard} />
     ) : null}
