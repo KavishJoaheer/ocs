@@ -383,13 +383,14 @@ export async function unsubscribeFromPushNotifications() {
   const registration = await getPushServiceWorkerRegistration();
   const subscription = await registration?.pushManager.getSubscription();
 
-  if (subscription) {
-    await subscription.unsubscribe();
-  }
+  if (!subscription?.endpoint) return;
+  const endpoint = subscription.endpoint;
+  await subscription.unsubscribe();
 
   try {
-    await api.delete("/push/subscribe");
+    await api.delete("/push/subscribe", { body: { endpoint } });
   } catch {
-    // Best-effort cleanup when server session is unavailable.
+    // The local subscription is disabled. Stale server records are removed
+    // when the push provider reports expiry; other devices stay registered.
   }
 }

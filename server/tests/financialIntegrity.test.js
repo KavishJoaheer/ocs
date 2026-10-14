@@ -1510,6 +1510,36 @@ test('device alert test targets only the caller device, limits retries and does 
   } finally { webpush.sendNotification=original; }
 });
 
+for (const role of ['doctor', 'operator']) {
+  test(`${role} can disable only their selected device; missing endpoints cannot remove all devices`, async () => {
+    const {saveUserPushSubscription}=require('../src/lib/push');
+    const userId=db.prepare('SELECT id FROM users WHERE username=?').get(`integrity.${role}`).id;
+    const otherId=db.prepare("SELECT id FROM users WHERE username='integrity.admin'").get().id;
+    const phone=`https://example.invalid/${role}-unsubscribe-phone`;
+    const desktop=`https://example.invalid/${role}-unsubscribe-desktop`;
+    const other=`https://example.invalid/${role}-other-account`;
+    const endpoints=[phone,desktop,other];
+    const rows=()=>db.prepare('SELECT user_id,endpoint FROM user_push_subscriptions WHERE endpoint IN (?,?,?) ORDER BY endpoint').all(...endpoints);
+    try {
+      for (const endpoint of [phone,desktop]) saveUserPushSubscription(userId,{endpoint,keys:{p256dh:'test',auth:'test'}});
+      saveUserPushSubscription(otherId,{endpoint:other,keys:{p256dh:'test',auth:'test'}});
+      const original=rows();
+      for (const body of [undefined,{}, {endpoint:''}, {endpoint:'   '}, {endpoint:{}}]) {
+        assert.equal((await api('DELETE','/push/subscribe',role,body)).status,400);
+        assert.deepEqual(rows(),original);
+      }
+      assert.equal((await api('DELETE','/push/subscribe',role,{endpoint:other})).status,200);
+      assert.deepEqual(rows(),original,'Another account must remain untouched');
+      assert.equal((await api('DELETE','/push/subscribe',role,{endpoint:phone})).status,200);
+      assert.deepEqual(rows().map(row=>row.endpoint),[desktop,other].sort());
+      assert.equal((await api('DELETE',`/push/subscribe?endpoint=${encodeURIComponent(desktop)}`,role)).status,200);
+      assert.deepEqual(rows().map(row=>row.endpoint),[other]);
+    } finally {
+      db.prepare('DELETE FROM user_push_subscriptions WHERE endpoint IN (?,?,?)').run(...endpoints);
+    }
+  });
+}
+
 test('overdue supply calculation uses Mauritius day boundaries and excludes closed requests', () => {
   const code=fs.readFileSync(path.join(__dirname,'../../client/src/lib/supplyRequests.js'),'utf8').replace(/^import .*;$/gm,'').replaceAll('export ','');
   const sandbox={};vm.createContext(sandbox);vm.runInContext(code+';this.overdue=supplyRequestOverdueDays;',sandbox);

@@ -365,12 +365,12 @@ export async function unsubscribeFromPushNotifications() {
   const registration = await getPushServiceWorkerRegistration();
   const subscription = await registration?.pushManager.getSubscription();
 
-  if (subscription) {
-    await subscription.unsubscribe();
-  }
+  if (!subscription?.endpoint) return;
+  const endpoint = subscription.endpoint;
+  await subscription.unsubscribe();
 
   try {
-    await api.delete("/push/subscribe");
+    await api.delete("/push/subscribe", { body: { endpoint } });
   } catch {
     // Best-effort cleanup when server session is unavailable.
   }

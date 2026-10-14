@@ -21,6 +21,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
   const [showDeniedGuide, setShowDeniedGuide] = useState(false);
   const [configurationUnavailable, setConfigurationUnavailable] = useState(false);
   const [testMessage, setTestMessage] = useState('');
+  const [awaitingTestConfirmation, setAwaitingTestConfirmation] = useState(false);
   const recovery = getPushPermissionRecoveryInstructions();
 
   const refreshState = useCallback(async () => {
@@ -106,7 +107,7 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     if (permission === "denied") return "Blocked on this device";
     if (configurationUnavailable) return "Status check failed";
     if (!available) return "Server setup required";
-    if (enabled) return "Working on this device";
+    if (enabled) return "Enabled on this device";
     if (permission === "default") return "Permission needed";
     return "Not enabled on this device";
   })();
@@ -124,6 +125,8 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
     }
 
     setIsUpdating(true);
+    setTestMessage('');
+    setAwaitingTestConfirmation(false);
 
     try {
       if (enabled) {
@@ -199,12 +202,25 @@ function PushNotificationToggle({ className = "", alwaysShow = false, role = nul
       <div className={`mx-5 flex flex-wrap gap-x-4 px-2 text-xs ${onDark ? 'text-white' : 'text-teal-800'}`}>
         <button type="button" className="min-h-11 underline" disabled={isUpdating} onClick={() => void refreshState()}>Recheck alerts</button>
         {enabled && <button type="button" className="min-h-11 underline" disabled={isUpdating} onClick={async () => {
-          setIsUpdating(true); setTestMessage('');
-          try { const result = await testCurrentDevicePush(); setTestMessage(result.message); }
+          setIsUpdating(true); setTestMessage(''); setAwaitingTestConfirmation(false);
+          try {
+            const result = await testCurrentDevicePush();
+            setTestMessage(result.message);
+            setAwaitingTestConfirmation(result.accepted === true);
+          }
           catch (error) { setTestMessage(error.message); }
           finally { setIsUpdating(false); }
         }}>Test this device</button>}
         {testMessage && <p role="status" className="pb-3">{testMessage}</p>}
+        {enabled && awaitingTestConfirmation && <div className="flex w-full flex-wrap gap-2 pb-3">
+          <p className="w-full">Did the test alert appear on this device?</p>
+          <button type="button" className="min-h-11 rounded-full border border-current px-3 font-semibold" onClick={() => {
+            setAwaitingTestConfirmation(false); setTestMessage('You confirmed that this device received the test alert.');
+          }}>I received the alert</button>
+          <button type="button" className="min-h-11 rounded-full border border-current px-3" onClick={() => {
+            setAwaitingTestConfirmation(false); setTestMessage('Delivery is not confirmed. Check this device’s notification settings and Focus or Do Not Disturb settings, then try Test this device again.');
+          }}>I did not receive it</button>
+        </div>}
       </div>
 
       {showDeniedGuide ? (

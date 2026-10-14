@@ -61,11 +61,13 @@ router.post("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES),
 });
 
 router.delete("/subscribe", requireAuth, authorizeRoles(...PUSH_SUBSCRIBER_ROLES), (req, res) => {
-  // Allow callers to scope the unsubscribe to a specific browser endpoint
-  // (the device the user is currently on) so disabling alerts on the phone
-  // doesn't kill alerts on the desktop. Falls back to clearing every device.
-  const endpoint = req.body?.endpoint || req.query?.endpoint || null;
-  clearUserPushSubscription(req.auth.id, endpoint ? { endpoint: String(endpoint) } : {});
+  // Never turn a device-level toggle (including an older cached client)
+  // into an account-wide unsubscribe when its endpoint is missing.
+  const endpoint = req.body?.endpoint ?? req.query?.endpoint;
+  if (typeof endpoint !== "string" || !endpoint.trim()) {
+    return res.status(400).json({ error: "Specify the device to turn notifications off." });
+  }
+  clearUserPushSubscription(req.auth.id, { endpoint: endpoint.trim() });
   res.json({ ok: true });
 });
 
