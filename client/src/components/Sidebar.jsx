@@ -112,12 +112,6 @@ const navItems = [
     hideInMobileDrawer: true,
   },
   {
-    to: "/consultations",
-    label: "Consultations",
-    icon: ClipboardList,
-    roles: ["operator"],
-  },
-  {
     to: "/admin/finance",
     label: "Finance",
     icon: CreditCard,
