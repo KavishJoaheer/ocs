@@ -17,7 +17,10 @@ export default function PatientMagicLinkPage() {
   async function enter() {
     if (busy) return;
     setBusy(true); setError("");
-    try { await redeemMagicLink(token); navigate("/dashboard", { replace: true }); }
+    try {
+      const result = await redeemMagicLink(token);
+      navigate(result.teleconsultation_ready ? "/teleconsultation" : "/dashboard", { replace: true });
+    }
     catch (err) {
       setUnavailable([400, 401, 404, 410].includes(err.status));
       setError(err.status ? err.message : "Could not connect to OCS Care. Check your connection and try again.");

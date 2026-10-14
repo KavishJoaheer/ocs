@@ -28,13 +28,20 @@ function issuePatientMagicLink(patientId, actor, body) {
     const user = users[0];
     if (user && (!user.is_active || !["verified", "staff_created"].includes(patient.link_status))) fail("Confirm the existing account’s ownership before issuing an invitation.", 409);
     if (user?.phone && normalizeMobile(user.phone) !== mobile) fail("The account mobile differs from the clinic record. Verify the change before continuing.", 409);
+    if (body.teleconsultation_screened === true && db.prepare("SELECT id FROM teleconsultation_requests WHERE patient_id=? AND status IN ('pending','assigned','in_consultation')").get(patientId)) {
+      fail("This patient already has an active teleconsultation. Finish or close it before triaging a new request.", 409);
+    }
     db.prepare("UPDATE patient_magic_links SET revoked_at = CURRENT_TIMESTAMP WHERE patient_id = ? AND used_at IS NULL AND revoked_at IS NULL").run(patientId);
     const invitation = db.prepare(`INSERT INTO patient_magic_links (patient_id, patient_user_id, token_hash, phone_snapshot, created_by, expires_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(patientId, user?.id || null, hashSessionToken(token), mobile, actor.id, expiresAt);
     if (body.teleconsultation_screened === true) {
-      db.prepare(`INSERT INTO teleconsultation_screenings (patient_id, screened_by, mobile_snapshot) VALUES (?, ?, ?)
-        ON CONFLICT(patient_id) DO UPDATE SET screened_by=excluded.screened_by, mobile_snapshot=excluded.mobile_snapshot, screened_at=CURRENT_TIMESTAMP`)
-        .run(patientId, actor.id, mobile);
+      db.prepare(`INSERT INTO teleconsultation_screenings (patient_id, screened_by, mobile_snapshot, magic_link_id) VALUES (?, ?, ?, ?)
+        ON CONFLICT(patient_id) DO UPDATE SET screened_by=excluded.screened_by, mobile_snapshot=excluded.mobile_snapshot,
+          screened_at=CURRENT_TIMESTAMP, magic_link_id=excluded.magic_link_id, authorized_session_id=NULL, consumed_at=NULL`)
+        .run(patientId, actor.id, mobile, invitation.lastInsertRowid);
+    } else {
+      // A records invitation must not inherit permission from an earlier triage.
+      db.prepare("UPDATE teleconsultation_screenings SET magic_link_id=NULL, authorized_session_id=NULL WHERE patient_id=? AND consumed_at IS NULL").run(patientId);
     }
     return { mobile, invitation_id: Number(invitation.lastInsertRowid) };
   })();
@@ -68,8 +75,11 @@ function redeemPatientMagicLink(rawToken) {
     }
     db.prepare("UPDATE patient_magic_links SET used_at = CURRENT_TIMESTAMP, patient_user_id = ? WHERE id = ?").run(user.id, link.id);
     const sessionToken = generateSessionToken();
-    db.prepare("INSERT INTO patient_auth_sessions (patient_user_id, token_hash, expires_at) VALUES (?, ?, ?)").run(user.id, hashSessionToken(sessionToken), getSessionExpiryTimestamp());
-    return { user, token: sessionToken };
+    const session = db.prepare("INSERT INTO patient_auth_sessions (patient_user_id, token_hash, expires_at) VALUES (?, ?, ?)").run(user.id, hashSessionToken(sessionToken), getSessionExpiryTimestamp());
+    const approval = db.prepare(`UPDATE teleconsultation_screenings SET authorized_session_id=?
+      WHERE patient_id=? AND magic_link_id=? AND consumed_at IS NULL AND screened_at > datetime('now','-24 hours')`)
+      .run(session.lastInsertRowid, patient.id, link.id);
+    return { user, token: sessionToken, teleconsultation_ready: Boolean(approval.changes) };
   })();
 }
 module.exports = { normalizeMobile, issuePatientMagicLink, redeemPatientMagicLink };

@@ -73,7 +73,6 @@ function TeleconsultationContent({ isPrimary }) {
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("details");
   const [form, setForm] = useState(emptyForm);
-  const [newRequestForId, setNewRequestForId] = useState(null);
   const version = useRef(0);
   const topRef = useRef(null);
   const errorRef = useRef(null);
@@ -106,7 +105,8 @@ function TeleconsultationContent({ isPrimary }) {
     setBusy(true); setActionError("");
     try {
       const response = await api.post("/patient-portal/teleconsultations", { reason: form.reason, current_location: form.current_location, callback_number: data.confirmed_mobile, consent_version: form.consent_version, terms_accepted: form.terms, clinical_consent: form.consent });
-      setData(current => ({ ...current, requests: [response.request, ...current.requests.filter(request => request.id !== response.request.id)] }));
+      setData(current => ({ ...current, eligible: false, confirmed_mobile: null,
+        requests: [response.request, ...current.requests.filter(request => request.id !== response.request.id)] }));
       setForm(emptyForm); setStep("details"); await load();
     } catch (err) { setActionError(err.message); } finally { setBusy(false); }
   }
@@ -121,10 +121,10 @@ function TeleconsultationContent({ isPrimary }) {
   }
   // Show the latest outcome rather than reopening intake when a doctor completes the call.
   const latest = data?.requests[0];
-  const completed = !active && latest?.status === "completed" && newRequestForId !== latest.id ? latest : null;
+  const eligible = isPrimary && data?.eligible && data?.confirmed_mobile;
+  const completed = !active && !eligible && latest?.status === "completed" ? latest : null;
   const showForm = data && !active && !completed;
   const nextSteps = !active && latest && ["referred", "cancelled"].includes(latest.status) && (latest.outcome_note || latest.follow_up) ? latest : null;
-  const eligible = isPrimary && data?.eligible && data?.confirmed_mobile;
   const currentConsent = data?.consent_version === form.consent_version;
 
   return <div className="mx-auto max-w-3xl space-y-5 py-3 lg:py-6">
@@ -139,10 +139,10 @@ function TeleconsultationContent({ isPrimary }) {
     {active && <RequestRecord request={active} busy={busy} onCancel={cancel} />}
     {completed && <div ref={topRef} tabIndex={-1} className="scroll-mt-4 space-y-3 outline-none">
       <CompletedConsultation request={completed} />
-      <button type="button" onClick={() => { setNewRequestForId(completed.id); setForm(emptyForm); setStep("details"); setActionError(""); }}
-        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-brand-dark-grey hover:bg-white/60">
-        Request another teleconsultation<ArrowRight className="size-4" aria-hidden="true" />
-      </button>
+      <p className="px-2 text-center text-sm leading-relaxed text-slate-600">For another consultation, call OCS for triage and a new OCS Care link.</p>
+      <a href={CLINIC_TEL_HREF} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey hover:bg-white/60">
+        <Phone className="size-4" aria-hidden="true" />Call OCS hotline
+      </a>
     </div>}
     {nextSteps && <section aria-label="Latest next steps from OCS" className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
       <h2 className="font-semibold text-amber-950">Next steps from OCS</h2>
@@ -168,9 +168,9 @@ function TeleconsultationContent({ isPrimary }) {
           <button type="button" onClick={() => { setActionError(""); setStep("details"); }} className="min-h-11 w-full text-sm font-semibold text-slate-500">Back to your details</button>
         </fieldset>
       </form>}
-    </div> : <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5"><Phone className="size-6 text-teal-700" /><h2 className="font-semibold text-brand-dark-grey">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h2><p className="text-sm leading-relaxed text-slate-600">{isPrimary ? "Our operator will check whether teleconsultation is suitable. If your last screening was more than 24 hours ago, please call again." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p><a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4" />Call the OCS hotline</a></div>)}
+    </div> : <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5"><Phone className="size-6 text-teal-700" /><h2 className="font-semibold text-brand-dark-grey">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h2><p className="text-sm leading-relaxed text-slate-600">{isPrimary ? "Call the hotline before every teleconsultation. Our operator will assess your case and send a new OCS Care link if suitable." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p><a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4" />Call OCS hotline</a></div>)}
 
-    <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />{completed ? "Need help? Call OCS" : `Ask OCS a question · ${CLINIC_TEL_DISPLAY}`}</a>
+    {!completed && <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />Ask OCS a question · {CLINIC_TEL_DISPLAY}</a>}
   </div>;
 }
 

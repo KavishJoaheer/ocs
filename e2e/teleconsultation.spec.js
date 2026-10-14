@@ -80,7 +80,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.unroute("**/api/patient-auth/magic-link/redeem");
     await opPage.route("**/api/patients/*/care-invitation/*", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Sign-in status temporarily unavailable" }) }));
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
-    await expect(carePage).toHaveURL(/\/dashboard$/);
+    await expect(carePage).toHaveURL(/\/teleconsultation$/);
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toBeVisible();
     await expect(opPage.getByText("Waiting to confirm patient sign-in.", { exact: false })).toBeVisible();
     await opPage.unroute("**/api/patients/*/care-invitation/*");
@@ -101,9 +101,25 @@ test("hotline invitation, patient consent, doctor verification and published car
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage).toHaveURL(/\/dashboard$/);
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toHaveCount(0);
-    await expect(carePage.getByRole("link", { name: "Request a teleconsultation", exact: true })).toBeVisible();
-    await carePage.getByRole("link", { name: "Request a teleconsultation", exact: true }).screenshot({ path: testInfo.outputPath("patient-teleconsultation-card-mobile.png") });
-    await carePage.getByRole("link", { name: "Request a teleconsultation", exact: true }).click();
+    await expect(carePage.getByRole("link", { name: "Teleconsultation", exact: true })).toBeVisible();
+    await carePage.getByRole("link", { name: "Teleconsultation", exact: true }).screenshot({ path: testInfo.outputPath("patient-teleconsultation-card-mobile.png") });
+    await carePage.getByRole("link", { name: "Teleconsultation", exact: true }).click();
+    await expect(carePage.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await expect(carePage.getByLabel("Reason for consultation")).toHaveCount(0);
+    // The existing Send OCS Care link action grants a new request only after fresh triage and redemption.
+    await openCareInvitation(opPage);
+    await opPage.getByRole("radio", { name: "Teleconsultation", exact: true }).check();
+    await opPage.getByLabel("Patient identity checked using the agreed OCS procedure.").check();
+    await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
+    await opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.").check();
+    await opPage.getByRole("button", { name: "Create 10-minute sign-in link" }).click();
+    const screenedMagicUrl = await opPage.getByLabel("Personal sign-in link").inputValue();
+    await carePage.reload();
+    await expect(carePage.getByLabel("Reason for consultation")).toHaveCount(0);
+    await carePage.goto(screenedMagicUrl.replace(new URL(screenedMagicUrl).origin, CARE));
+    await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
+    await expect(carePage).toHaveURL(/\/teleconsultation$/);
+    await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toHaveCount(0);
     await carePage.getByLabel("Reason for consultation").fill("Review an existing report");
     await carePage.getByLabel("Your current location").fill("Moka, home");
     await expect(carePage.getByLabel("Mobile confirmed with OCS")).toHaveValue("+23052520142");
@@ -248,12 +264,11 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(carePage.getByText("Your OCS consultation code", { exact: true })).toHaveCount(0);
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
     expect(await carePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    // Another request starts only after the patient chooses it; routine refreshes preserve that choice.
-    await carePage.getByRole("button", { name: "Request another teleconsultation", exact: true }).click();
-    await expect(carePage.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
-    await carePage.getByLabel("Reason for consultation", { exact: true }).fill("A new issue to discuss");
+    // A completed case always returns to the hotline; refreshing cannot reopen intake.
+    await expect(carePage.getByRole("button", { name: "Request another teleconsultation", exact: true })).toHaveCount(0);
+    await expect(carePage.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveAttribute("href", /^tel:/);
     await carePage.evaluate(() => window.dispatchEvent(new CustomEvent("patient:data")));
-    await expect(carePage.getByLabel("Reason for consultation", { exact: true })).toHaveValue("A new issue to discuss");
+    await expect(carePage.getByLabel("Reason for consultation", { exact: true })).toHaveCount(0);
     await carePage.reload();
     await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
     await completedRecord.click();
@@ -304,6 +319,24 @@ test("hotline invitation, patient consent, doctor verification and published car
       expect(await carePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await carePage.screenshot({ path: testInfo.outputPath(`care-${route}-mobile.png`), animations: "disabled" });
     }
+    // A returning patient receives another request form only through a newly triaged OCS Care link.
+    await opPage.goto(`${STAFF}/patients/${patient.id}`);
+    await openCareInvitation(opPage);
+    await opPage.getByRole("radio", { name: "Teleconsultation", exact: true }).check();
+    await opPage.getByLabel("Patient identity checked using the agreed OCS procedure.").check();
+    await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
+    await opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.").check();
+    await opPage.getByRole("button", { name: "Create 10-minute sign-in link" }).click();
+    const nextCaseLink = await opPage.getByLabel("Personal sign-in link").inputValue();
+    await carePage.goto(`${CARE}/teleconsultation`);
+    await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+    await expect(carePage.getByLabel("Reason for consultation")).toHaveCount(0);
+    await carePage.goto(nextCaseLink.replace(new URL(nextCaseLink).origin, CARE));
+    await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
+    await expect(carePage).toHaveURL(`${CARE}/teleconsultation`);
+    await expect(carePage.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
+    await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toHaveCount(0);
+    await expect(carePage.getByLabel("Reason for consultation")).toHaveValue("");
     await carePage.goto(magicUrl.replace(new URL(magicUrl).origin, CARE));
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
     await expect(carePage.getByRole("alert")).toContainText("invalid, expired or already used");

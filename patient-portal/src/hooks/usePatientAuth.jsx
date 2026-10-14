@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
     setUser(payload.user);
     setSignOutState(null);
     void syncPushSubscriptionIfGranted();
-    return payload.user;
+    return payload;
   }, []);
 
   const register = useCallback(async ({ email, password, full_name, phone, national_id, gender }) => {

@@ -28,7 +28,7 @@ async function mockCare(page, options = {}) {
     if (path === "/api/patient-portal/appointments") json = { appointments: options.appointments ?? appointments };
     if (path === "/api/patient-portal/health-records") json = { consultations: [{ id: 30, date: "2000-06-01", doctor_name: "Past Remote Doctor", visit_type: "Teleconsultation", diagnosis: "Past consultation diagnosis", plain_summary: "Completed care stays in Records." }], reports: [], clinical: {} };
     if (path === "/api/patient-portal/teleconsultations") json = {
-      requests: options.requests ?? history, eligible: options.eligible ?? true,
+      requests: options.requests ?? history, eligible: options.eligible ?? false,
       confirmed_mobile: "23057001122", consent_version: "test-v1",
       consent: [{ title: "Service terms", text: "Please review the service terms before requesting care." }],
     };
@@ -55,9 +55,9 @@ for (const width of [360, 430]) {
     await expect(page.getByText("Past consultation diagnosis", { exact: true }).filter({ visible: true })).toBeVisible();
   });
 
-  test(`teleconsultation request opens directly without history at ${width}px`, async ({ page }) => {
+  test(`freshly approved teleconsultation opens without history at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 932 });
-    await mockCare(page, { requests: [] });
+    await mockCare(page, { requests: [], eligible: true });
     await page.goto(`${CARE}/teleconsultation`);
     await expect(page.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
     await expect(page.getByText(/Past consultations/)).toHaveCount(0);
@@ -74,17 +74,18 @@ for (const width of [360, 430]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });
 
-  test(`completed teleconsultation stays visible before new intake at ${width}px`, async ({ page }) => {
+  test(`completed teleconsultation keeps records and directs new cases to the hotline at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 932 });
     await mockCare(page);
     await page.goto(`${CARE}/teleconsultation`);
     await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
     await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
     await expect(page.getByText(/Past consultations/)).toHaveCount(0);
-    await page.getByRole("button", { name: "Request another teleconsultation", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
-    await expect(page.getByLabel("Reason for consultation")).toHaveValue("");
-    for (const request of history) await expect(page.getByText(request.reason, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Request another teleconsultation", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveAttribute("href", /^tel:/);
+    await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
+    await page.getByRole("link", { name: "View consultation & prescription", exact: true }).click();
+    await expect(page).toHaveURL(`${CARE}/health-records/visits/30`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });
 }
@@ -111,13 +112,11 @@ test("active teleconsultation stays visible without the previous request history
 });
 
 test("returning patients still need hotline screening before requesting care", async ({ page }) => {
-  await mockCare(page, { eligible: false });
+  await mockCare(page, { eligible: false, requests: [] });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${CARE}/teleconsultation`);
-  await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Request another teleconsultation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Call the OCS hotline", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toBeVisible();
   await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
   await expect(page.getByText(/Past consultations/)).toHaveCount(0);
 });

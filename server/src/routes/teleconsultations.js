@@ -16,14 +16,20 @@ function notifyPatient(row, title, body, url = "/teleconsultation") {
 function patientId(req) { return Number(req.portalPatientId || req.patientAuth.patient_id); }
 function allowed(req, row) { return req.auth.role === "admin" || (req.auth.role === "doctor" && Number(req.auth.doctor_id) > 0 && Number(req.auth.doctor_id) === Number(row.assigned_doctor_id)); }
 function dispatch(req) { return ["admin", "operator"].includes(req.auth.role); }
-function screening(id) {
+function screening(id, sessionId) {
   return db.prepare(`SELECT s.* FROM teleconsultation_screenings s JOIN patients p ON p.id=s.patient_id
-    WHERE s.patient_id=? AND s.screened_at > datetime('now','-24 hours') AND p.deleted_at IS NULL`).get(id);
+    JOIN patient_magic_links link ON link.id=s.magic_link_id AND link.patient_id=s.patient_id
+    JOIN users issuer ON issuer.id=s.screened_by AND issuer.id=link.created_by
+    WHERE s.patient_id=? AND s.authorized_session_id=? AND s.consumed_at IS NULL
+      AND s.screened_at > datetime('now','-24 hours') AND p.deleted_at IS NULL
+      AND link.used_at IS NOT NULL AND link.revoked_at IS NULL
+      AND issuer.is_active=1 AND issuer.deleted_at IS NULL AND issuer.role IN ('admin','operator')`)
+    .get(id, sessionId || -1);
 }
 patientRouter.get("/", (req, res) => {
   const id = patientId(req);
   const patient = db.prepare("SELECT * FROM patients WHERE id=? AND deleted_at IS NULL").get(id);
-  const review = screening(id);
+  const review = screening(id, req.patientAuthSessionId);
   const eligible = Boolean(id === Number(req.patientAuth.patient_id) && patient && review && review.mobile_snapshot === normalizeMobile(patient.patient_contact_number));
   return res.json({ consent_version: CONSENT_VERSION, consent: CONSENT,
     eligible, confirmed_mobile: eligible ? review.mobile_snapshot : null,
@@ -37,15 +43,26 @@ patientRouter.post("/", (req, res) => {
   const location = String(req.body.current_location || "").trim();
   const callback = normalizeMobile(req.body.callback_number);
   if (!reason || reason.length > 2000 || !location || location.length > 1000 || !callback) return res.status(400).json({ error: "Provide your reason, current location and a valid Mauritius mobile callback number." });
-  const patient = db.prepare("SELECT * FROM patients WHERE id=? AND deleted_at IS NULL").get(id);
-  const review = screening(id);
-  if (!patient || !review || review.mobile_snapshot !== normalizeMobile(patient.patient_contact_number)) return res.status(409).json({ error: "Please call OCS for screening before requesting a teleconsultation." });
-  if (callback !== review.mobile_snapshot) return res.status(409).json({ error: "Use the mobile confirmed with OCS. Call the hotline to change it." });
-  if (db.prepare("SELECT id FROM teleconsultation_requests WHERE patient_id=? AND status IN ('pending','assigned','in_consultation')").get(id)) return res.status(409).json({ error: "You already have an active teleconsultation request." });
-  const code = String(crypto.randomInt(100000, 1000000));
-  const result = db.prepare(`INSERT INTO teleconsultation_requests (patient_id, patient_user_id, reason, current_location, callback_number, consultation_code, consent_version, consent_snapshot)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.patientAuth.id, reason, location, callback, code, CONSENT_VERSION, JSON.stringify(CONSENT));
-  const row = getTeleconsultation(result.lastInsertRowid);
+  const result = db.transaction(() => {
+    const patient = db.prepare("SELECT * FROM patients WHERE id=? AND deleted_at IS NULL").get(id);
+    const review = screening(id, req.patientAuthSessionId);
+    if (!patient || !review || review.mobile_snapshot !== normalizeMobile(patient.patient_contact_number)) {
+      return { error: "Call the OCS hotline for fresh triage and open the new OCS Care link before each teleconsultation request." };
+    }
+    if (callback !== review.mobile_snapshot) return { error: "Use the mobile confirmed with OCS. Call the hotline to change it." };
+    if (db.prepare("SELECT id FROM teleconsultation_requests WHERE patient_id=? AND status IN ('pending','assigned','in_consultation')").get(id)) {
+      return { error: "You already have an active teleconsultation request." };
+    }
+    const code = String(crypto.randomInt(100000, 1000000));
+    const created = db.prepare(`INSERT INTO teleconsultation_requests (patient_id, patient_user_id, reason, current_location, callback_number, consultation_code, consent_version, consent_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.patientAuth.id, reason, location, callback, code, CONSENT_VERSION, JSON.stringify(CONSENT));
+    // Consume approval in the same write transaction as creation, including concurrent submissions.
+    db.prepare("UPDATE teleconsultation_screenings SET consumed_at=CURRENT_TIMESTAMP WHERE patient_id=? AND magic_link_id=? AND authorized_session_id=?")
+      .run(id, review.magic_link_id, req.patientAuthSessionId);
+    return { id: Number(created.lastInsertRowid) };
+  }).immediate();
+  if (result.error) return res.status(409).json({ error: result.error });
+  const row = getTeleconsultation(result.id);
   changed(row);
   return res.status(201).json({ request: serializeTeleconsultation(row) });
 });

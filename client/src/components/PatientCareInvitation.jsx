@@ -83,6 +83,7 @@ export default function PatientCareInvitation({ patient, readOnly = false, onSig
       <label className={rowClass}><input type="checkbox" checked={identity} onChange={e => setIdentity(e.target.checked)} />Patient identity checked using the agreed OCS procedure.</label>
       <label className={rowClass}><input type="checkbox" checked={mobile} onChange={e => setMobile(e.target.checked)} />Patient personally controls this mobile; number read back and confirmed.</label>
       {purpose === "teleconsultation" && <label className={rowClass}><input type="checkbox" checked={screened} onChange={e => setScreened(e.target.checked)} />Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.</label>}
+      {purpose === "teleconsultation" && <p className="text-sm text-slate-600">Fresh hotline triage is required for each request. This link allows one request after the patient opens it.</p>}
     </div>
     <button type="button" disabled={readOnly || busy || !identity || !mobile || !patient.patient_contact_number || (purpose === "teleconsultation" && !screened)} onClick={generate} className="rounded-xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Preparing…" : invitation ? "Create replacement link" : "Create 10-minute sign-in link"}</button>
     {invitation && <div className="mt-4 space-y-3">

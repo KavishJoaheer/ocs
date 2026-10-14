@@ -212,6 +212,64 @@ test("consent and hotline screening are required; assignment, code checks, recor
   const otherPatient = await redeem(await invite(await patient()));
   assert.equal((await api("POST", `/patient-portal/teleconsultations/${r.id}/cancel`, {}, otherPatient)).status, 404);
 });
+test("each triage approves one request only after its OCS Care link is opened, even across simultaneous submissions", async () => {
+  const p = await patient();
+  const recordsSession = await redeem(await invite(p, { teleconsultation_screened: false }));
+  assert.equal(recordsSession.data.teleconsultation_ready, false);
+  const invitation = await invite(p);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, recordsSession)).data.eligible, false);
+  assert.equal((await request(recordsSession)).status, 409, "issuing a link does not authorize an existing session");
+  const screenedSession = await redeem(invitation);
+  assert.equal(screenedSession.data.teleconsultation_ready, true);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, screenedSession)).data.eligible, true);
+  assert.equal((await request(screenedSession, { clinical_consent: false })).status, 400);
+  assert.equal((await request(screenedSession, { callback_number: "52520143" })).status, 409);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, screenedSession)).data.eligible, true, "validation failures leave the approved case available");
+  const results = await Promise.all([request(screenedSession), request(screenedSession)]);
+  assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
+  const created = results.find(result => result.status === 201).data.request;
+  assert.equal(db.prepare("SELECT count(*) AS n FROM teleconsultation_requests WHERE patient_id=?").get(p.id).n, 1);
+  assert.ok(db.prepare("SELECT consumed_at FROM teleconsultation_screenings WHERE patient_id=?").get(p.id).consumed_at);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, screenedSession)).data.eligible, false);
+  assert.equal((await invite(p)).status, 409, "an active request cannot stockpile approval for a future case");
+  await api("POST", `/patient-portal/teleconsultations/${created.id}/cancel`, {}, screenedSession);
+  const blocked = await request(screenedSession);
+  assert.equal(blocked.status, 409); assert.match(blocked.data.error, /fresh triage.*new OCS Care link/);
+  const nextInvitation = await invite(p);
+  assert.equal((await request(screenedSession)).status, 409);
+  const nextSession = await redeem(nextInvitation);
+  assert.equal((await request(screenedSession)).status, 409, "old sessions cannot use a replacement link's approval");
+  const nextRequest = await request(nextSession);
+  assert.equal(nextRequest.status, 201); assert.notEqual(nextRequest.data.request.id, created.id);
+  assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+});
+
+test("ordinary sign-in, records invitations, expired screenings and revoked issuers cannot authorize teleconsultation", async () => {
+  const p = await patient();
+  const screenedSession = await redeem(await invite(p));
+  const { hashPassword } = require("../src/lib/security");
+  db.prepare("UPDATE patient_users SET email=?, password_hash=? WHERE id=?")
+    .run("triage-session@example.test", hashPassword("TriageSession123!"), screenedSession.data.user.id);
+  const passwordSession = await api("POST", "/patient-auth/login", { email: "triage-session@example.test", password: "TriageSession123!" });
+  assert.equal(passwordSession.status, 200);
+  assert.equal((await request(passwordSession)).status, 409);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, passwordSession)).data.eligible, false);
+  const recordsLink = await invite(p, { teleconsultation_screened: false });
+  assert.equal((await request(screenedSession)).status, 409, "a records replacement revokes the earlier unused approval");
+  const recordsSession = await redeem(recordsLink);
+  assert.equal(recordsSession.data.teleconsultation_ready, false);
+  assert.equal((await request(recordsSession)).status, 409);
+  const next = await redeem(await invite(p));
+  db.prepare("UPDATE teleconsultation_screenings SET screened_at=datetime('now','-25 hours') WHERE patient_id=?").run(p.id);
+  assert.equal((await request(next)).status, 409);
+  assert.equal((await api("GET", "/patient-portal/teleconsultations", null, next)).data.eligible, false);
+  const fresh = await redeem(await invite(p));
+  db.prepare("UPDATE users SET is_active=0 WHERE id=?").run(operator.user.id);
+  try { assert.equal((await request(fresh)).status, 409); }
+  finally { db.prepare("UPDATE users SET is_active=1 WHERE id=?").run(operator.user.id); }
+  assert.equal((await api("GET", "/patient-portal/health-records", null, recordsSession)).status, 200, "records access remains available");
+});
+
 test("completion requires private note and diagnosis, while prescription, summary and follow-up are optional", async () => {
   const p = await patient(); const login = await redeem(await invite(p));
   const r = (await request(login)).data.request;
@@ -245,6 +303,11 @@ test("completion requires private note and diagnosis, while prescription, summar
   assert.equal(appointments.data.appointments.find(row => row.consultation_id === completed.data.consultation_id).kind, "teleconsultation");
   assert.ok(!JSON.stringify(records.data).includes("PRIVATE-MINIMAL"));
   assert.equal((await api("POST", `/teleconsultations/${r.id}/complete`, body, doctor)).status, 409);
+  assert.equal((await request(login)).status, 409, "completion does not renew the previous triage approval");
+  const next = await redeem(await invite(p));
+  assert.equal(next.data.teleconsultation_ready, true);
+  assert.equal((await request(login)).status, 409);
+  assert.equal((await request(next)).status, 201);
 });
 
 test("wrong codes are limited; cancellation and referral remove codes and preserve next steps", async () => {
@@ -255,7 +318,10 @@ test("wrong codes are limited; cancellation and referral remove codes and preser
   assert.equal((await api("POST", `/teleconsultations/${r.id}/start`, {consultation_code:r.consultation_code,checks_confirmed:true}, doctor)).status,429);
   const referred=await api("POST", `/teleconsultations/${r.id}/close`, {outcome:"referred",outcome_note:"Physical examination needed",follow_up:"Operator coordinates assessment today"},doctor);
   assert.equal(referred.status,200); assert.equal(referred.data.request.consultation_code,null);
-  const next=(await request(login)).data.request; const cancelled=await api("POST",`/patient-portal/teleconsultations/${next.id}/cancel`,{},login);assert.equal(cancelled.status,200);assert.equal(cancelled.data.request.consultation_code,null);
+  assert.equal((await request(login)).status, 409);
+  const freshLogin = await redeem(await invite(p));
+  const next=(await request(freshLogin)).data.request; const cancelled=await api("POST",`/patient-portal/teleconsultations/${next.id}/cancel`,{},freshLogin);assert.equal(cancelled.status,200);assert.equal(cancelled.data.request.consultation_code,null);
+  assert.equal((await request(freshLogin)).status, 409, "patient cancellation does not renew triage approval");
 });
 test("account schema migration preserves existing sessions and relationships and can run twice", () => {
   const Database=require("better-sqlite3"); const temp=new Database(":memory:"); temp.pragma("foreign_keys=ON");
@@ -270,6 +336,23 @@ test("account schema migration preserves existing sessions and relationships and
   assert.equal(temp.prepare("PRAGMA foreign_key_check").all().length,0);
   assert.equal(temp.pragma("foreign_keys",{simple:true}),1);
   temp.prepare("INSERT INTO patient_users (email,password_hash,patient_id) VALUES (NULL,NULL,1)").run(); temp.close();
+});
+
+test("screening migration preserves legacy triage history without granting reusable approval", () => {
+  const Database = require("better-sqlite3"); const temp = new Database(":memory:"); temp.pragma("foreign_keys=ON");
+  temp.exec(`CREATE TABLE patients(id INTEGER PRIMARY KEY); CREATE TABLE users(id INTEGER PRIMARY KEY);
+    CREATE TABLE patient_users(id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT);
+    CREATE TABLE patient_auth_sessions(id INTEGER PRIMARY KEY);
+    CREATE TABLE teleconsultation_screenings(patient_id INTEGER PRIMARY KEY REFERENCES patients(id),
+      screened_by INTEGER REFERENCES users(id), mobile_snapshot TEXT NOT NULL, screened_at TEXT NOT NULL);
+    INSERT INTO patients VALUES(1); INSERT INTO users VALUES(1);
+    INSERT INTO teleconsultation_screenings VALUES(1,1,'23052520142','2026-10-14 10:00:00');`);
+  ensurePatientOnboardingSchema(temp); ensurePatientOnboardingSchema(temp);
+  assert.deepEqual(temp.prepare("SELECT * FROM teleconsultation_screenings WHERE patient_id=1").get(), {
+    patient_id: 1, screened_by: 1, mobile_snapshot: "23052520142", screened_at: "2026-10-14 10:00:00",
+    magic_link_id: null, authorized_session_id: null, consumed_at: null,
+  });
+  assert.deepEqual(temp.prepare("PRAGMA foreign_key_check").all(), []); temp.close();
 });
 
 test("operator acceptance is durable, first-wins, role restricted and separate from viewing or assignment", async () => {

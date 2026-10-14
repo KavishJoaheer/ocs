@@ -39,7 +39,10 @@ function ensurePatientOnboardingSchema(db) {
     patient_id INTEGER PRIMARY KEY REFERENCES patients(id) ON DELETE CASCADE,
     screened_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     mobile_snapshot TEXT NOT NULL,
-    screened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    screened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    magic_link_id INTEGER REFERENCES patient_magic_links(id) ON DELETE SET NULL,
+    authorized_session_id INTEGER REFERENCES patient_auth_sessions(id) ON DELETE SET NULL,
+    consumed_at TEXT
   );
   CREATE TABLE IF NOT EXISTS teleconsultation_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +72,19 @@ function ensurePatientOnboardingSchema(db) {
     WHERE status IN ('pending','assigned','in_consultation');
   CREATE INDEX IF NOT EXISTS idx_teleconsultation_consultation ON teleconsultation_requests(consultation_id)
     WHERE consultation_id IS NOT NULL;`);
+  const screeningColumns = db.prepare("PRAGMA table_info(teleconsultation_screenings)").all();
+  db.transaction(() => {
+    for (const [name, definition] of [
+      ["magic_link_id", "INTEGER REFERENCES patient_magic_links(id) ON DELETE SET NULL"],
+      ["authorized_session_id", "INTEGER REFERENCES patient_auth_sessions(id) ON DELETE SET NULL"],
+      ["consumed_at", "TEXT"],
+    ]) {
+      if (!screeningColumns.some(column => column.name === name)) {
+        db.exec(`ALTER TABLE teleconsultation_screenings ADD COLUMN ${name} ${definition}`);
+      }
+    }
+    // Legacy screenings remain recorded but cannot authorize a new request without a new link.
+  })();
   const requestColumns = db.prepare("PRAGMA table_info(teleconsultation_requests)").all();
   db.transaction(() => {
     if (!requestColumns.some(column => column.name === "accepted_by")) {
