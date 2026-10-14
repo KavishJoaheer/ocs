@@ -106,7 +106,9 @@ test("operator preparation retries a failed load and preserves picking and colle
   await modal.getByRole("button",{name:"Mark supply ready",exact:true}).click(); await expect(modal).toBeHidden();
   expect((await json(await request.get(`${API}/restock-requests/${fixture.accepted.id}`,{headers:fixture.oh}))).request.status).toBe("ready");
   await page.getByRole("button",{name:/^Awaiting collection/}).click(); await page.getByRole("button",{name:"Mark collected",exact:true}).click(); await expect(page.getByRole("heading",{name:"Mark supply collected",exact:true})).toBeVisible();
-  await page.getByRole("dialog",{name:"Mark supply collected",exact:true}).getByRole("button",{name:"Mark collected",exact:true}).click();
+  const collectionModal=page.getByRole("dialog",{name:"Mark supply collected",exact:true});
+  const collected=page.waitForResponse(next=>next.url().endsWith(`/restock-requests/${fixture.accepted.id}`)&&next.request().method()==="PATCH");
+  await collectionModal.getByRole("button",{name:"Mark collected",exact:true}).click(); expect((await collected).ok()).toBeTruthy(); await expect(collectionModal).toBeHidden();
   const result=await json(await request.get(`${API}/restock-requests/${fixture.accepted.id}`,{headers:fixture.oh})); expect(result.request.status).toBe("completed"); expect(result.request.transfer_transaction_id).toBeTruthy();
 });
 

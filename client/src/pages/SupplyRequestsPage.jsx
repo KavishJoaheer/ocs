@@ -113,6 +113,7 @@ function DoctorSupplyRequestsPage() {
   const catalogRequestId = useRef(0);
   const [catalogItems, setCatalogItems] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("create");
   const [editingRequest, setEditingRequest] = useState(null);
@@ -179,6 +180,7 @@ function DoctorSupplyRequestsPage() {
         );
         if (!ignore && requestId === catalogRequestId.current) {
           setCatalogItems(Array.isArray(payload?.ocs_stock) ? payload.ocs_stock : []);
+          setCatalogLoaded(true);
         }
       } catch (err) {
         if (!ignore) {
@@ -336,7 +338,7 @@ function DoctorSupplyRequestsPage() {
         onNext={() => setHistoryOffset(value => value + HISTORY_PAGE_SIZE)} onExport={exportHistory}
         search={desktopSearch} onSearch={value => { setDesktopSearch(value); setHistoryOffset(0); }}
         loading={tab === "history" ? historyLoading || historySearch !== desktopSearch.trim() : loading} error={tab === "history" ? historyError : error}
-        catalogLoading={catalogLoading} refreshing={loading || historyLoading || catalogLoading}
+        catalogLoading={catalogLoading && !catalogLoaded} refreshing={loading || historyLoading || catalogLoading}
         onRefresh={() => { bumpRefresh(); setCatalogTick(value => value + 1); }}
         newRequestRef={newRequestButtonRef} onCreate={() => openCreateModal()} onEdit={openEditModal} onAmend={openAmendModal}
         onCancel={request => setConfirmAction({ type: "cancel", request })} onDetails={setDetailRequestId} updatingId={updatingId}
@@ -358,7 +360,7 @@ function DoctorSupplyRequestsPage() {
             ref={newRequestButtonRef}
             type="button"
             onClick={() => openCreateModal()}
-            disabled={catalogLoading}
+            disabled={catalogLoading && !catalogLoaded}
             className="flex w-full min-h-11 items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.98] active:bg-ocs-teal/90 disabled:opacity-60"
           >
             <Plus className="size-4" />
