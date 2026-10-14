@@ -92,7 +92,7 @@ for (const width of [360, 430, 1440]) {
     else await expect(doctor.getByRole("button", { name: "Available", exact: true })).toBeDisabled();
     await followUps.click();
     await expect(page).toHaveURL(/\/doctor\/long-term-review$/);
-    await expect(page.getByRole("heading", { name: "Your review appointments", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Review appointments", exact: true })).toBeVisible();
     await expect(page.getByText("Sarah Noel", { exact: true })).toBeVisible();
     await page.goto(`${STAFF}/`);
     await care.getByRole("link", { name: "Open call for Ravi Pillay", exact: true }).click();

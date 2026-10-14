@@ -1,0 +1,7 @@
+/* Match the workspace controls while retaining the shared mobile input sizing. */
+.review-workspace button,
+.review-workspace a,
+.review-workspace select {
+  font-size: 0.875rem;
+  font-weight: 600;
+}

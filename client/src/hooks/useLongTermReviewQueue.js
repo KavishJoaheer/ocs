@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api } from "../lib/api.js";
 import { LONG_TERM_REVIEW_EVENT } from "../lib/inventorySync.js";
 
@@ -38,46 +38,36 @@ function buildReviewQueuePath(scope) {
 }
 
 export function useLongTermReviewQueue({ enabled = true, scope = "mine" } = {}) {
-  const [patients, setPatients] = useState([]);
-  const [loading, setLoading] = useState(Boolean(enabled));
-  const [error, setError] = useState(null);
+  const [state, setState] = useState({ patients: [], scope: null, pending: Boolean(enabled), error: null });
+  const requestId = useRef(0);
 
   const applyPatient = useCallback((updated) => {
-    if (!updated?.id) {
-      return;
-    }
-
-    setPatients((rows) => rows.map((row) => mergeReviewPatient(row, updated)));
+    if (!updated?.id) return;
+    setState(current => ({ ...current, patients: current.patients.map(row => mergeReviewPatient(row, updated)) }));
   }, []);
 
   const reload = useCallback(async () => {
+    const sequence = ++requestId.current;
     if (!enabled) {
-      setPatients([]);
-      setError(null);
-      setLoading(false);
+      setState({ patients: [], scope, error: null, pending: false });
       return [];
     }
-
-    setError(null);
-
+    setState(current => ({ ...current, pending: true, error: null }));
     try {
       const data = await api.get(buildReviewQueuePath(scope));
       const rows = Array.isArray(data?.patients) ? data.patients : [];
-      setPatients(rows);
+      if (sequence === requestId.current) setState({ patients: rows, scope, error: null, pending: false });
       return rows;
     } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Could not load the review appointment queue.";
-      setError(message);
-      setPatients([]);
+      if (sequence === requestId.current) setState(current => ({ ...current, pending: false,
+        error: err instanceof ApiError ? err.message : "Could not load the review appointment queue.", errorScope: scope }));
       return [];
-    } finally {
-      setLoading(false);
     }
   }, [enabled, scope]);
 
   useEffect(() => {
     void reload();
+    return () => { requestId.current += 1; };
   }, [reload]);
 
   useEffect(() => {
@@ -93,5 +83,9 @@ export function useLongTermReviewQueue({ enabled = true, scope = "mine" } = {}) 
     return () => window.removeEventListener(LONG_TERM_REVIEW_EVENT, handleRefresh);
   }, [enabled, reload]);
 
-  return { patients, loading, error, reload, applyPatient };
+  const patients = state.scope === scope ? state.patients : [];
+  const error = state.errorScope === scope ? state.error : null;
+  const pending = state.pending || (enabled && state.scope !== scope && !error);
+  return { patients, loading: pending && !patients.length, refreshing: pending,
+    error, reload, applyPatient };
 }

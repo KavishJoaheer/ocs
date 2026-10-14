@@ -77,7 +77,7 @@ const navItems = [
   },
   {
     to: "/operator/long-term-review",
-    label: "Review appointment",
+    label: "Review appointments",
     icon: Activity,
     roles: ["operator"],
     isActiveWhen: (location) => location.pathname === "/operator/long-term-review",
@@ -93,7 +93,7 @@ const navItems = [
   },
   {
     to: "/admin/long-term-review",
-    label: "Review appointment",
+    label: "Review appointments",
     icon: Activity,
     roles: ["admin"],
     isActiveWhen: (location) => location.pathname === "/admin/long-term-review",

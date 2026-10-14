@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { Clock3, Stethoscope } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
 import { formatScheduledReviewDate, getReviewDoctorId } from "../lib/patientReview.js";
 
 const ASSIGNMENT_ACTIONS = [
-  { key: "reassign-doctor", label: "Re-assign doctor", icon: "🩺" },
-  { key: "assign-top", label: "Assign a TOP (time of appointment)", icon: "⏰" },
+  { key: "reassign-doctor", label: "Assign doctor", icon: Stethoscope },
+  { key: "assign-top", label: "Set appointment time", icon: Clock3 },
 ];
 
 export function ReviewAssignmentModal({
@@ -38,7 +39,7 @@ export function ReviewAssignmentModal({
   const dueLabel = formatScheduledReviewDate(patient.review_due_date);
 
   return (
-    <Modal open={open} onClose={onClose} title="Assignment" size="md">
+    <Modal open={open} onClose={() => { if (!isSaving) onClose(); }} title="Assign doctor/time" size="md">
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -58,7 +59,7 @@ export function ReviewAssignmentModal({
           }
 
           if (!dueLabel) {
-            toast.error("Set a review date first from Log update.");
+            toast.error("Set a review date first from Update review.");
             return;
           }
 
@@ -78,19 +79,21 @@ export function ReviewAssignmentModal({
         <div className="space-y-3">
           {ASSIGNMENT_ACTIONS.map((action) => {
             const isSelected = selectedAction === action.key;
+            const Icon = action.icon;
             return (
               <button
                 key={action.key}
                 type="button"
+                disabled={isSaving}
                 onClick={() => setSelectedAction(action.key)}
-                className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm font-semibold transition ${
+                className={`flex min-h-11 w-full items-center gap-3 rounded-full border px-4 py-3 text-left text-sm font-semibold transition disabled:opacity-60 ${
                   isSelected
                     ? "border-ocs-teal bg-ocs-teal/10 text-ocs-slate ring-2 ring-ocs-teal/20"
                     : "border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-slate-50"
                 }`}
                 aria-pressed={isSelected}
               >
-                <span aria-hidden>{action.icon}</span>
+                <Icon aria-hidden="true" className="size-5 shrink-0" />
                 {action.label}
               </button>
             );
@@ -128,7 +131,7 @@ export function ReviewAssignmentModal({
                   Review date: <span className="font-semibold text-slate-900">{dueLabel}</span>
                 </>
               ) : (
-                "Set a review date first from Log update, then assign the time."
+                "Set a review date first from Update review, then assign the time."
               )}
             </p>
             <label className="block space-y-2">
@@ -148,14 +151,14 @@ export function ReviewAssignmentModal({
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+            className="min-h-11 rounded-full border border-[#d5e4e1] px-4 py-2.5 text-sm font-semibold text-[#376168]"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSaving || !selectedAction}
-            className="rounded-2xl bg-ocs-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-teal/90 disabled:opacity-60"
+            className="min-h-11 rounded-full bg-[#137b80] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#106b70] disabled:opacity-60"
           >
             {isSaving ? "Saving..." : "Save assignment"}
           </button>
