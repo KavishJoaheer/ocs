@@ -216,14 +216,25 @@ test("small review header keeps update and notification controls accessible", as
 
 test("initial review failure shows unavailable counts and supports recovery", async ({ page, request }) => {
   const fixture = await prepare(request);
-  let unavailable = true;
-  await page.route("**/api/dashboard/long-term-review", route => unavailable ? route.fulfill({ status: 503, json: { error: "Review queue unavailable." } }) : route.continue());
-  await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), fixture.doctor.token);
+  // Keep background live refreshes unavailable until the user actually presses Retry.
+  await page.addInitScript(token => {
+    localStorage.setItem("ocs_medecins_auth_token", token);
+    window.__reviewRetryRequested = false;
+    window.addEventListener("click", event => {
+      if (event.target?.closest?.("button")?.textContent.trim() === "Retry") {
+        window.__reviewRetryRequested = true;
+      }
+    }, true);
+  }, fixture.doctor.token);
+  await page.route("**/api/dashboard/long-term-review", async route => {
+    const recovered = await page.evaluate(() => window.__reviewRetryRequested === true);
+    if (recovered) await route.continue();
+    else await route.fulfill({ status: 503, json: { error: "Review queue unavailable." } });
+  });
   await page.goto(`${STAFF}/doctor/long-term-review`);
   const workspace = page.getByRole("region", { name: "Review appointment workspace", exact: true });
   await expect(workspace.getByText(/Reviews unavailable/)).toBeVisible();
   await expect(workspace.getByRole("button", { name: /^All/ }).locator("span")).toHaveText("—");
-  unavailable = false;
   await workspace.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(workspace.getByRole("article")).toHaveCount(6);
   await expect(workspace.getByRole("alert")).toHaveCount(0);
