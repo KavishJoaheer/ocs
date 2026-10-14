@@ -58,6 +58,12 @@
 .care-app .care-consultation-code { font-variant-numeric: tabular-nums; color: #084f4b; }
 .care-app .care-doctor-card { background: linear-gradient(125deg, #e0f4eb, #f4fbf7); border: 1px solid #c1e4d4; }
 .care-app .care-primary-button { background: linear-gradient(110deg, #075b59, #087d71); box-shadow: 0 6px 16px #075b5920; }
+.care-app .care-completion-card {
+  background: radial-gradient(circle at 100% 0, #ffcf6480, transparent 65%), linear-gradient(135deg, #fff5d6, #ffe7a8);
+  border-color: #e5bc62;
+  box-shadow: 0 12px 28px #9a670014;
+}
+.care-app .care-completion-icon { background: #fff9e8; color: #8b5b08; box-shadow: 0 3px 10px #9a670012; }
 .care-app .native-dashboard > header {
   padding: 20px;
   margin: 4px 0 22px;

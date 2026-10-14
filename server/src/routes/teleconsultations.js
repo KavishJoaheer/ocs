@@ -10,8 +10,8 @@ const { sendPushToPatientUser } = require("../lib/push");
 const patientRouter = express.Router();
 const staffRouter = express.Router();
 function changed(row) { publishPatientDataChange(row.patient_id, { reason: "teleconsultation", notifyDoctorIds: [row.assigned_doctor_id] }); }
-function notifyPatient(row, title, body) {
-  void sendPushToPatientUser(row.patient_user_id, { title, body, url: "/teleconsultation", tag: `teleconsultation-${row.id}` }).catch(() => {});
+function notifyPatient(row, title, body, url = "/teleconsultation") {
+  void sendPushToPatientUser(row.patient_user_id, { title, body, url, tag: `teleconsultation-${row.id}` }).catch(() => {});
 }
 function patientId(req) { return Number(req.portalPatientId || req.patientAuth.patient_id); }
 function allowed(req, row) { return req.auth.role === "admin" || (req.auth.role === "doctor" && Number(req.auth.doctor_id) > 0 && Number(req.auth.doctor_id) === Number(row.assigned_doctor_id)); }
@@ -148,7 +148,7 @@ staffRouter.post("/:id/complete", (req, res) => {
     return id;
   })();
   changed(row);
-  notifyPatient(row, "Your consultation record is ready", "Your diagnosis and any prescription or care summary are available in OCS Care.");
+  notifyPatient(row, "Your consultation record is ready", "Your diagnosis and any prescription or care summary are available in OCS Care.", `/health-records/visits/${consultationId}`);
   return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true, clinical: true }), consultation_id: Number(consultationId) });
 });
 staffRouter.post("/:id/close", (req, res) => {

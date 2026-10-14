@@ -1,13 +1,14 @@
 const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
-const { test, before, after } = require("node:test");
+const { test, before, after, mock } = require("node:test");
 const assert = require("node:assert/strict");
 process.env.DB_PATH = path.join(os.tmpdir(), `ocs-teleconsultation-${process.pid}.db`);
 process.env.NODE_ENV = "test";
 // The overflow fixture deliberately creates >100 complete onboarding journeys.
 process.env.API_RATE_LIMIT_PER_MINUTE = "10000";
 process.env.PATIENT_PORTAL_ORIGIN = "http://localhost:5174";
+const patientPush = mock.method(require("../src/lib/push"), "sendPushToPatientUser", async () => ({ ok: true }));
 const { createApp } = require("../src/app");
 const { db } = require("../src/db");
 const { CONSENT_VERSION } = require("../src/lib/teleconsultations");
@@ -228,6 +229,11 @@ test("completion requires private note and diagnosis, while prescription, summar
   const completed = await api("POST", `/teleconsultations/${r.id}/complete`, body, doctor);
   assert.equal(completed.status, 200, JSON.stringify(completed.data));
   assert.equal(completed.data.request.status, "completed");
+  const notification = patientPush.mock.calls.filter(call => call.arguments[1].tag === `teleconsultation-${r.id}`).at(-1);
+  assert.equal(notification.arguments[0], login.data.user.id);
+  assert.equal(notification.arguments[1].title, "Your consultation record is ready");
+  assert.equal(notification.arguments[1].url, `/health-records/visits/${completed.data.consultation_id}`);
+  assert.ok(!JSON.stringify(notification.arguments[1]).includes("PRIVATE-MINIMAL"));
   assert.equal(completed.data.request.patient_summary, "");
   assert.equal(completed.data.request.follow_up, "");
   const consultation = db.prepare("SELECT clinical_note, patient_diagnosis, patient_prescription FROM consultations WHERE id=?").get(completed.data.consultation_id);

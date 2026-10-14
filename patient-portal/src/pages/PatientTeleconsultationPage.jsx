@@ -44,6 +44,28 @@ function RequestRecord({ request, busy, onCancel }) {
   </section>;
 }
 
+function CompletedConsultation({ request }) {
+  return <section className="care-completion-card space-y-5 rounded-3xl border p-5 sm:p-6">
+    <div className="flex items-start gap-3">
+      <span aria-hidden="true" className="care-completion-icon grid size-12 shrink-0 place-items-center rounded-2xl"><CheckCircle2 className="size-6" /></span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900">Teleconsultation</p>
+        <h1 className="mt-1 text-xl font-bold leading-snug text-brand-dark-grey sm:text-2xl">{request.record_withdrawn ? "Consultation record withdrawn" : "Consultation completed"}</h1>
+      </div>
+    </div>
+    {request.doctor_name && <p className="flex items-center gap-2 text-sm font-semibold text-brand-dark-grey"><Stethoscope className="size-4 shrink-0" aria-hidden="true" />{formatDoctorName(request.doctor_name)}</p>}
+    <p role="status" className="text-sm leading-relaxed text-brand-dark-grey">{request.record_withdrawn ? "Contact OCS for an updated record." : "Your record is ready."}</p>
+    {request.consultation_id && <Link to={`/health-records/visits/${request.consultation_id}`} className={`${primary} !text-sm`}>
+      View consultation &amp; prescription<ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+    </Link>}
+    {(request.patient_summary || request.follow_up) && <details className="border-t border-amber-300/60 pt-2 text-sm text-brand-dark-grey">
+      <summary className="min-h-11 cursor-pointer py-3 font-semibold">Care summary &amp; next steps</summary>
+      {request.patient_summary && <p className="mb-3 whitespace-pre-wrap break-words leading-relaxed">{request.patient_summary}</p>}
+      {request.follow_up && <p className="whitespace-pre-wrap break-words leading-relaxed">{request.follow_up}</p>}
+    </details>}
+  </section>;
+}
+
 function TeleconsultationContent({ isPrimary }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -51,6 +73,7 @@ function TeleconsultationContent({ isPrimary }) {
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("details");
   const [form, setForm] = useState(emptyForm);
+  const [newRequestForId, setNewRequestForId] = useState(null);
   const version = useRef(0);
   const topRef = useRef(null);
   const errorRef = useRef(null);
@@ -96,22 +119,31 @@ function TeleconsultationContent({ isPrimary }) {
       await load();
     } catch (err) { setActionError(err.message); } finally { setBusy(false); }
   }
-  const showForm = data && !active;
-  // Keep only the latest actionable outcome visible. The request screen does
-  // not need a history list, but a referral push must still lead to next steps.
+  // Show the latest outcome rather than reopening intake when a doctor completes the call.
   const latest = data?.requests[0];
+  const completed = !active && latest?.status === "completed" && newRequestForId !== latest.id ? latest : null;
+  const showForm = data && !active && !completed;
   const nextSteps = !active && latest && ["referred", "cancelled"].includes(latest.status) && (latest.outcome_note || latest.follow_up) ? latest : null;
   const eligible = isPrimary && data?.eligible && data?.confirmed_mobile;
   const currentConsent = data?.consent_version === form.consent_version;
 
   return <div className="mx-auto max-w-3xl space-y-5 py-3 lg:py-6">
-    <Link to="/dashboard" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-dark-grey"><ArrowLeft className="size-4" />Back to your dashboard</Link>
-    <div ref={topRef} tabIndex={-1} className="care-tele-hero scroll-mt-4 outline-none"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-100 p-3 text-teal-800"><Video className="size-6" /></span><div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">OCS remote care</p><h1 className="mt-1 text-2xl font-bold text-brand-dark-grey">Teleconsultation</h1></div></div><p className="mt-4 text-sm leading-relaxed text-slate-600">Speak with an OCS doctor through WhatsApp, after hotline screening.</p></div>
-    <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">This service is not for emergencies. Seek urgent care if you have an emergency.</p>
+    <Link to="/dashboard" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-dark-grey"><ArrowLeft className="size-4" />{completed ? "Back to dashboard" : "Back to your dashboard"}</Link>
+    {!completed && <>
+      <div ref={topRef} tabIndex={-1} className="care-tele-hero scroll-mt-4 outline-none"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-100 p-3 text-teal-800"><Video className="size-6" /></span><div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">OCS remote care</p><h1 className="mt-1 text-2xl font-bold text-brand-dark-grey">Teleconsultation</h1></div></div><p className="mt-4 text-sm leading-relaxed text-slate-600">Speak with an OCS doctor through WhatsApp, after hotline screening.</p></div>
+      <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">This service is not for emergencies. Seek urgent care if you have an emergency.</p>
+    </>}
     {loadError && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{loadError}<button type="button" onClick={load} className="ml-2 min-h-11 font-semibold underline">Retry</button></p>}
     {actionError && <p ref={errorRef} role="alert" tabIndex={-1} className="rounded-xl bg-red-50 p-4 text-sm text-red-800 outline-none">{actionError}</p>}
     {!data && !loadError && <p role="status" className="rounded-2xl bg-white p-5 text-sm text-slate-500">Loading your consultations…</p>}
     {active && <RequestRecord request={active} busy={busy} onCancel={cancel} />}
+    {completed && <div ref={topRef} tabIndex={-1} className="scroll-mt-4 space-y-3 outline-none">
+      <CompletedConsultation request={completed} />
+      <button type="button" onClick={() => { setNewRequestForId(completed.id); setForm(emptyForm); setStep("details"); setActionError(""); }}
+        className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-brand-dark-grey hover:bg-white/60">
+        Request another teleconsultation<ArrowRight className="size-4" aria-hidden="true" />
+      </button>
+    </div>}
     {nextSteps && <section aria-label="Latest next steps from OCS" className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-5">
       <h2 className="font-semibold text-amber-950">Next steps from OCS</h2>
       {nextSteps.outcome_note && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-amber-950">{nextSteps.outcome_note}</p>}
@@ -138,7 +170,7 @@ function TeleconsultationContent({ isPrimary }) {
       </form>}
     </div> : <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5"><Phone className="size-6 text-teal-700" /><h2 className="font-semibold text-brand-dark-grey">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h2><p className="text-sm leading-relaxed text-slate-600">{isPrimary ? "Our operator will check whether teleconsultation is suitable. If your last screening was more than 24 hours ago, please call again." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p><a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4" />Call the OCS hotline</a></div>)}
 
-    <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />Ask OCS a question · {CLINIC_TEL_DISPLAY}</a>
+    <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />{completed ? "Need help? Call OCS" : `Ask OCS a question · ${CLINIC_TEL_DISPLAY}`}</a>
   </div>;
 }
 
