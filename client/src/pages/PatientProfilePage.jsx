@@ -1966,7 +1966,7 @@ function PatientProfilePage() {
   ];
 
   const identityType = PATIENT_ID_TYPES.find((type) => type.value === (data.patient.patient_id_type || "national_id"))?.label || "Identity document";
-  const identityValue = data.patient.patient_id_type === "no_id" ? "No identification provided" : data.patient.patient_id_type === "old_age" && !data.patient.patient_id_number ? "No identifier required" : profileLine(data.patient.patient_id_number);
+  const identityValue = data.patient.patient_id_type === "no_id" ? "No identification provided" : data.patient.patient_id_type === "old_age" && !data.patient.patient_id_number ? "No identifier required" : data.patient.patient_id_number;
   const patientSummary = <div className="patient-summary-cards space-y-3">
     <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} prominent /> : null}</div>
     <SectionCard title="Patient details" compact>
