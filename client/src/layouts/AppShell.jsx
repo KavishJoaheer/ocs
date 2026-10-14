@@ -24,6 +24,7 @@ const pageMeta = {
     label: "Dashboard",
     helper: "",
   },
+  "/stock-history": { label: "Stock history", helper: "Stock movements and transfer records." },
   "/action-inbox": { label: "Pending actions", helper: "Requests, reviews and team tasks." },
   "/inventory": {
     label: "Inventory",
@@ -168,8 +169,13 @@ function AppShell() {
   const isReviewWorkspace = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
   const isPatientWorkspace = isPatientsDirectory || isPatientProfile || location.pathname === "/patients/add";
   const isPendingActionsWorkspace = location.pathname === "/action-inbox";
-  const hasOperatorWorkspaceHeader = isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
+  const billingParams = new URLSearchParams(location.search);
+  const isIssuedBillingView = location.pathname === "/billing" && ["doctor", "operator"].includes(userRole)
+    && (billingParams.has("billId") || ["paid", "unpaid"].includes(billingParams.get("status")) || billingParams.get("view") === "invoices");
+  const isDesktopFinanceWorkspace = !isMobile && (["/stock-history", "/live-report", "/operator/pending-payment"].includes(location.pathname) || isIssuedBillingView);
+  const hasOperatorWorkspaceHeader = isDesktopFinanceWorkspace || isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
   const alwaysHideTopHeader =
+    isDesktopFinanceWorkspace ||
     isPendingActionsWorkspace ||
     isDoctorCareWorkspace ||
     isDesktopSupplyWorkspace ||

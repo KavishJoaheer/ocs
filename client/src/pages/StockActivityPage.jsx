@@ -1,9 +1,12 @@
-import { Activity, ChevronDown, Download, Printer, RotateCcw, Search, TrendingUp, Trophy, Wallet } from "lucide-react";
+import { Activity, ChevronDown, Download, RotateCcw, Search, TrendingUp, Trophy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import StockHistoryTable from "../components/finance-workspace/StockHistoryTable.jsx";
+import "../components/finance-workspace/financeWorkspace.css";
 import ReverseWriteOffModal from "../components/inventory/ReverseWriteOffModal.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -113,6 +116,7 @@ function buildReceiptPrintHtml(receipt) {
 function StockActivityPage() {
   const { user } = useAuth();
   const isCompact = useIsMobile(DENSE_TABLE_BREAKPOINT);
+  const isMobile = useIsMobile();
   const refreshKey = useLiveRefreshKey();
   const [inventoryTick, setInventoryTick] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -327,7 +331,10 @@ function StockActivityPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="desktop-finance stock-history-workspace space-y-5">
+      {!isMobile ? <PatientWorkspaceHeader inlineActions title="Stock history" subtitle={user.role === "doctor" ? "Movements in your doctor bag." : "Stock movements, transfers and audit records."}
+        role={user.role} onRefresh={() => setInventoryTick(value => value + 1)} refreshing={loading} refreshLabel="Refresh stock history"
+        actions={<button type="button" onClick={handleExportCsv} className="finance-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} /> : (
       <PageHeader
         eyebrow="Inventory"
         title="Stock history"
@@ -342,9 +349,10 @@ function StockActivityPage() {
           </button>
         }
       />
+      )}
 
       {user?.role === "doctor" ? null : (
-      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+      <div className="stock-summary-grid grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
         <article className="rounded-3xl border border-slate-200 bg-white p-3 md:p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wide text-slate-500">Stock activity</p>
@@ -410,6 +418,9 @@ function StockActivityPage() {
       </div>
       )}
 
+      {!isMobile && user.role !== "doctor" && <details className="stock-secondary-analytics"><summary>More stock analytics<ChevronDown size={14} aria-hidden="true" /></summary>
+        <p className="mt-2">Most stock updates: <strong>{analytics.top_performer?.name || "No human activity in this period"}</strong>{analytics.top_performer?.role ? ` · ${analytics.top_performer.role}` : ""}</p>
+      </details>}
       <SectionCard title={`Activity (${total})`}>
         {user?.role !== 'doctor' && !historyReconciled ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
@@ -597,133 +608,8 @@ function StockActivityPage() {
             })}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="min-w-full table-fixed text-sm">
-              <colgroup>
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "16%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "6%" }} />
-              </colgroup>
-              <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-600">
-                <tr>
-                  <th className="px-3 py-3 text-left">Timestamp</th>
-                  <th className="px-3 py-3 text-left">Actor</th>
-                  <th className="px-3 py-3 text-left">Action Type</th>
-                  <th className="px-3 py-3 text-left">Item & Qty</th>
-                  <th className="px-3 py-3 text-left">Source / Destination</th>
-                  <th className="px-3 py-3 text-left">Batch ID</th>
-                  <th className="px-3 py-3 text-left">Resulting balance</th>
-                  <th className="px-3 py-3 text-left">Request / receipt</th>
-                  <th className="px-3 py-3 text-left">Expiry</th>
-                  <th className="px-3 py-3 text-left">Reason</th>
-                  <th className="sticky right-0 z-20 bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)]">
-                    Tools
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const label = actionLabel(row.action_type, row.meta_json);
-                  const badgeClass = BADGE_STYLES[label] || "bg-slate-100 text-slate-700";
-                  const signedQty = signedMovementQuantity(row);
-                  const qtyLabel = formatSignedQuantity(signedQty);
-                  const qtyDirection = signedQty < 0 ? "removed" : signedQty > 0 ? "added" : "unchanged";
-                  let meta = {};
-                  try {
-                    meta = row.meta_json ? JSON.parse(row.meta_json) : {};
-                  } catch {
-                    meta = {};
-                  }
-                  const transactionId = row.transaction_id || meta.transaction_id || "";
-                  const isRestockTransfer = ["restock", "restock_in", "restock_out"].includes(label);
-                  const actionCellText =
-                    label === "stock_out" && meta.stock_out_reason
-                      ? `${actionDisplayLabel(label)} (${meta.stock_out_reason})`
-                      : actionDisplayLabel(label);
-                  return (
-                    <tr key={row.id} className="border-t border-slate-100 align-top">
-                      <td className="truncate px-3 py-3 text-slate-700" title={formatTimestamp(row.timestamp)}>
-                        {formatTimestamp(row.timestamp)}
-                      </td>
-                      <td className="truncate px-3 py-3 text-slate-700" title={`${actorDisplayName(row)} (${row.actor_role || "staff"})`}>
-                        {actorDisplayName(row)} <span className="text-slate-400">({row.actor_role || "staff"})</span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${badgeClass}`} title={actionCellText}>{actionCellText}</span>
-                      </td>
-                      <td className="truncate px-3 py-3 text-slate-700" title={`${qtyLabel} units · ${row.item_name || "-"}`}>
-                        <span className={signedQty < 0 ? "text-rose-700" : "text-emerald-800"}>{qtyLabel}</span>
-                        <span className="sr-only"> {qtyDirection}</span>
-                        {" "}units · {row.item_name || "-"}
-                      </td>
-                      <td className="truncate px-3 py-3 text-slate-700" title={`${row.source_text || "-"} → ${row.destination_text || "-"}`}>
-                        {row.source_text || "-"} <span className="text-slate-400">→</span> {row.destination_text || "-"}
-                      </td>
-                      <td className="truncate px-3 py-3 text-xs text-slate-400" title={row.batch_id || "-"}>
-                        {row.batch_id || (row.legacy_data_unavailable ? "Legacy/unknown lot" : "-")}
-                      </td>
-                      <td className="px-3 py-3 text-slate-700 tabular-nums">
-                        {row.resulting_balance == null ? "—" : row.resulting_balance}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-slate-600">
-                        {row.request_id ? <div>Request #{row.request_id}</div> : null}
-                        {row.receipt_number ? <div>Receipt {row.receipt_number}</div> : null}
-                        {row.billing_id && ['doctor','admin','accountant'].includes(user?.role) ? <a href={`/billing?billId=${row.billing_id}`} className="inline-flex min-h-11 items-center text-teal-700">Bill #{row.billing_id}</a> : null}
-                        {row.billing_status ? <div>{row.billing_status}</div> : null}
-                        {!row.request_id && !row.receipt_number && !row.billing_id && !row.billing_status ? "—" : null}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-slate-600">{row.expiry_date || "—"}</td>
-                      <td className="px-3 py-3 text-xs text-slate-600">
-                        {row.reason_note || "—"}
-                        {row.legacy_data_unavailable ? (
-                          <span className="mt-1 block font-semibold text-amber-800">Legacy/unavailable data</span>
-                        ) : null}
-                      </td>
-                      <td className="sticky right-0 z-10 bg-white px-3 py-3 text-right shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.12)]">
-                        {transactionId && isRestockTransfer ? (
-                          <div className="flex justify-end gap-1">
-                            {meta.request_id ? (
-                              <a
-                                href={`/supply-requests`}
-                                className="inline-grid size-9 place-items-center rounded-xl text-teal-600"
-                                title="Open supply request"
-                              >
-                                <RotateCcw className="size-4" />
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => reprintReceipt(transactionId)}
-                              className="inline-grid size-9 place-items-center rounded-xl bg-transparent text-teal-600 transition hover:text-teal-800"
-                              title="Print receipt"
-                              aria-label="Print receipt"
-                            >
-                              <Printer className="size-4" />
-                            </button>
-                          </div>
-                        ) : user?.role === "admin" && row.write_off_reversible ? (
-                          <button
-                            type="button"
-                            onClick={() => setWriteOffToReverse(row)}
-                            className="inline-flex min-h-9 items-center rounded-xl border border-rose-200 px-2 text-xs font-bold text-rose-700"
-                            title="Create a compensating reversal"
-                          >
-                            Reverse
-                          </button>
-                        ) : row.write_off_reversed ? (
-                          <span className="text-xs font-bold text-slate-500">Reversed</span>
-                        ) : <span className="text-xs text-slate-400">-</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <StockHistoryTable rows={rows} user={user} actionLabel={actionLabel} actionDisplayLabel={actionDisplayLabel}
+            badgeStyles={BADGE_STYLES} actorDisplayName={actorDisplayName} onPrint={reprintReceipt} onReverse={setWriteOffToReverse} />
         )}
 
         <div className="mt-4 flex items-center justify-between">
@@ -749,7 +635,7 @@ function StockActivityPage() {
         </div>
       </SectionCard>
 
-      {user?.role === "doctor" ? (
+      {user?.role === "doctor" && (isMobile || requestHistory.length > 0 || receiptIds.length > 0) ? (
         <SectionCard title="Supply requests and receipts">
           <p className="text-sm text-slate-600">
             Completed {requestHistory.filter((row) => row.status === "completed").length} · Cancelled{" "}

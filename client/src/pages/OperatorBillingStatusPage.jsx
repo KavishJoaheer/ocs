@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, DollarSign, FileText, ReceiptText, Search } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
+import { getPeriodRange, normalizeReportPeriod } from "../lib/reportPeriod.js";
+import "../components/finance-workspace/financeWorkspace.css";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
@@ -35,9 +41,9 @@ function BillingStat({ icon: Icon, label, value, tone = "teal" }) {
     amber: "bg-amber-50 text-amber-700",
   };
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+    <div className="finance-stat rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm" data-tone={tone}>
       <div className="flex items-center gap-3">
-        <span className={cx("grid size-10 place-items-center rounded-xl", tones[tone])}>
+        <span className={cx("finance-stat-icon grid size-10 place-items-center rounded-xl", tones[tone])}>
           <Icon className="size-5" aria-hidden="true" />
         </span>
         <div className="min-w-0">
@@ -62,7 +68,7 @@ function PaymentModal({ bill, busy, onClose, onConfirm }) {
     (method === "cash" || reference.trim().length >= 3) && confirmed;
 
   return (
-    <Modal open onClose={onClose} title={`Record payment · ${invoiceReference(bill)}`} size="md">
+    <Modal open onClose={onClose} title={`Record payment · ${invoiceReference(bill)}`} size="md" className="payment-follow-up-modal">
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -79,7 +85,7 @@ function PaymentModal({ bill, busy, onClose, onConfirm }) {
           }
         }}
       >
-        <div className="rounded-2xl bg-slate-50 p-4">
+        <div className="payment-balance-summary rounded-2xl bg-slate-50 p-4">
           <p className="font-black text-slate-950">{bill.patient_name}</p>
           <p className="mt-1 text-sm font-semibold text-slate-500">{bill.doctor_name} · {formatDate(bill.consultation_date)}</p>
           <p className="mt-3 text-xs font-bold uppercase tracking-wide text-slate-500">Outstanding</p>
@@ -125,13 +131,32 @@ function PaymentModal({ bill, busy, onClose, onConfirm }) {
 }
 
 export default function OperatorBillingStatusPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuth();
+  const isMobile = useIsMobile();
+  const doctorReadOnly = user.role === "doctor";
+  const initialRange = searchParams.has("period") && searchParams.get("preset") !== "all" ? getPeriodRange(normalizeReportPeriod(searchParams.get("period")), searchParams.get("date")) : { from: "", to: "" };
+  const [doctorOptions, setDoctorOptions] = useState([]);
+  const [doctorFilter, setDoctorFilter] = useState(searchParams.get("doctorId") || "");
+  const [dateFrom, setDateFrom] = useState(searchParams.get("dateFrom") || initialRange.from);
+  const [dateTo, setDateTo] = useState(searchParams.get("dateTo") || initialRange.to);
+  const [datePreset, setDatePreset] = useState(searchParams.get("preset") || (searchParams.has("period") ? "custom" : "all"));
+  const [ageBucket, setAgeBucket] = useState(searchParams.get("ageBucket") || "");
+  const [loadError, setLoadError] = useState("");
+  const dateBasis = searchParams.get("dateBasis") === "payment" ? "payment" : "visit";
+  const dateRangeInvalid = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+  useEffect(() => {
+    if (isMobile || doctorReadOnly) return undefined;
+    let ignore = false;
+    api.get("/doctors?includeInactive=1").then(rows => { if (!ignore) setDoctorOptions(rows); }).catch(() => {});
+    return () => { ignore = true; };
+  }, [doctorReadOnly, isMobile]);
   const requestedBillId = Number(searchParams.get("billId") || 0);
   const requestedBillOpenedRef = useRef(false);
   const refreshKey = useLiveRefreshKey();
-  const [activeView, setActiveView] = useState(searchParams.get("status") === "paid" ? "paid" : "pending");
+  const [activeView, setActiveView] = useState(searchParams.get("status") === "paid" ? "paid" : searchParams.get("view") === "invoices" && !searchParams.has("status") ? "all" : "pending");
   const [searchText, setSearchText] = useState(
-    Number.isInteger(requestedBillId) && requestedBillId > 0 ? String(requestedBillId) : "",
+    searchParams.get("q") || (Number.isInteger(requestedBillId) && requestedBillId > 0 ? String(requestedBillId) : ""),
   );
   const [loading, setLoading] = useState(true);
   const [bills, setBills] = useState([]);
@@ -143,15 +168,43 @@ export default function OperatorBillingStatusPage() {
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    if (isMobile) return;
+    const next = new URLSearchParams(searchParams);
+    const values = { q: searchText, doctorId: doctorFilter, dateFrom, dateTo, preset: datePreset,
+      ageBucket, status: activeView === "pending" ? "unpaid" : activeView === "paid" ? "paid" : "" };
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value); else next.delete(key);
+    }
+    if (doctorReadOnly) next.set("view", "invoices");
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [isMobile, searchText, doctorFilter, dateFrom, dateTo, datePreset, ageBucket, activeView, doctorReadOnly, searchParams, setSearchParams]);
+
+  const openPayment = useCallback(async (bill) => {
+    if (doctorReadOnly) return;
+    try {
+      setPaymentBill(await api.get(`/billing/${bill.id}`));
+    } catch (error) {
+      toast.error(error.message || "The invoice could not be opened.");
+    }
+  }, [doctorReadOnly]);
+
+
+  useEffect(() => {
     let ignore = false;
     const timeout = window.setTimeout(async () => {
-      setLoading(true);
+      if (dateRangeInvalid) { setLoading(false); return; }
+      setLoading(true); setLoadError("");
       try {
         const query = new URLSearchParams({ paginated: "1", limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
         if (activeView === "pending") query.set("status", "unpaid");
         if (activeView === "paid") query.set("status", "paid");
         if (searchText.trim()) query.set("search", searchText.trim());
         const summaryQuery = new URLSearchParams({ paginated: "1", limit: "1", offset: "0" });
+        for (const [key, value] of Object.entries({ doctorId: doctorFilter, dateFrom, dateTo, dateBasis })) {
+          if (value) { query.set(key, value); summaryQuery.set(key, value); }
+        }
+        if (ageBucket && activeView === "pending") query.set("ageBucket", ageBucket);
+        if (searchParams.get("patientId")) query.set("patientId", searchParams.get("patientId"));
         const [billingData, summaryData] = await Promise.all([
           api.get(`/billing?${query.toString()}`),
           api.get(`/billing/patient-summary?${summaryQuery.toString()}`),
@@ -168,40 +221,33 @@ export default function OperatorBillingStatusPage() {
             }), { total_billed: 0, paid_amount: 0, unpaid_amount: 0 })
           : (summaryData?.totals || { total_billed: 0, paid_amount: 0, unpaid_amount: 0 }));
       } catch (error) {
-        if (!ignore) toast.error(error.message || "Payment follow-up could not be loaded.");
+        if (!ignore) setLoadError(error.message || "Payment follow-up could not be loaded.");
       } finally {
         if (!ignore) setLoading(false);
       }
     }, 250);
     return () => { ignore = true; window.clearTimeout(timeout); };
-  }, [activeView, page, refreshKey, reloadToken, searchText]);
+  }, [activeView, page, refreshKey, reloadToken, searchText, doctorFilter, dateFrom, dateTo, dateBasis, dateRangeInvalid, ageBucket, searchParams]);
 
-  useEffect(() => { setPage(0); }, [activeView, searchText]);
+  useEffect(() => { setPage(0); }, [activeView, searchText, doctorFilter, dateFrom, dateTo, ageBucket]);
 
   useEffect(() => {
-    if (requestedBillOpenedRef.current || loading || !Number.isInteger(requestedBillId) || requestedBillId <= 0) return;
+    if (doctorReadOnly || requestedBillOpenedRef.current || loading || !Number.isInteger(requestedBillId) || requestedBillId <= 0) return;
     const bill = bills.find((row) => Number(row.id) === requestedBillId);
     if (!bill) return;
     requestedBillOpenedRef.current = true;
     if (bill.status === "unpaid" && !bill.payment_block && !bill.fee_review_required) void openPayment(bill);
-  }, [bills, loading, requestedBillId]);
+  }, [bills, loading, requestedBillId, doctorReadOnly, openPayment]);
 
   const viewTitle = useMemo(() => {
-    if (activeView === "pending") return "Payments to follow up";
+    if (activeView === "pending") return doctorReadOnly ? "Outstanding invoices" : "Payments to follow up";
     if (activeView === "paid") return "Paid invoices";
     return "All issued invoices";
-  }, [activeView]);
+  }, [activeView, doctorReadOnly]);
 
-  async function openPayment(bill) {
-    try {
-      setPaymentBill(await api.get(`/billing/${bill.id}`));
-    } catch (error) {
-      toast.error(error.message || "The invoice could not be opened.");
-    }
-  }
 
   async function recordPayment(payload) {
-    if (!paymentBill || paymentBusy) return;
+    if (doctorReadOnly || !paymentBill || paymentBusy) return;
     setPaymentBusy(true);
     try {
       await api.patch(`/billing/${paymentBill.id}/pay`, payload);
@@ -226,50 +272,72 @@ export default function OperatorBillingStatusPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5">
+    <div className="desktop-finance payment-follow-up mx-auto w-full max-w-7xl space-y-5">
+      {!isMobile ? <PatientWorkspaceHeader inlineActions title={doctorReadOnly ? "Issued invoices" : "Payment follow-up"}
+        subtitle={doctorReadOnly ? "Invoices for your consultations." : "Find issued invoices and collect outstanding balances."}
+        role={user.role} onRefresh={() => setReloadToken(value => value + 1)} refreshing={loading} refreshLabel="Refresh invoices"
+        actions={<Link to="/billing" className="finance-control finance-control-primary">Raise an invoice</Link>} /> : (
       <PageHeader eyebrow="Operator workspace" title="Payment follow-up" description="Collect outstanding payments and find every issued invoice without mixing this work with new billing." actions={<Link to="/billing" className="inline-flex min-h-11 items-center rounded-xl bg-[#17666a] px-4 text-sm font-black text-white">Raise an invoice</Link>} />
+      )}
 
+      {!loadError && !dateRangeInvalid && <div>
       <div className="grid gap-3 sm:grid-cols-3">
         <BillingStat icon={DollarSign} label="Total issued" value={formatCurrency(totals.total_billed)} />
         <BillingStat icon={CreditCard} label="Collected" value={formatCurrency(totals.paid_amount)} tone="emerald" />
         <BillingStat icon={ReceiptText} label="Still due" value={formatCurrency(totals.unpaid_amount)} tone="amber" />
       </div>
+      {!isMobile && <p className="finance-summary-note">Totals for {doctorReadOnly || doctorFilter ? "the selected doctor" : "all doctors"} · {dateBasis === "payment" ? "payment" : "visit"} dates.</p>}
+      </div>}
 
       <section className="rounded-[26px] border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex overflow-x-auto rounded-xl bg-slate-100 p-1">
+          <div className="finance-tabs flex overflow-x-auto rounded-xl bg-slate-100 p-1">
             {[["pending", "Pending payments"], ["paid", "Paid invoices"], ["all", "All issued"]].map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setActiveView(value)} className={cx("min-h-11 whitespace-nowrap rounded-lg px-4 text-sm font-black transition", activeView === value ? "bg-white text-[#17666a] shadow-sm" : "text-slate-500 hover:text-slate-800")}>{label}</button>
+              <button key={value} type="button" aria-pressed={activeView === value} onClick={() => setActiveView(value)} className={cx("min-h-11 whitespace-nowrap rounded-lg px-4 text-sm font-black transition", activeView === value ? "bg-white text-[#17666a] shadow-sm" : "text-slate-500 hover:text-slate-800")}>{label}</button>
             ))}
           </div>
           <label className="relative block w-full lg:max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-            <input value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Patient, OCS, invoice or doctor" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 font-semibold outline-none focus:border-[#2aa7a0] focus:bg-white" />
+            <input aria-label="Search invoices" value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Patient, OCS, invoice or doctor" className="min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 font-semibold outline-none focus:border-[#2aa7a0] focus:bg-white" />
           </label>
         </div>
 
+        {!isMobile && <div className="finance-filter-row">
+          {!doctorReadOnly && <label>Doctor<select aria-label="Invoice doctor" value={doctorFilter} onChange={event => setDoctorFilter(event.target.value)}><option value="">All doctors</option>
+            {doctorOptions.map(doctor => <option key={doctor.id} value={doctor.id}>{doctor.full_name}{doctor.is_active ? "" : " (inactive)"}</option>)}</select></label>}
+          <label>Date range<select aria-label="Invoice date range" value={datePreset} onChange={event => {
+            const preset = event.target.value; setDatePreset(preset);
+            if (preset === "all") { setDateFrom(""); setDateTo(""); }
+            else if (preset !== "custom") { setDateTo(todayInputValue()); setDateFrom(dayjs(todayInputValue()).subtract(preset === "today" ? 0 : preset === "week" ? 6 : 29, "day").format("YYYY-MM-DD")); }
+          }}><option value="all">All dates</option><option value="today">Today</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option><option value="custom">Custom dates</option></select></label>
+          <label>{dateBasis === "payment" ? "Payment" : "Visit"} from<input type="date" aria-label="Invoice date from" value={dateFrom} max={dateTo || undefined} onChange={event => { setDatePreset("custom"); setDateFrom(event.target.value); }} /></label>
+          <label>{dateBasis === "payment" ? "Payment" : "Visit"} to<input type="date" aria-label="Invoice date to" value={dateTo} min={dateFrom || undefined} onChange={event => { setDatePreset("custom"); setDateTo(event.target.value); }} /></label>
+          {activeView === "pending" && <label>Visit age<select aria-label="Outstanding visit age" value={ageBucket} onChange={event => setAgeBucket(event.target.value)}><option value="">Any age</option><option value="today">Today</option><option value="days_1_7">1–7 days</option><option value="days_8_30">8–30 days</option><option value="over_30">Over 30 days</option></select></label>}
+        </div>}
         <div className="mt-5">
           <h2 className="text-xl font-black text-slate-950">{viewTitle}</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">{billTotal} matching invoice{billTotal === 1 ? "" : "s"}</p>
         </div>
 
-        {loading ? (
+        {dateRangeInvalid || loadError ? <div role="alert" className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">{dateRangeInvalid ? "Choose an end date on or after the start date." : loadError}
+          {!dateRangeInvalid && <button type="button" className="ml-3 underline" onClick={() => setReloadToken(value => value + 1)}>Retry</button>}</div> : loading ? (
           <div className="py-12"><LoadingState label="Loading invoices" /></div>
         ) : bills.length ? (
           <>
             <div className="mt-4 hidden overflow-hidden rounded-2xl border border-slate-200 md:block">
               <div className="overflow-x-auto">
-                <table className="min-w-[860px] w-full text-left">
+                <table className="payment-table min-w-[860px] w-full text-left">
+                  <colgroup><col style={{width:"20%"}} /><col style={{width:"18%"}} /><col style={{width:"15%"}} /><col style={{width:"14%"}} /><col style={{width:"13%"}} /><col style={{width:"20%"}} /></colgroup>
                   <thead className="bg-slate-50 text-xs font-bold uppercase tracking-[0.14em] text-slate-500"><tr><th className="px-4 py-3">Patient</th><th className="px-4 py-3">Invoice</th><th className="px-4 py-3">Doctor</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead>
                   <tbody>
                     {bills.map((bill) => (
                       <tr key={bill.id} className="border-t border-slate-100">
                         <td className="px-4 py-4"><p className="font-black text-slate-950">{bill.patient_name}</p><p className="mt-1 text-xs font-semibold text-slate-500">{bill.patient_identifier || "No OCS number"}</p></td>
-                        <td className="px-4 py-4 text-sm font-semibold text-slate-600"><p>{invoiceReference(bill)}</p><p className="mt-1 text-xs text-slate-400">{formatDate(bill.consultation_date)}</p></td>
+                        <td className="px-4 py-4 text-sm font-semibold text-slate-600"><p>{invoiceReference(bill)}</p><p className="mt-1 text-xs text-slate-400">{formatDate(bill.consultation_date)}</p>{bill.status === "unpaid" && <span className="payment-age">{Math.max(0, dayjs(todayInputValue()).diff(dayjs(String(bill.consultation_date).slice(0, 10)), "day"))} days since visit</span>}</td>
                         <td className="px-4 py-4 text-sm font-semibold text-slate-600">{bill.doctor_name}</td>
                         <td className="px-4 py-4"><p className="font-black text-slate-950">{formatCurrency(bill.total_amount)}</p>{bill.status === "unpaid" ? <p className="mt-1 text-xs font-bold text-amber-700">Due {formatCurrency(outstandingAmount(bill))}</p> : null}</td>
                         <td className="px-4 py-4"><StatusBadge value={bill.payment_state || bill.status} />{bill.payment_date ? <p className="mt-1 text-xs text-slate-500">{formatPaymentMethod(bill.payment_method)} · {formatDate(bill.payment_date)}</p> : null}</td>
-                        <td className="px-4 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={() => openInvoicePdf(bill)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 hover:bg-slate-50">View invoice</button>{bill.status === "unpaid" ? <button type="button" disabled={bill.payment_block || bill.fee_review_required} onClick={() => openPayment(bill)} className="min-h-10 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{bill.payment_block || bill.fee_review_required ? "Needs billing review" : "Record payment"}</button> : null}</div></td>
+                        <td className="px-4 py-4"><div className="payment-row-actions flex justify-end gap-2"><Link to={`/billing?billId=${bill.id}`} className="finance-control min-h-10 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700">View invoice</Link>{!doctorReadOnly && bill.status === "unpaid" ? <button type="button" disabled={bill.payment_block || bill.fee_review_required} onClick={() => openPayment(bill)} className="min-h-10 rounded-xl bg-[#17666a] px-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{bill.payment_block || bill.fee_review_required ? "Needs billing review" : "Record payment"}</button> : null}</div></td>
                       </tr>
                     ))}
                   </tbody>
@@ -294,7 +362,7 @@ export default function OperatorBillingStatusPage() {
         )}
       </section>
 
-      {paymentBill ? <PaymentModal key={paymentBill.id} bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordPayment} /> : null}
+      {!doctorReadOnly && paymentBill ? <PaymentModal key={paymentBill.id} bill={paymentBill} busy={paymentBusy} onClose={() => !paymentBusy && setPaymentBill(null)} onConfirm={recordPayment} /> : null}
     </div>
   );
 }

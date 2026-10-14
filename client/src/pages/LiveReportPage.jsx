@@ -1,3 +1,5 @@
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import "../components/finance-workspace/financeWorkspace.css";
 import FinancialReconciliation from "../components/FinancialReconciliation.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -69,6 +71,7 @@ function buildTopLocationRows(rows, limit = LOCATION_BAR_LIMIT) {
 
 function billingHref({ status, patientId, billId, period, date, dateBasis, doctorId } = {}) {
   const params = new URLSearchParams();
+  if (!billId) params.set("view", "invoices");
   if (status) params.set("status", status);
   if (patientId) params.set("patientId", String(patientId));
   if (billId) params.set("billId", String(billId));
@@ -107,6 +110,7 @@ function PeriodControls({
           <button
             key={option.id}
             type="button"
+            aria-pressed={period === option.id}
             onClick={() => onPeriodChange(option.id)}
             className={cx(
               "shrink-0 rounded-xl px-3.5 text-sm font-semibold transition",
@@ -188,7 +192,7 @@ function EmptyPanel({ title, detail }) {
 
 function StatementStat({ label, value, hint, tone = "default", to }) {
   const className = cx(
-    "flex h-full min-h-[6.5rem] flex-col justify-center gap-1.5 px-5 py-5 xl:min-h-[7.5rem]",
+    "revenue-statement-stat flex h-full min-h-[6.5rem] flex-col justify-center gap-1.5 px-5 py-5 xl:min-h-[7.5rem]",
     tone === "unpaid" && "bg-rose-50/60",
     tone === "negative" && "bg-rose-50/60",
     to && "transition hover:bg-rose-50",
@@ -209,12 +213,12 @@ function StatementStat({ label, value, hint, tone = "default", to }) {
   );
   if (to) {
     return (
-      <Link to={to} className={className}>
+      <Link to={to} className={className} data-tone={tone}>
         {body}
       </Link>
     );
   }
-  return <div className={className}>{body}</div>;
+  return <div className={className} data-tone={tone}>{body}</div>;
 }
 
 function DesktopBillTable({ rows, onOpen, showDoctor }) {
@@ -420,6 +424,7 @@ function SegmentedToggle({ value, onChange, options, ariaLabel }) {
         <button
           key={option.id}
           type="button"
+          aria-pressed={value === option.id}
           onClick={() => onChange(option.id)}
           className={cx(
             "rounded-lg px-3 py-1.5 text-xs font-semibold",
@@ -457,6 +462,7 @@ export default function LiveReportPage() {
   const [patientQuery, setPatientQuery] = useState("");
   const [patientsVisible, setPatientsVisible] = useState(PATIENT_PAGE_SIZE);
   const refreshKey = useLiveRefreshKey();
+  const [reportRefreshToken, setReportRefreshToken] = useState(0);
   const hasReportRef = useRef(false);
   const isAdmin = user.role === "admin";
   const isDoctor = user.role === "doctor";
@@ -510,7 +516,7 @@ export default function LiveReportPage() {
     return () => {
       ignore = true;
     };
-  }, [anchorDate, dateBasis, doctorScope, isAdmin, period, selectedDoctorId, refreshKey]);
+  }, [anchorDate, dateBasis, doctorScope, isAdmin, period, selectedDoctorId, refreshKey, reportRefreshToken]);
 
   useEffect(() => {
     setBillsVisible(BILL_PAGE_SIZE);
@@ -711,8 +717,12 @@ export default function LiveReportPage() {
   }
 
   return (
-    <div className={cx("space-y-5 md:space-y-6", refreshing && "opacity-90")}>
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div className={cx("desktop-finance revenue-report space-y-5 md:space-y-6", refreshing && "opacity-90")}>
+      <div className={isMobile ? "flex flex-col gap-4" : "space-y-4"}>
+        {!isMobile && <PatientWorkspaceHeader inlineActions title="Revenue Report" subtitle={`${rangeLabel || "Selected period"}${report.volumeReport?.entityLabel ? ` · ${report.volumeReport.entityLabel}` : ""}`}
+          role={user.role} onRefresh={() => setReportRefreshToken(value => value + 1)} refreshing={refreshing} refreshLabel="Refresh revenue report"
+          actions={<button type="button" disabled={refreshing || loading} onClick={exportCsv} className="finance-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} />}
+        {isMobile &&
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 md:hidden">
             Analytics
@@ -729,8 +739,8 @@ export default function LiveReportPage() {
               ? "Collected follows payment date. Unpaid is still visits in this window."
               : "Money follows the visit date."}
           </p>
-        </div>
-        <div className="flex min-w-0 flex-col gap-2 md:items-end">
+        </div>}
+        <div className={isMobile ? "flex min-w-0 flex-col gap-2" : "revenue-controls"}>
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
             {isAdmin && doctors.length > 0 ? (
               <>
@@ -766,6 +776,7 @@ export default function LiveReportPage() {
                 ) : null}
               </>
             ) : null}
+            {!isMobile && <span className="text-xs font-semibold text-[#5d767e]">Figures based on</span>}
             <SegmentedToggle
               ariaLabel="Money date basis"
               value={dateBasis}
@@ -775,14 +786,14 @@ export default function LiveReportPage() {
                 { id: "payment", label: "Payment date" },
               ]}
             />
-            <button
+            {isMobile && <button
               type="button"
               onClick={exportCsv}
               className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
             >
               <Download className="size-3.5" />
               CSV
-            </button>
+            </button>}
           </div>
           <PeriodControls
             period={period}
@@ -833,7 +844,7 @@ export default function LiveReportPage() {
           </section>
 
           <section className="hidden overflow-hidden rounded-2xl border border-slate-100 bg-white md:block">
-            <div className="grid xl:grid-cols-12">
+            <div className="revenue-statement grid xl:grid-cols-12">
               <div className="flex flex-col justify-center border-l-4 border-l-ocs-teal px-6 py-5 xl:col-span-4 xl:py-6">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Your net</p>
                 <p className="mt-2 text-4xl font-black tabular-nums tracking-tight text-ocs-teal">
@@ -844,7 +855,7 @@ export default function LiveReportPage() {
                   {transportCount === 1 ? "" : "s"} seen
                 </p>
               </div>
-              <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
+              <div className="revenue-statement-metrics grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
                 <StatementStat label="Paid" value={formatCurrency(collected)} />
                 <StatementStat label={dateBasis === "payment" ? "Outstanding" : "Unpaid"} value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} hint={dateBasis === "payment" ? "Invoices with payment activity in this period" : undefined} />
                 <StatementStat label="Visits" value={visitCount} />
@@ -895,7 +906,7 @@ export default function LiveReportPage() {
           </section>
 
           <section className="hidden overflow-hidden rounded-2xl border border-slate-100 bg-white md:block">
-            <div className="grid xl:grid-cols-12">
+            <div className="revenue-statement grid xl:grid-cols-12">
               <div className="flex flex-col justify-center border-l-4 border-l-ocs-teal px-6 py-5 xl:col-span-4 xl:py-6">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
                   Collected this period
@@ -910,7 +921,7 @@ export default function LiveReportPage() {
                 </p>
                 {refunded > 0 ? <p className="mt-1 text-xs font-semibold text-rose-700">After {formatCurrency(refunded)} in credit notes</p> : null}
               </div>
-              <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
+              <div className="revenue-statement-metrics grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 xl:col-span-8 xl:border-l xl:border-t-0">
                 <StatementStat label={dateBasis === "payment" ? "Outstanding" : "Unpaid"} value={formatCurrency(unpaid)} tone="unpaid" to={unpaidHref} hint={dateBasis === "payment" ? "Invoices with payment activity in this period" : undefined} />
                 <StatementStat
                   label="Doctor net"

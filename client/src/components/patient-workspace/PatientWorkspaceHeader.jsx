@@ -4,7 +4,7 @@ import PushNotificationBanner from "../PushNotificationBanner.jsx";
 import { cx } from "../../lib/utils.js";
 import "./patientWorkspace.css";
 
-export default function PatientWorkspaceHeader({ title, subtitle, role, actions, children, onRefresh, refreshing, refreshLabel = "Refresh patient workspace" }) {
+export default function PatientWorkspaceHeader({ title, subtitle, role, actions, children, onRefresh, refreshing, refreshLabel = "Refresh patient workspace", inlineActions = false }) {
   return (
     <header className="patient-workspace-header rounded-[28px] bg-gradient-to-r from-[#e3f5f0] via-[#eef9f5] to-[#fff9ed] p-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -13,6 +13,7 @@ export default function PatientWorkspaceHeader({ title, subtitle, role, actions,
           {subtitle ? <p className="mt-1 break-words text-xs text-[#376168] sm:text-sm">{subtitle}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {inlineActions && actions ? <div className="mr-2 flex flex-wrap items-center gap-2">{actions}</div> : null}
           <PushNotificationBanner compact role={role} />
           <AppUpdateBanner compact />
           {onRefresh ? (
@@ -22,10 +23,10 @@ export default function PatientWorkspaceHeader({ title, subtitle, role, actions,
           ) : null}
         </div>
       </div>
-      {children || actions ? (
+      {children || (!inlineActions && actions) ? (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">{children}</div>
-          <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>
+          {!inlineActions ? <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
     </header>
