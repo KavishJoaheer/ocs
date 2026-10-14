@@ -36,7 +36,7 @@ for (const width of [320,360,390,430]) {
     await expect(page.getByRole("button", { name: "Physical stock", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.getByPlaceholder("Search items").fill(name);
     const card = page.locator(".doctor-inventory-card").filter({ hasText: name });
-    await expect(card).toContainText("3 available · tablet"); await expect(card).toContainText("Minimum: 5"); await expect(card).toContainText("Expiry:");
+    await expect(card).toContainText("3 available · tablet"); await expect(card).not.toContainText("Minimum:"); await expect(card).toContainText("Expiry:");
     await expect(card.getByText("Selling price: Rs 10.00", { exact: true })).toBeVisible();
     expect((await card.getByText("Selling price: Rs 10.00", { exact: true }).boundingBox()).y)
       .toBeGreaterThan((await card.locator("p").filter({ hasText: /^3 available/ }).boundingBox()).y);
@@ -134,7 +134,8 @@ test("expired mobile stock can be written off without being used for a patient",
   const before = openE2eDb(); const billCount = before.prepare("SELECT COUNT(*) AS count FROM billing").get().count; before.close();
   await page.setViewportSize({ width: 360, height: 844 }); await page.goto(`${STAFF}/inventory`);
   await page.getByRole("button", { name: /^Expired:/ }).click(); await page.getByPlaceholder("Search items").fill(name);
-  await expect(page.getByText("0 available · tablet · 3 in stock")).toBeVisible();
+  await expect(page.getByText("0 available · tablet", { exact: true })).toBeVisible();
+  await expect(page.locator(".doctor-inventory-card").filter({ hasText: name })).not.toContainText("in stock");
   await page.getByRole("button", { name: "Use", exact: true }).click(); const sheet = page.getByRole("dialog", { name, exact: true });
   await expect(sheet.getByRole("button", { name: "Confirm patient use", exact: true })).toBeDisabled();
   await sheet.getByRole("button", { name: "Expired", exact: true }).click();

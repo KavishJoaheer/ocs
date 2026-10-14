@@ -2809,7 +2809,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
   const low = isLowStock ?? isAtOrBelowPar(item);
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
-  const { atp, onHand, minimum } = inventoryQuantityBreakdown(item);
+  const { atp } = inventoryQuantityBreakdown(item);
   const out = isOutOfStock(item);
   const problem = !isService && (low || out || expired || quarantined);
   const qtyTone = problem ? "text-rose-700" : "text-slate-900";
@@ -2831,7 +2831,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
           <InventoryStatusChips item={item} hideCost />
           {!isService ? (
             <div className={cx("mt-1", qtyTone)}>
-              {doctorPresentation ? <p className="text-sm leading-snug text-[#376168]" title={ATP_HELP_TEXT}><strong className={atp <= 0 ? "text-rose-700" : "text-[#173f4a]"}>{atp} available</strong>{item.unit ? ` · ${item.unit}` : ""}{onHand > atp ? ` · ${onHand} in stock` : ""}{low ? <span className="block text-xs">Minimum: {minimum}</span> : null}</p> : <InventoryQuantityLines
+              {doctorPresentation ? <p className="text-sm leading-snug text-[#376168]" title={ATP_HELP_TEXT}><strong className={atp <= 0 ? "text-rose-700" : "text-[#173f4a]"}>{atp} available</strong>{item.unit ? ` · ${item.unit}` : ""}</p> : <InventoryQuantityLines
                 item={item}
                 compact
                 firstAtp
