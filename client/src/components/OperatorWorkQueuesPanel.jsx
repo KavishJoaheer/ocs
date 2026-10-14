@@ -250,7 +250,7 @@ export default function OperatorWorkQueuesPanel({
           {QUEUE_DEFS.filter((queue) => {
             if (queue.kind === "history") return true;
             const count = Number(counts[queue.key] || 0);
-            return count > 0 || (Boolean(urlQueue) && active === queue.id);
+            return count > 0 || active === queue.id;
           }).map((queue) => {
             const count = queue.kind === "history" ? Number(history.total || 0) : Number(counts[queue.key] || 0);
             return (

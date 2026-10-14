@@ -1,0 +1,18 @@
+.inventory-workspace { color: #173f4a; }
+.inventory-workspace button, .inventory-receive-form button { font-size: .8125rem; font-weight: 600; line-height: 1.4; }
+.inventory-workspace button, .inventory-workspace a[class*="inline-flex"], .inventory-receive-form button { border-radius: 999px; }
+.inventory-workspace input, .inventory-workspace select { font-size: .875rem; }
+.inventory-workspace button:focus-visible, .inventory-workspace a:focus-visible, .inventory-workspace summary:focus-visible { outline: 2px solid #137b80; outline-offset: 3px; }
+.inventory-workspace button[class*="bg-[#2d8f98]"], .inventory-workspace button[class*="bg-[#4FB8B3]"], .inventory-workspace button[class*="bg-ocs-teal"], .inventory-workspace a[class*="bg-[#2d8f98]"], .inventory-receive-form button[type="submit"] { background: #137b80; }
+.inventory-workspace [role="tab"][aria-selected="true"], .inventory-workspace nav button[aria-pressed="true"], .inventory-workspace .inventory-health-filter[aria-pressed="true"] { background: #137b80; border-color: #137b80; color: white; }
+.inventory-workspace .inventory-row-use { background: #137b80; border-color: #137b80; color: white; }
+.inventory-workspace button.inventory-row-request { background: white; border: 1px solid #cde2de; color: #137b80; box-shadow: none; }
+.inventory-workspace .inventory-stock-table { border-color: #d5e4e1; }
+.inventory-workspace .inventory-stock-table th { background: #edf7f3; color: #376168; letter-spacing: .04em; }
+.inventory-workspace .inventory-stock-table td { padding-top: .25rem; padding-bottom: .25rem; }
+.inventory-workspace .inventory-stock-table [data-stock-name] { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
+.inventory-workspace .inventory-stock-table [class*="text-slate-400"] { color: #657c82; }
+.inventory-workspace .inventory-stock-table tbody tr:hover { background-color: #f0faf6; }
+.inventory-receive-form label { display: block; }
+.inventory-workspace [class*="text-gray-400"], .inventory-workspace [class*="text-slate-400"] { color: #657c82; }
+.inventory-workspace .inventory-summary > div[class*="rounded-2xl"] { border-radius: 26px; border-color: #d5e4e1; }

@@ -36,6 +36,9 @@ import BatchOpeningDataModal from "../components/inventory/BatchOpeningDataModal
 import DoctorTransferModal from "../components/inventory/DoctorTransferModal.jsx";
 import ExceptionalCorrectionModal from "../components/inventory/ExceptionalCorrectionModal.jsx";
 import InventoryQuantitySummary from "../components/inventory/InventoryQuantitySummary.jsx";
+import InventoryWorkspaceHeader from "../components/inventory/InventoryWorkspaceHeader.jsx";
+import InventoryStockHealth from "../components/inventory/InventoryStockHealth.jsx";
+import "../components/inventory/inventoryWorkspace.css";
 import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
 import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
 import TransferReceiptModal from "../components/inventory/TransferReceiptModal.jsx";
@@ -851,6 +854,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
           <label className="mt-4 block space-y-2">
             <span className="text-sm font-semibold text-slate-700">Reason</span>
             <select
+              aria-label="Reason"
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3"
@@ -868,6 +872,7 @@ function StockOutModal({ open, item, isSaving, assignedPatients = [], onClose, o
               <span className="text-sm font-semibold text-slate-700">Affected lot</span>
               {lots.length ? (
                 <select
+                  aria-label="Affected lot"
                   value={legacyUnknownLot ? "legacy" : selectedLotId}
                   onChange={(event) => {
                     if (event.target.value === "legacy") {
@@ -1975,8 +1980,20 @@ function InventoryActionButtons({
 
   return (
     <div className="ml-auto flex w-fit items-center justify-end gap-2">
+      {isDoctor && doctorViewIsMy && onStockOut ? (
+        <button
+          type="button"
+          onClick={() => onStockOut(item)}
+          disabled={Number(item.quantity || 0) < 1}
+          className={`${stockOutBtn} inventory-row-use`}
+        >
+          <Minus className="size-3.5 shrink-0" />
+          Use
+        </button>
+      ) : null}
+
       {isDoctor && onRequestItem ? (
-        <button type="button" onClick={() => onRequestItem(item)} className={restockBtn}>
+        <button type="button" onClick={() => onRequestItem(item)} className={`${restockBtn} ${doctorViewIsMy ? "inventory-row-request" : ""}`}>
           <Truck className="size-3.5 shrink-0" />
           {doctorViewIsOcs ? "Add to request" : "Request this item"}
         </button>
@@ -1986,18 +2003,6 @@ function InventoryActionButtons({
         <button type="button" onClick={() => onRestockMyInventory(item)} className={restockBtn}>
           <Truck className="size-3.5 shrink-0" />
           Emergency stock override
-        </button>
-      ) : null}
-
-      {isDoctor && doctorViewIsMy && onStockOut ? (
-        <button
-          type="button"
-          onClick={() => onStockOut(item)}
-          disabled={Number(item.quantity || 0) < 1}
-          className={stockOutBtn}
-        >
-          <Minus className="size-3.5 shrink-0" />
-          Use
         </button>
       ) : null}
 
@@ -3181,6 +3186,10 @@ export default function InventoryPage() {
   const doctorViewIsOcs = isDoctor && doctorContext === "ocs";
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
+  const isCompactInventory = useIsMobile(1024);
+  const desktopWorkspace = !isCompactInventory && (isDoctor || isOperator);
+  const [stockKind, setStockKind] = useState("stock");
+  const InventoryHeader = desktopWorkspace ? InventoryWorkspaceHeader : PageHeader;
   const showDeleteStockItem = isAdmin && contextIsOcs;
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
@@ -3200,6 +3209,7 @@ export default function InventoryPage() {
     selectedContextDoctorId,
     data?.selected_doctor_stock,
   ]);
+  const viewItems = useMemo(() => desktopWorkspace ? items.filter(item => stockKind === "services" ? item.item_kind === "service" : item.item_kind !== "service") : items, [items, desktopWorkspace, stockKind]);
   /** Always show all seven category pills; empty categories display an empty list. */
   const categoryFolders = folders;
   const inventoryListQuery = useMemo(
@@ -3230,12 +3240,12 @@ export default function InventoryPage() {
   const summary = data?.summary || {};
   const folderCounts = useMemo(() => {
     const map = new Map();
-    for (const item of items) {
+    for (const item of viewItems) {
       const id = String(item.folder_id);
       map.set(id, (map.get(id) || 0) + 1);
     }
     return map;
-  }, [items]);
+  }, [viewItems]);
   const chaseCounts = useMemo(
     () => ({
       low: items.filter((item) => isAtOrBelowPar(item)).length,
@@ -3265,8 +3275,8 @@ export default function InventoryPage() {
   const inventoryTableScrollClass = isOperator
     ? "max-h-[min(calc(100svh-16rem),960px)]"
     : "max-h-[560px]";
-  const doctorDesktopBagTable = isDoctor && doctorViewIsMy;
-  const staffDoctorBagTable = canManageOcs && !contextIsOcs;
+  const doctorDesktopBagTable = isDoctor && doctorViewIsMy && !(desktopWorkspace && stockKind === "services");
+  const staffDoctorBagTable = canManageOcs && !contextIsOcs && !(desktopWorkspace && stockKind === "services");
   const stickyInventoryActions = doctorDesktopBagTable || staffDoctorBagTable;
   const inventoryActionsColWidth = stickyInventoryActions ? "28%" : "9.75rem";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : stickyInventoryActions ? "48rem" : "42rem";
@@ -3548,7 +3558,7 @@ export default function InventoryPage() {
   const filteredItems = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const folderId = selectedView && selectedView !== "all" ? selectedView : "";
-    const source = folderId ? items.filter((item) => String(item.folder_id) === String(folderId)) : items;
+    const source = folderId ? viewItems.filter((item) => String(item.folder_id) === String(folderId)) : viewItems;
     const unpricedKeys = new Set(
       (Array.isArray(unpricedProductKeys) ? unpricedProductKeys : []).map((key) => String(key || "").trim().toLowerCase()).filter(Boolean),
     );
@@ -3568,7 +3578,7 @@ export default function InventoryPage() {
         return Number(item.cost_price || 0) === 0 || Number(item.missing_cost_quantity || item.unpriced_units || 0) > 0;
       });
   }, [
-    items,
+    viewItems,
     search,
     selectedView,
     showLowStockOnly,
@@ -3580,10 +3590,14 @@ export default function InventoryPage() {
     unpricedFromBags,
     unpricedProductKeys,
   ]);
-  const serviceOnlyView = filteredItems.length > 0 && filteredItems.every((item) => item.item_kind === "service");
+  const serviceOnlyView = desktopWorkspace ? stockKind === "services" : filteredItems.length > 0 && filteredItems.every((item) => item.item_kind === "service");
 
   const sortedItems = useMemo(() => {
     const rows = [...filteredItems];
+    if (sortMode === "price_asc" || sortMode === "price_desc") {
+      rows.sort((a, b) => (Number(a.selling_price || 0) - Number(b.selling_price || 0)) * (sortMode === "price_desc" ? -1 : 1));
+      return rows;
+    }
     if (sortMode === "name_asc") {
       rows.sort((a, b) => String(a.item_name || "").localeCompare(String(b.item_name || ""), undefined, { sensitivity: "base" }));
       return rows;
@@ -3655,7 +3669,7 @@ export default function InventoryPage() {
   useEffect(() => {
     setCurrentPage(1);
     setMobileBagVisibleCount(20);
-  }, [search, selectedView, showLowStockOnly, showOutOfStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showExpiredOnly, sortMode, doctorContext]);
+  }, [search, selectedView, showLowStockOnly, showOutOfStockOnly, showNearExpiryOnly, showMissingExpiryOnly, showExpiredOnly, sortMode, doctorContext, stockKind]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -3828,6 +3842,7 @@ export default function InventoryPage() {
   }
 
   function applyChaseFilter(kind) {
+    if (desktopWorkspace) setStockKind("stock");
     const next =
       (kind === "low" && showLowStockOnly) ||
       (kind === "out" && showOutOfStockOnly) ||
@@ -3851,6 +3866,7 @@ export default function InventoryPage() {
   }
 
   function applyUnpricedFilter() {
+    if (desktopWorkspace) setStockKind("stock");
     setLogisticsTab("stock");
     setSelectedView("all");
     setActiveCategory("All");
@@ -4635,10 +4651,79 @@ export default function InventoryPage() {
     }
   }
 
+  const inventoryNavigation = (
+    <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
+          <label className="block sm:hidden">
+            <span className="mb-1 block text-sm font-semibold text-slate-600">Inventory section</span>
+            <select
+              value={logisticsTab}
+              onChange={(event) => setLogisticsTab(event.target.value)}
+              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-900 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2d8f98]"
+            >
+              {inventorySections.map((tab) => (
+                <option key={tab.id} value={tab.id}>{tab.label}{tab.badge > 0 ? ` · ${tab.badge} waiting` : ""}</option>
+              ))}
+            </select>
+          </label>
+          <div
+            ref={inventoryTabListRef}
+            role="tablist"
+            aria-label="Inventory sections"
+            className="hidden w-full min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-1 sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+          {inventorySections.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={logisticsTab === tab.id}
+              aria-current={logisticsTab === tab.id ? "page" : undefined}
+              onClick={() => setLogisticsTab(tab.id)}
+              className={`inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-1 rounded-full px-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98] ${
+                logisticsTab === tab.id
+                  ? "bg-[#2d8f98] text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span>{tab.label}</span>
+              {tab.badge > 0 ? (
+                <span
+                  className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
+                    logisticsTab === tab.id ? "bg-white/90 text-[#2d8f98]" : "bg-[#2d8f98] text-white"
+                  }`}
+                >
+                  {tab.badge > 9 ? "9+" : tab.badge}
+                </span>
+              ) : null}
+            </button>
+          ))}
+          </div>
+        </div>
+  );
+  const scopeLabel = isDoctor ? doctorViewIsOcs ? "OCS depot" : "My bag" : staffLocationHeading;
+  function selectStockKind(kind) {
+    setStockKind(kind); setSortMode("name_asc");
+    setSelectedView("all"); setActiveCategory("All");
+    setShowLowStockOnly(false); setShowOutOfStockOnly(false); setShowNearExpiryOnly(false);
+    setShowMissingExpiryOnly(false); setShowExpiredOnly(false); setShowUnpricedOnly(false);
+    setUnpricedFromBags(false); setCurrentPage(1);
+  }
+  function selectStockFolder(value, folder) {
+    if (desktopWorkspace && value !== "all") {
+      const folderItems = items.filter(item => String(item.folder_id) === String(value));
+      if (folderItems.length) {
+        const nextKind = folderItems.every(item => item.item_kind === "service") ? "services" : folderItems.every(item => item.item_kind !== "service") ? "stock" : stockKind;
+        if (nextKind !== stockKind) selectStockKind(nextKind);
+      }
+    }
+    setSelectedView(value); setActiveCategory(folder?.name || "All");
+  }
+
   function renderMenuSummaries(className) {
-    if (!canUseAdminInventory || logisticsTab === "queues") return null;
+    if (!canUseAdminInventory || logisticsTab === "queues" || (desktopWorkspace && logisticsTab === "stock" && stockKind === "services")) return null;
+    if (desktopWorkspace && showScopeLoading) return <p role="status" className="text-sm text-[#5b7379]">Updating stock location…</p>;
     return (
-      <div className={className}>
+      <div className={cx(className, "inventory-summary")}>
         <InventoryTabSummaries
           tab={logisticsTab}
           summaries={data?.tab_summaries}
@@ -4713,8 +4798,9 @@ export default function InventoryPage() {
           />
         </>
       ) : (
-        <div className={cx(pageContainerClass, isOperator ? "space-y-4 pb-1" : "space-y-6")}>
-      <PageHeader
+        <div className={cx(pageContainerClass, desktopWorkspace && "inventory-workspace", isOperator || desktopWorkspace ? "space-y-4 pb-1" : "space-y-6")}>
+      <InventoryHeader
+        role={user.role} refreshing={listRefreshing} onRefresh={() => { void load(undefined, undefined, { silent: true }); if (logisticsTab === "queues") notifySupplyRequestsUpdated(); }}
         className={isOperator ? "mb-0" : undefined}
         eyebrow="Logistics"
         title={
@@ -4836,7 +4922,10 @@ export default function InventoryPage() {
         }
       />
 
-      {renderMenuSummaries("hidden lg:block") || (isDoctor ? (
+      {desktopWorkspace && canManageOcs ? inventoryNavigation : null}
+      {desktopWorkspace && isDoctor ? <nav aria-label="Inventory location" className="flex gap-2">{[{ id: "my", label: "My bag" }, { id: "ocs", label: "OCS depot" }].map(scope => <button key={scope.id} type="button" aria-pressed={doctorContext === scope.id} onClick={() => handleDoctorContextChange(scope.id)} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#d5e4e1] bg-white px-4 text-sm font-semibold text-[#376168]">{scope.label}</button>)}</nav> : null}
+      {desktopWorkspace && isDoctor && stockKind !== "services" ? <InventoryStockHealth scope={scopeLabel} counts={chaseCounts} filters={{ low: showLowStockOnly, out: showOutOfStockOnly, near: showNearExpiryOnly, missing: showMissingExpiryOnly, expired: showExpiredOnly }} onFilter={applyChaseFilter} loading={showScopeLoading} /> : null}
+      {renderMenuSummaries("hidden lg:block") || (isDoctor && !desktopWorkspace ? (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           <SummaryCard
             title="My bag at or below par"
@@ -4886,55 +4975,7 @@ export default function InventoryPage() {
         </div>
       ) : null)}
 
-      {canManageOcs ? (
-        <div className="relative w-full min-w-0 max-w-full overflow-hidden [contain:inline-size]">
-          <label className="block sm:hidden">
-            <span className="mb-1 block text-sm font-semibold text-slate-600">Inventory section</span>
-            <select
-              value={logisticsTab}
-              onChange={(event) => setLogisticsTab(event.target.value)}
-              className="min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-900 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#2d8f98]"
-            >
-              {inventorySections.map((tab) => (
-                <option key={tab.id} value={tab.id}>{tab.label}{tab.badge > 0 ? ` · ${tab.badge} waiting` : ""}</option>
-              ))}
-            </select>
-          </label>
-          <div
-            ref={inventoryTabListRef}
-            role="tablist"
-            aria-label="Inventory sections"
-            className="hidden w-full min-w-0 max-w-full gap-2 overflow-x-auto overflow-y-hidden pb-1 sm:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-          {inventorySections.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={logisticsTab === tab.id}
-              aria-current={logisticsTab === tab.id ? "page" : undefined}
-              onClick={() => setLogisticsTab(tab.id)}
-              className={`inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-1 rounded-full px-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d8f98] ${
-                logisticsTab === tab.id
-                  ? "bg-[#2d8f98] text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <span>{tab.label}</span>
-              {tab.badge > 0 ? (
-                <span
-                  className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
-                    logisticsTab === tab.id ? "bg-white/90 text-[#2d8f98]" : "bg-[#2d8f98] text-white"
-                  }`}
-                >
-                  {tab.badge > 9 ? "9+" : tab.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-          </div>
-        </div>
-      ) : null}
+      {!desktopWorkspace && canManageOcs ? inventoryNavigation : null}
 
       {canManageOcs && logisticsTab === "queues" ? (
         <Suspense fallback={<LoadingState label="Loading inventory tasks" />}>
@@ -5012,8 +5053,9 @@ export default function InventoryPage() {
       {!canManageOcs || logisticsTab === "stock" ? (
       <SectionCard
         className={isOperator ? "pb-3" : undefined}
+        subtitle={desktopWorkspace && stockKind === "services" ? `${scopeLabel} · Billing services have no stock quantities or expiry` : undefined}
         title={
-          isDoctor
+          desktopWorkspace && stockKind === "services" ? "Services" : isDoctor
             ? doctorViewIsOcs
               ? "OCS depot"
               : "Bag items"
@@ -5023,8 +5065,11 @@ export default function InventoryPage() {
         }
       >
         <div className="sticky top-0 z-20 mb-3 space-y-2 border-b border-slate-100 bg-white pb-3">
+
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {isDoctor ? (
+          {desktopWorkspace ? <nav aria-label="Inventory item type" className="flex shrink-0 items-center gap-2">{[{ id: "stock", label: "Physical stock" }, { id: "services", label: "Services" }].map(kind => <button key={kind.id} type="button" aria-pressed={stockKind === kind.id} onClick={() => selectStockKind(kind.id)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d5e4e1] bg-white px-4 text-sm font-semibold text-[#376168]">{kind.label}<span className="rounded-full bg-[#e6f2ef] px-2 py-0.5 text-xs text-[#376168]">{items.filter(item => kind.id === "services" ? item.item_kind === "service" : item.item_kind !== "service").length}</span></button>)}</nav> : null}
+            {isDoctor ? (desktopWorkspace ? null :
               <div className="flex shrink-0 flex-wrap gap-2">
                 <button
                   type="button"
@@ -5083,11 +5128,8 @@ export default function InventoryPage() {
               value={selectedView || "all"}
               folders={categoryFolders}
               counts={folderCounts}
-              totalCount={items.length}
-              onChange={(value, folder) => {
-                setSelectedView(value);
-                setActiveCategory(folder?.name || "All");
-              }}
+              totalCount={viewItems.length}
+              onChange={selectStockFolder}
             />
             <button
               type="button"
@@ -5107,42 +5149,39 @@ export default function InventoryPage() {
                 value={selectedView || "all"}
                 folders={categoryFolders}
                 counts={folderCounts}
-                totalCount={items.length}
-                onChange={(value, folder) => {
-                  setSelectedView(value);
-                  setActiveCategory(folder?.name || "All");
-                }}
+                totalCount={viewItems.length}
+                onChange={selectStockFolder}
               />
             </div>
-            {!canManageOcs ? <button
+            {!canManageOcs && !desktopWorkspace ? <button
               type="button"
               onClick={() => applyChaseFilter("low")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showLowStockOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Low stock ({chaseCounts.low})
             </button> : null}
-            {!canManageOcs ? <button
+            {!canManageOcs && !desktopWorkspace ? <button
               type="button"
               onClick={() => applyChaseFilter("out")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showOutOfStockOnly ? "bg-slate-800 text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Out of stock ({chaseCounts.out})
             </button> : null}
-            {!canManageOcs ? <button
+            {!canManageOcs && !desktopWorkspace ? <button
               type="button"
               onClick={() => applyChaseFilter("near")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showNearExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Near expiry ({chaseCounts.near})
             </button> : null}
-            {!canManageOcs ? <button
+            {!canManageOcs && !desktopWorkspace ? <button
               type="button"
               onClick={() => applyChaseFilter("missing")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${showMissingExpiryOnly ? "bg-[#4FB8B3] text-white" : "border border-slate-200 bg-white text-slate-700"}`}
             >
               Missing expiry ({chaseCounts.missing})
             </button> : null}
-            {!canManageOcs ? <button
+            {!canManageOcs && !desktopWorkspace ? <button
               type="button"
               onClick={() => applyChaseFilter("expired")}
               className={`min-h-11 rounded-2xl px-3 text-xs font-semibold ${
@@ -5164,7 +5203,7 @@ export default function InventoryPage() {
                 Reconciliation required ({chaseCounts.reconciliation})
               </button>
             ) : null}
-            {canManageOcs ? (
+            {canManageOcs && !(desktopWorkspace && serviceOnlyView) ? (
               <button
                 type="button"
                 onClick={() => {
@@ -5201,12 +5240,10 @@ export default function InventoryPage() {
             ) : null}
             <select value={sortMode} onChange={(event) => setSortMode(event.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700">
               <option value="name_asc">Sort: Name (A–Z)</option>
-              <option value="expiry_asc">Sort: Expiry (Soonest)</option>
-              <option value="qty_asc">Sort: Qty (Lowest)</option>
-              <option value="qty_desc">Sort: Qty (Highest)</option>
+              {desktopWorkspace && serviceOnlyView ? <><option value="price_asc">Sort: Price (Lowest)</option><option value="price_desc">Sort: Price (Highest)</option></> : <><option value="expiry_asc">Sort: Expiry (Soonest)</option><option value="qty_asc">Sort: Qty (Lowest)</option><option value="qty_desc">Sort: Qty (Highest)</option></>}
             </select>
             <span className="text-xs font-medium text-slate-500" aria-live="polite">
-              Showing {sortedItems.length} of {items.length}
+              Showing {sortedItems.length} of {viewItems.length}
             </span>
             <span className="w-28 shrink-0 whitespace-nowrap text-xs text-slate-500" role="status" aria-live="polite">
               {showRefreshStatus && !showScopeLoading ? "Updating stock…" : ""}
@@ -5231,7 +5268,7 @@ export default function InventoryPage() {
           <>
             <div className={cx("hidden min-w-0 max-w-full overflow-hidden rounded-3xl border border-slate-200/80 bg-white", stickyInventoryActions ? "lg:block" : "md:block")}>
               <div className={cx("min-w-0 overflow-x-auto overflow-y-auto", inventoryTableScrollClass)}>
-                <table className="w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
+                <table className="inventory-stock-table w-full table-fixed text-left text-sm" style={{ minWidth: inventoryTableMinWidth }}>
                   <colgroup>
                     <col style={{ width: doctorDesktopBagTable ? "34%" : "46%" }} />
                     <col style={{ width: doctorDesktopBagTable ? "14%" : "16%" }} />
@@ -5266,7 +5303,7 @@ export default function InventoryPage() {
                       return (
                         <Fragment key={item.id}>
                           <tr
-                            className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${isLow || isOut ? "bg-red-50" : ""}`}
+                            className={`group border-t border-slate-200/70 align-middle text-slate-700 transition-colors hover:bg-slate-50 ${(isLow || isOut) && !desktopWorkspace ? "bg-red-50" : ""}`}
                             onClick={() => toggleExpanded(item)}
                           >
                             <td className="px-3 py-1.5 align-middle text-left">
@@ -5282,6 +5319,7 @@ export default function InventoryPage() {
                                 <span
                                   className="min-w-0 flex-1 truncate font-semibold text-slate-900"
                                   title={item.item_name}
+                                  data-stock-name="true"
                                 >
                                   {item.item_name}
                                 </span>
@@ -5435,9 +5473,11 @@ export default function InventoryPage() {
           </>
         ) : (
           <EmptyState
-            title="No stock items found"
+            title={desktopWorkspace && stockKind === "services" ? "No services found" : "No stock items found"}
             description={
-              canManageOcs && contextIsOcs
+              desktopWorkspace && stockKind === "services"
+                ? "Try another category or search term to find a billing service."
+                : canManageOcs && contextIsOcs
                 ? "Add stock in Consumable or pick another category when adding a new item."
                 : isDoctor && doctorViewIsMy
                   ? "Open the OCS depot to pull items into your bag, or pick another category."

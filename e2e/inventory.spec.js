@@ -823,14 +823,16 @@ test.describe("Inventory workflow", () => {
     });
     await injectStaffSession(page, operator.token);
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByText("Update available")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: "App update available", exact: true }).click();
+    const update = page.getByRole("dialog", { name: "App update available", exact: true });
+    await expect(update).toBeVisible({ timeout: 20_000 });
     const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
     expect(embedded).toBeTruthy();
     expect(embedded).not.toBe(deployedSha);
     await page.evaluate(() => window.__OCS_UNSAVED_WORK__?.set("stocktake", true));
-    await expect(page.getByRole("button", { name: /Reload requires confirmation/ })).toBeVisible();
-    await page.getByRole("button", { name: /Reload requires confirmation/ }).click();
-    await expect(page.getByRole("button", { name: "Confirm reload" })).toBeVisible();
+    await expect(update.getByRole("button", { name: /Reload requires confirmation/ })).toBeVisible();
+    await update.getByRole("button", { name: /Reload requires confirmation/ }).click();
+    await expect(update.getByRole("button", { name: "Confirm reload" })).toBeVisible();
     await expect(page).toHaveURL(/\/inventory/);
   });
 
@@ -843,7 +845,7 @@ test.describe("Inventory workflow", () => {
     await expect.poll(async () => page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBeTruthy();
     const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
     expect(String(healthBody.git_sha || healthBody.version || "")).toBe(embedded);
-    await expect(page.getByText("Update available")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "App update available", exact: true })).toHaveCount(0);
   });
 
   test("a live deployment, offline health, and successful reload keep the banner loop-free", async ({
@@ -875,17 +877,20 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await expect.poll(async () => page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBeTruthy();
     const embedded = await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__);
-    await expect(page.getByText("Update available")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "App update available", exact: true })).toHaveCount(0);
     deployedSha = `live-${Date.now()}`;
-    await expect(page.getByText("Update available")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "App update available", exact: true })).toBeVisible({ timeout: 10_000 });
     failHealth = true;
     await page.waitForTimeout(800);
-    await expect(page.getByText("Update available")).toBeVisible();
+    await expect(page.getByRole("button", { name: "App update available", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "App update available", exact: true }).click();
+    const update = page.getByRole("dialog", { name: "App update available", exact: true });
     failHealth = false;
-    deployedSha = embedded;
-    await page.getByRole("button", { name: "Reload now" }).click();
+    const reload = page.waitForEvent("request", { predicate: next => next.isNavigationRequest() && next.frame() === page.mainFrame() }).then(() => { deployedSha = embedded; });
+    await update.getByRole("button", { name: "Reload now", exact: true }).click();
+    await reload;
     await page.waitForLoadState("domcontentloaded");
-    await expect(page.getByText("Update available")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "App update available", exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => window.__OCS_CLIENT_BUILD_SHA__)).toBe(embedded);
   });
 
@@ -1572,20 +1577,20 @@ test.describe("Inventory workflow", () => {
     await expect(requestDialog.getByText(item.item_name, { exact: true })).toBeVisible();
   });
 
-  test("doctor bag and depot switching keeps bag-scoped metric labels", async ({ request, page }) => {
+  test("doctor stock health follows the selected bag or depot without duplicate summary cards", async ({ request, page }) => {
     const doctor = await login(request, "arun.dharee");
     await injectStaffSession(page, doctor.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("button", { name: /My bag at or below par/i })).toBeVisible({ timeout: 20_000 });
-    const bagMetric = (await page.getByRole("button", { name: /My bag at or below par/i }).innerText()).replace(/\s+/g, " ");
+    const bagHealth = page.getByRole("region", { name: "My bag stock health", exact: true });
+    await expect(bagHealth).toBeVisible({ timeout: 20_000 });
+    await expect(bagHealth.getByRole("button", { name: /^Low stock:/ })).toBeVisible();
+    await expect(page.getByText("My bag at or below par", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "OCS depot", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "OCS depot" }).first()).toBeVisible();
-    await expect(page.getByText("Loading inventory workspace")).toHaveCount(0);
-    await expect(page.getByText("My bag at or below par")).toBeVisible();
-    await expect(page.getByText("Depot can fill")).toBeVisible();
-    const depotMetric = (await page.getByRole("button", { name: /My bag at or below par/i }).innerText()).replace(/\s+/g, " ");
-    expect(depotMetric).toBe(bagMetric);
+    await expect(page.getByRole("heading", { name: "OCS depot", exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "OCS depot stock health", exact: true }).getByRole("button", { name: /^Low stock:/ })).toBeEnabled();
+    await expect(bagHealth).toHaveCount(0);
+    await expect(page.getByText("Depot can fill", { exact: true })).toHaveCount(0);
   });
 
   test("reconciliation review opens a preview without mutating stock", async ({ request, page }) => {

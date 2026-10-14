@@ -147,6 +147,7 @@ function AppShell() {
   const location = useLocation();
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const isCompactInventory = useIsMobile(1024);
   const isPatientProfile =
     /^\/patients\/[^/]+$/.test(location.pathname) && location.pathname !== "/patients/add";
   const isDashboard = location.pathname === "/";
@@ -160,7 +161,8 @@ function AppShell() {
   const isOperatorVisitRequests = userRole === "operator" && location.pathname === "/visit-requests";
   const isOperatorTeleconsultations = userRole === "operator" && location.pathname === "/teleconsultations";
   const isDoctorCareWorkspace = userRole === "doctor" && ["/visit-requests", "/teleconsultations"].includes(location.pathname);
-  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace;
+  const isInventoryWorkspace = isInventory && !isCompactInventory && ["doctor", "operator"].includes(userRole);
+  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace;
   const alwaysHideTopHeader =
     isDoctorCareWorkspace ||
     (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||

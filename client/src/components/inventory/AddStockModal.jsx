@@ -24,6 +24,8 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
   const [costVarianceReason, setCostVarianceReason] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [step, setStep] = useState("form");
+  const [touched, setTouched] = useState({});
+  const touch = field => setTouched(current => ({ ...current, [field]: true }));
   const [syncedDeps, setSyncedDeps] = useState({ open, item });
 
   if (syncedDeps.open !== open || syncedDeps.item !== item) {
@@ -39,6 +41,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       setCostVarianceReason("");
       setOverrideReason("");
       setStep("form");
+      setTouched({});
     }
   }
 
@@ -99,10 +102,11 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
       innerScroll={false}
     >
       <form
-        className="flex min-h-0 w-full flex-1 flex-col"
+        className={`flex min-h-0 w-full flex-1 flex-col ${user?.role === "operator" ? "inventory-receive-form" : ""}`}
         onSubmit={(event) => {
           event.preventDefault();
           if (!formValid) {
+            setTouched({ supplier: true, delivery: true, received: true, quantity: true, expiry: true, cost: true, variance: true });
             toast.error(quantityError || expiryError || costError || costVarianceError || supplierError || deliveryNoteError || receivedDateError || overrideError);
             return;
           }
@@ -139,23 +143,31 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                 <span className="text-sm font-semibold text-slate-700">Supplier</span>
                 <input
                   required
+                  aria-label="Supplier"
+                  aria-invalid={Boolean(touched.supplier && supplierError)}
+                  aria-describedby={touched.supplier && supplierError ? "stock-receive-supplier-error" : undefined}
                   value={supplierName}
+                  onBlur={() => touch("supplier")}
                   onChange={(event) => setSupplierName(event.target.value)}
                   placeholder="Who delivered this?"
                   className={FIELD}
                 />
-                {supplierError && supplierName ? <p className="text-xs text-rose-600">{supplierError}</p> : null}
+                {supplierError && touched.supplier ? <p id="stock-receive-supplier-error" role="alert" className="text-xs text-rose-600">{supplierError}</p> : null}
               </label>
 
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-700">Delivery note or reference <span className="font-normal text-slate-500">(if supplied)</span></span>
                 <input
+                  aria-label="Delivery note or reference"
+                  aria-invalid={Boolean(touched.delivery && deliveryNoteError)}
+                  aria-describedby={touched.delivery && deliveryNoteError ? "stock-receive-delivery-error" : undefined}
                   value={deliveryNote}
+                  onBlur={() => touch("delivery")}
                   onChange={(event) => setDeliveryNote(event.target.value)}
                   placeholder="Otherwise, we’ll create a reference"
                   className={FIELD}
                 />
-                {deliveryNoteError ? <p className="text-xs text-rose-600">{deliveryNoteError}</p> : null}
+                {deliveryNoteError && touched.delivery ? <p id="stock-receive-delivery-error" role="alert" className="text-xs text-rose-600">{deliveryNoteError}</p> : null}
               </label>
 
               <label className="space-y-2">
@@ -164,11 +176,15 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   required
                   type="date"
                   max={today}
+                  aria-label="Date of delivery"
+                  aria-invalid={Boolean(touched.received && receivedDateError)}
+                  aria-describedby={touched.received && receivedDateError ? "stock-receive-received-error" : undefined}
                   value={receivedDate}
+                  onBlur={() => touch("received")}
                   onChange={(event) => setReceivedDate(event.target.value)}
                   className={FIELD}
                 />
-                {receivedDateError ? <p className="text-xs text-rose-600">{receivedDateError}</p> : null}
+                {receivedDateError && touched.received ? <p id="stock-receive-received-error" role="alert" className="text-xs text-rose-600">{receivedDateError}</p> : null}
               </label>
 
               <label className="space-y-2">
@@ -179,11 +195,15 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   step={1}
                   type="number"
                   inputMode="numeric"
+                  aria-label="Quantity to receive"
+                  aria-invalid={Boolean(touched.quantity && quantityError)}
+                  aria-describedby={touched.quantity && quantityError ? "stock-receive-quantity-error" : undefined}
                   value={quantity}
+                  onBlur={() => touch("quantity")}
                   onChange={(event) => setQuantity(event.target.value)}
                   className={FIELD}
                 />
-                {quantityError ? <p className="text-xs text-rose-600">{quantityError}</p> : null}
+                {quantityError && touched.quantity ? <p id="stock-receive-quantity-error" role="alert" className="text-xs text-rose-600">{quantityError}</p> : null}
               </label>
 
               <label className="flex min-h-11 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -206,11 +226,15 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   type="date"
                   min={today}
                   disabled={nonExpiring}
+                  aria-label="Batch expiry date"
+                  aria-describedby={nonExpiring ? undefined : "stock-receive-expiry-help"}
+                  aria-invalid={Boolean(touched.expiry && expiryError)}
                   value={expiryDate}
+                  onBlur={() => touch("expiry")}
                   onChange={(event) => setExpiryDate(event.target.value)}
                   className={FIELD}
                 />
-                {expiryError ? <p className="text-xs text-rose-600">{expiryError}</p> : null}
+                {expiryError && touched.expiry ? <p id="stock-receive-expiry-help" role="alert" className="text-xs text-rose-600">{expiryError}</p> : !nonExpiring ? <p id="stock-receive-expiry-help" className="text-xs text-slate-500">Enter the expiry date from the batch label, or choose non-expiring.</p> : null}
               </label>
 
               <label className="space-y-2">
@@ -220,11 +244,15 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   min="0.01"
                   step="0.01"
                   type="number"
+                  aria-label="Unit cost (Rs)"
+                  aria-describedby="stock-receive-cost-help"
+                  aria-invalid={Boolean(touched.cost && costError)}
                   value={costPrice}
+                  onBlur={() => touch("cost")}
                   onChange={(event) => setCostPrice(event.target.value)}
                   className={FIELD}
                 />
-                {costError ? <p className="text-xs text-rose-600">{costError}</p> : null}
+                {costError && touched.cost ? <p id="stock-receive-cost-help" role="alert" className="text-xs text-rose-600">{costError}</p> : <p id="stock-receive-cost-help" className="text-xs text-slate-500">Use the actual unit cost from the supplier invoice.</p>}
               </label>
 
               {costChanged ? (
@@ -233,7 +261,11 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   <textarea
                     required
                     rows={3}
-                    value={costVarianceReason}
+                    aria-label="Reason for actual cost difference"
+                  aria-invalid={Boolean(touched.variance && costVarianceError)}
+                  aria-describedby={touched.variance && costVarianceError ? "stock-receive-variance-error" : undefined}
+                  value={costVarianceReason}
+                  onBlur={() => touch("variance")}
                     onChange={(event) => setCostVarianceReason(event.target.value)}
                     placeholder="Example: supplier invoice INV-104 has a revised batch price"
                     className={FIELD}
@@ -241,7 +273,7 @@ export default function AddStockModal({ open, item, user, isSaving, onClose, onS
                   <p className="text-xs text-slate-500">
                     Catalogue cost: {formatRupees(standardCost)}. This note is retained with the batch receipt.
                   </p>
-                  {costVarianceError ? <p className="text-xs text-rose-600">{costVarianceError}</p> : null}
+                  {costVarianceError && touched.variance ? <p id="stock-receive-variance-error" role="alert" className="text-xs text-rose-600">{costVarianceError}</p> : null}
                 </label>
               ) : null}
 
