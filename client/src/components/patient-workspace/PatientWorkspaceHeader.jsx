@@ -4,7 +4,7 @@ import PushNotificationBanner from "../PushNotificationBanner.jsx";
 import { cx } from "../../lib/utils.js";
 import "./patientWorkspace.css";
 
-export default function PatientWorkspaceHeader({ title, subtitle, role, actions, children, onRefresh, refreshing }) {
+export default function PatientWorkspaceHeader({ title, subtitle, role, actions, children, onRefresh, refreshing, refreshLabel = "Refresh patient workspace" }) {
   return (
     <header className="patient-workspace-header rounded-[28px] bg-gradient-to-r from-[#e3f5f0] via-[#eef9f5] to-[#fff9ed] p-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -16,7 +16,7 @@ export default function PatientWorkspaceHeader({ title, subtitle, role, actions,
           <PushNotificationBanner compact role={role} />
           <AppUpdateBanner compact />
           {onRefresh ? (
-            <button type="button" aria-label="Refresh patient workspace" disabled={refreshing} onClick={onRefresh} className="patient-icon-control">
+            <button type="button" aria-label={refreshLabel} disabled={refreshing} onClick={onRefresh} className="patient-icon-control">
               <RefreshCw aria-hidden="true" className={cx("size-4", refreshing && "animate-spin")} />
             </button>
           ) : null}

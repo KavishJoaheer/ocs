@@ -34,7 +34,7 @@ async function open(page, actor, width, task) {
   await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), actor.token);
   await page.setViewportSize({ width, height: 900 });
   await page.goto(`${STAFF}/action-inbox?task=${task.id}`);
-  await expect(page.getByRole("heading", { name: "Action inbox", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pending actions", exact: true })).toBeVisible();
   await page.getByLabel("Search actions").fill(`#${task.id}`);
   const row = page.getByRole("article", { name: `Action ${task.id}`, exact: true });
   await expect(row).toBeVisible();
@@ -46,7 +46,7 @@ for (const width of [390, 1440]) {
     const f = await fixture(request); const row = await open(page, f.operator, width, f.task);
     await expect(row).toContainText("Overdue"); await expect(row).toContainText("Escalated to supervisor");
     await row.getByRole("button", { name: "Acknowledge", exact: true }).click();
-    await expect(row).toContainText("Acknowledged; work remains open");
+    await expect(row).toContainText("In progress");
     const current = (await json(await request.get(`${API}/operational-tasks`, { headers: f.oh }))).tasks.find(t => t.id === f.task.id);
     expect(current.status).toBe("acknowledged"); expect(current.resolved_at).toBeNull();
     await expect(row.getByRole("link", { name: "Open workflow", exact: true })).toHaveAttribute("href", `/visit-requests?request=${f.visitId}`);
@@ -58,7 +58,8 @@ for (const width of [390, 1440]) {
   });
   test(`doctor can acknowledge and return an assignment to dispatch at ${width}px`, async ({ page, request }) => {
     const f = await fixture(request, true); const row = await open(page, f.doctor, width, f.task);
-    await row.getByRole("button", { name: "Acknowledge", exact: true }).click(); await expect(row).toContainText("Acknowledged; work remains open");
+    await row.getByRole("button", { name: "Acknowledge", exact: true }).click(); await expect(row).toContainText("In progress");
+    await row.getByLabel("More actions", { exact: true }).click();
     await row.getByRole("button", { name: "Decline assignment", exact: true }).click();
     const modal = page.getByRole("dialog", { name: "Return assignment to dispatch", exact: true });
     await expect(modal.getByRole("button", { name: "Return to dispatch", exact: true })).toBeDisabled();
@@ -83,4 +84,39 @@ test("administrator can change response targets; stale claims and finance access
   const finance = await json(await request.post(`${API}/auth/login`, { data: { username: "accountant01", password: "Welcome@123" } }));
   expect((await request.get(`${API}/operational-tasks`, { headers: { Authorization: `Bearer ${finance.token}` } })).status()).toBe(403);
   await json(await request.put(`${API}/operational-tasks/policy`, { headers: { Authorization: `Bearer ${f.admin.token}` }, data: { dispatch_minutes: 15 } }));
+});
+
+test("pending filters and secondary controls keep ownership changes clear", async ({ page, request }) => {
+  const f = await fixture(request);
+  const row = await open(page, f.operator, 1440, f.task);
+  const filters = page.getByRole("navigation", { name: "Pending action filters" });
+  await filters.getByRole("button", { name: /^Mine/ }).click();
+  await expect(filters.getByRole("button", { name: /^Mine/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(row).toBeVisible();
+  await filters.getByRole("button", { name: /^Overdue/ }).click();
+  await expect(row).toBeVisible();
+  await filters.getByRole("button", { name: /^Mine/ }).click();
+  await row.getByLabel("More actions", { exact: true }).click();
+  await row.getByRole("button", { name: "Hand over", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Hand over responsibility", exact: true });
+  await expect(dialog.getByRole("button", { name: "Confirm handover", exact: true })).toBeDisabled();
+  await dialog.getByLabel("Next owner").selectOption(String(f.admin.user.id));
+  await dialog.getByLabel("Action note").fill("Please coordinate the dispatch while I handle another request.");
+  await dialog.getByRole("button", { name: "Confirm handover", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(row).toHaveCount(0);
+  await filters.getByRole("button", { name: /^All pending/ }).click();
+  await expect(row).toContainText(f.admin.user.full_name);
+  await expect(row.getByRole("button", { name: "Acknowledge", exact: true })).toHaveCount(0);
+  await row.getByRole("button", { name: "Action history", exact: true }).click();
+  await expect(row.locator(".pending-action-history")).toBeHidden();
+  await row.getByRole("button", { name: "Action history", exact: true }).click();
+  await expect(row.locator(".pending-action-history")).toContainText("Please coordinate the dispatch");
+  await filters.getByRole("button", { name: /^Needs owner/ }).click();
+  await expect(page.getByText("No actions match these filters.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(page.getByLabel("Search actions")).toHaveValue("");
+  await expect(row).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Pending actions/ })).toBeVisible();
+  await expect(page).toHaveTitle("Pending actions · OCS Médecins");
 });

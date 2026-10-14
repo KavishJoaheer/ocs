@@ -24,7 +24,7 @@ const pageMeta = {
     label: "Dashboard",
     helper: "",
   },
-  "/action-inbox": { label: "Action inbox", helper: "Ownership, acknowledgement and overdue work." },
+  "/action-inbox": { label: "Pending actions", helper: "Requests, reviews and team tasks." },
   "/inventory": {
     label: "Inventory",
     helper: "",
@@ -167,8 +167,10 @@ function AppShell() {
   const isDesktopSupplyWorkspace = isSupplyRequests && ["doctor", "operator"].includes(userRole) && !isCompactInventory;
   const isReviewWorkspace = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
   const isPatientWorkspace = isPatientsDirectory || isPatientProfile || location.pathname === "/patients/add";
-  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
+  const isPendingActionsWorkspace = location.pathname === "/action-inbox";
+  const hasOperatorWorkspaceHeader = isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
   const alwaysHideTopHeader =
+    isPendingActionsWorkspace ||
     isDoctorCareWorkspace ||
     isDesktopSupplyWorkspace ||
     isReviewWorkspace ||
@@ -190,7 +192,8 @@ function AppShell() {
   const isVisitRequests = location.pathname === "/visit-requests";
   const hideDesktopTopHeader =
     !isMobile &&
-    (isPatientProfile ||
+    (isPendingActionsWorkspace ||
+      isPatientProfile ||
       isPatientsDirectory ||
       isLongTermReview ||
       isAppointments ||

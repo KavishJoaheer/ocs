@@ -40,7 +40,7 @@ function formatMobileDrawerDisplayName(user) {
 }
 
 const navItems = [
-  { to: "/action-inbox", label: "Action inbox", icon: BellRing, roles: ["admin", "doctor", "operator", "lab_tech"] },
+  { to: "/action-inbox", label: "Pending actions", icon: BellRing, roles: ["admin", "doctor", "operator", "lab_tech"] },
   { to: "/teleconsultations", label: "Manage teleconsultations", icon: ClipboardList, roles: ["admin", "doctor", "operator"] },
   {
     to: "/",

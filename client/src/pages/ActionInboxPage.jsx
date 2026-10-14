@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { BellRing, Check, RefreshCw } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { BellRing, Search, X } from "lucide-react";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import PendingActionCard from "../components/pending-actions/PendingActionCard.jsx";
+import "../components/pending-actions/pendingActions.css";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50";
-const primaryButton = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-teal-700 bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50";
 const field = "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800";
 const targetLabels = {
   dispatch_minutes: "Routine dispatch (minutes)", urgent_dispatch_minutes: "Urgent dispatch / report review (minutes)",
@@ -37,6 +39,7 @@ export default function ActionInboxPage() {
   const [policyDraft, setPolicyDraft] = useState(null);
   const [saved, setSaved] = useState("");
   const generation = useRef(0);
+  useEffect(() => { document.title = "Pending actions · OCS Médecins"; }, []);
   const invalidate = useCallback(() => { generation.current++; }, []);
   const load = useCallback(async () => {
     const id = ++generation.current;
@@ -82,51 +85,71 @@ export default function ActionInboxPage() {
   }
   const tasks = (data?.tasks || []).filter(task => (filter === "all" || (filter === "mine" && Number(task.owner_user_id) === Number(user.id))
     || (filter === "overdue" && task.overdue) || (filter === "unowned" && !task.owner_user_id) || (filter === "escalated" && task.escalation_level > 0))
-    && (!search.trim() || [task.title, task.patient_name, task.owner_name, `#${task.id}`].some(value => String(value || "").toLowerCase().includes(search.trim().toLowerCase()))));
+    && (!search.trim() || [task.title, task.patient_name, task.owner_name, `#${task.id}`].some(value => String(value || "").toLowerCase().includes(search.trim().toLowerCase()))))
+    .sort((a, b) => view === "resolved" ? 0 : Number(b.priority === "urgent") - Number(a.priority === "urgent")
+      || Number(b.overdue) - Number(a.overdue) || Number(b.escalation_level) - Number(a.escalation_level)
+      || Date.parse(a.response_due_at) - Date.parse(b.response_due_at));
   const policy = policyDraft || data?.policy;
-  return <section className="mx-auto w-full max-w-6xl space-y-5" aria-label="Action inbox">
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-xs font-semibold text-teal-700">OCS operations</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Action inbox</h1><p className="mt-2 max-w-2xl text-sm text-slate-600">Accept responsibility, act in the linked workflow, and hand over anything that remains open. Acknowledging an alert does not complete the work.</p></div>
-      <button className={button} onClick={refresh} disabled={refreshing || loading}><RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />Refresh actions</button>
-    </header>
-    {data && <div className="flex flex-wrap gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700" aria-label="Action counts">
-      <span><strong>{data.counts.open}</strong> open</span><span><strong>{data.counts.mine}</strong> mine</span><span><strong>{data.counts.overdue}</strong> overdue</span><span><strong>{data.counts.unowned}</strong> without an owner</span><span><strong>{data.counts.escalated}</strong> escalated</span>
-    </div>}
-    <div className="flex flex-wrap items-center gap-3">
-      <nav className="flex gap-2" aria-label="Action inbox views">{["active", "resolved"].map(value => <button key={value} className={button} aria-pressed={view === value} onClick={() => { if (value !== view) { setLoading(true); setView(value); setFilter("all"); } }}>{value === "active" ? "Active" : "Resolved"}</button>)}</nav>
-      <label className="min-w-40"><span className="sr-only">Filter actions</span><select className={field} value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All actions</option><option value="mine">Assigned to me</option>{view === "active" && <><option value="overdue">Overdue</option><option value="unowned">Without an owner</option><option value="escalated">Escalated</option></>}</select></label>
-      <label className="min-w-0 flex-1"><span className="sr-only">Search actions</span><input className={field} type="search" placeholder="Find patient, action or owner" value={search} onChange={event => setSearch(event.target.value)} /></label>
-    </div>
-    {error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}<button className="ml-3 underline" onClick={refresh}>Retry</button></div>}
-    {data?.worker && (data.worker.last_error || !data.worker.last_success_at || Date.now() - Date.parse(data.worker.last_success_at) > 180000) && <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Scheduled notification checks have not completed recently. Ask the system administrator to check the service; open work remains visible here.</p>}
-    {loading ? <p role="status">Loading actions…</p> : tasks.length ? <div className="space-y-3">{tasks.map(task => <article key={task.id} aria-label={`Action ${task.id}`} className={`rounded-2xl border bg-white p-4 ${task.overdue || task.priority === "urgent" ? "border-amber-300" : "border-slate-200"}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h2 className="text-base font-semibold text-slate-900">{task.title}</h2>{task.patient_name && <p className="mt-1 text-sm text-slate-600">{task.patient_name}</p>}
-          <p className="mt-2 text-sm text-slate-600">Owner: <strong>{task.owner_name || "Needs an owner"}</strong> · {task.status === "acknowledged" ? "Acknowledged; work remains open" : task.status === "resolved" ? "Resolved" : "Awaiting acknowledgement"}</p>
-          <p className="mt-1 text-xs text-slate-500">{task.status === "resolved" ? `Resolved ${formatTime(task.resolved_at)}` : `${task.acknowledged_at ? "Action" : "Acknowledgement"} due ${formatTime(task.response_due_at)}`} · Mauritius time</p>
-          {(task.overdue || task.escalation_level > 0 || task.priority === "urgent") && <p className="mt-2 text-sm font-semibold text-amber-800">{[task.priority === "urgent" && "Urgent review", task.overdue && "Overdue", task.escalation_level > 0 && `Escalated to supervisor (level ${task.escalation_level})`].filter(Boolean).join(" · ")}</p>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {task.status !== "resolved" && task.can_acknowledge && task.status !== "acknowledged" && <button disabled={busy} className={primaryButton} onClick={() => act(task, "acknowledge")}><Check className="size-4" />{task.owner_user_id ? "Acknowledge" : "Claim and acknowledge"}</button>}
-          <Link className={button} to={task.url}>Open workflow</Link>
-          {task.status !== "resolved" && task.can_act && !task.clinical_owner_id && <button className={button} disabled={busy} onClick={() => ask(task, "handover")}>Hand over</button>}
-          {task.status !== "resolved" && task.kind === "doctor_assignment" && Number(task.clinical_owner_id) === Number(user.id) && !user.is_read_only && <button className={button} disabled={busy} onClick={() => ask(task, "decline")}>Decline assignment</button>}
-          {task.status !== "resolved" && task.can_act && task.can_resolve && <button className={button} disabled={busy} onClick={() => ask(task, "resolve")}>Record review outcome</button>}
-          {task.status !== "resolved" && task.kind === "report_review" && !user.is_read_only && task.priority !== "urgent" && <button className={button} disabled={busy} onClick={() => ask(task, "flag_urgent")}>Flag urgent review</button>}
-          <button className={button} aria-expanded={selected === task.id} onClick={() => setSelected(selected === task.id ? null : task.id)}>Action history</button>
-        </div>
+  const filters = [
+    { value: "all", label: "All pending", count: data?.counts.open || 0 },
+    { value: "mine", label: "Mine", count: data?.counts.mine || 0 },
+    { value: "overdue", label: "Overdue", count: data?.counts.overdue || 0, attention: true },
+    { value: "unowned", label: "Needs owner", count: data?.counts.unowned || 0, attention: true },
+    { value: "escalated", label: "Escalated", count: data?.counts.escalated || 0, attention: true },
+  ];
+  return <section className="pending-actions mx-auto w-full max-w-6xl space-y-4" aria-label="Pending actions">
+    <PatientWorkspaceHeader title="Pending actions" subtitle="Requests, reviews and team tasks." role={user.role}
+      onRefresh={refresh} refreshing={refreshing || loading} refreshLabel="Refresh actions" />
+    <nav className="pending-filter-pills" aria-label="Pending action filters">
+      {filters.map(item => <button key={item.value} type="button" className="pending-filter-pill"
+        aria-pressed={view === "active" && filter === item.value} data-attention={Boolean(item.attention && item.count)}
+        onClick={() => { if (view !== "active") setLoading(true); setView("active"); setFilter(item.value); }}>
+        {item.label}<strong>{item.count}</strong>
+      </button>)}
+    </nav>
+    <div>
+      <div className="pending-action-toolbar">
+        <nav className="pending-action-tabs" aria-label="Pending action views">
+          {["active", "resolved"].map(value => <button key={value} type="button" aria-pressed={view === value}
+            onClick={() => { if (value !== view) { setLoading(true); setView(value); setFilter("all"); } }}>
+            {value === "active" ? "Pending" : "Resolved"}
+          </button>)}
+        </nav>
+        {view === "resolved" && <label><span className="sr-only">Filter actions</span><select className={field} value={filter} onChange={event => setFilter(event.target.value)}>
+          <option value="all">All resolved</option><option value="mine">Assigned to me</option>
+        </select></label>}
+        <label className="pending-action-search">
+          <span className="sr-only">Search actions</span><Search size={17} aria-hidden="true" />
+          <input type="search" placeholder="Find patient, action or owner" value={search} onChange={event => setSearch(event.target.value)} />
+          {search && <button type="button" aria-label="Clear search" onClick={() => setSearch("")}><X size={16} aria-hidden="true" /></button>}
+        </label>
       </div>
-      {selected === task.id && <div className="mt-4 border-t border-slate-100 pt-3">
-        {historyError && <p role="alert" className="text-sm text-rose-700">{historyError}<button className="ml-2 underline" onClick={() => loadHistory(task.id)}>Retry history</button></p>}
-        {!history[task.id] ? <p role="status" className="text-sm text-slate-500">Loading history…</p> : <>
-          <ol className="space-y-2 text-sm text-slate-600">{history[task.id].events.map(entry => <li key={entry.id}><strong>{entry.action.replaceAll("_", " ")}</strong> · {formatTime(entry.created_at)} · {entry.actor_name || "OCS workflow"}{entry.note && <p className="mt-1 whitespace-pre-wrap break-words">{entry.note}</p>}</li>)}</ol>
-          {history[task.id].deliveries.some(d => d.status === "failed") && <p className="mt-3 text-sm text-amber-800">Push could not reach at least one recipient. This task remains available here and delivery will be retried.</p>}
-          {history[task.id].deliveries.some(d => d.status === "accepted") && <p className="mt-3 text-xs text-slate-500">Push service accepted a notification. This does not confirm that its recipient read or acknowledged it.</p>}
+      <div className="pending-actions-help">{!loading && <span>{tasks.length} action{tasks.length === 1 ? "" : "s"} shown</span>}
+        <span>Acknowledging keeps the task open.</span><span>Times shown in Mauritius time.</span>
+      </div>
+    </div>
+    {error && <div role="alert" className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-800">{error}<button className="ml-3 underline" onClick={refresh}>Retry</button></div>}
+    {data?.worker && (data.worker.last_error || !data.worker.last_success_at || Date.now() - Date.parse(data.worker.last_success_at) > 180000) && <p role="status" className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">Scheduled notification checks have not completed recently. Ask the system administrator to check the service; open work remains visible here.</p>}
+    {loading ? <p role="status">Loading actions…</p> : tasks.length ? <div className="pending-action-list">
+      {tasks.map(task => <PendingActionCard key={task.id} task={task} user={user} busy={busy} selected={selected === task.id}
+        onAcknowledge={() => act(task, "acknowledge")} onAsk={action => ask(task, action)}
+        onHistory={() => setSelected(selected === task.id ? null : task.id)} formatTime={formatTime}>
+        {historyError && <p role="alert" className="text-rose-700">{historyError}<button className="ml-2 underline" onClick={() => loadHistory(task.id)}>Retry history</button></p>}
+        {!history[task.id] ? <p role="status">Loading history…</p> : <>
+          <ol className="space-y-2">{history[task.id].events.map(entry => <li key={entry.id}>
+            <strong>{entry.action.replaceAll("_", " ")}</strong> · {formatTime(entry.created_at)} · {entry.actor_name || "OCS workflow"}
+            {entry.note && <p className="mt-1 whitespace-pre-wrap break-words">{entry.note}</p>}
+          </li>)}</ol>
+          {history[task.id].deliveries.some(d => d.status === "failed") && <p className="mt-3 text-amber-800">Push could not reach at least one recipient. This task remains available here and delivery will be retried.</p>}
+          {history[task.id].deliveries.some(d => d.status === "accepted") && <p className="mt-3">Push service accepted a notification. This does not confirm that its recipient read or acknowledged it.</p>}
         </>}
-      </div>}
-    </article>)}</div> : <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center"><BellRing className="mx-auto size-6 text-slate-400" /><p className="mt-2 text-sm text-slate-600">{search || filter !== "all" ? "No actions match these filters." : view === "resolved" ? "No resolved actions yet." : "No actions need attention."}</p></div>}
+      </PendingActionCard>)}
+    </div> : <div className="pending-actions-empty"><BellRing size={26} aria-hidden="true" />
+      <p>{search || filter !== "all" ? "No actions match these filters." : view === "resolved" ? "No resolved actions yet." : "No actions need attention."}</p>
+      {(search || filter !== "all") && <button type="button" className="pending-control mt-4" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</button>}
+    </div>}
     {selected && data && !data.tasks.some(t => t.id === selected) && <p role="status" className="text-sm text-slate-600">The linked action has moved on or is no longer in this view. Check Resolved or your current work above.</p>}
-    {user.role === "admin" && policy && <details className="rounded-2xl border border-slate-200 bg-white p-4"><summary className="min-h-11 cursor-pointer font-semibold text-slate-800">Response targets and escalation supervisor</summary>
+    {user.role === "admin" && policy && <details className="pending-actions-settings"><summary className="min-h-11 cursor-pointer font-semibold text-slate-800">Response targets and escalation supervisor</summary>
       <p className="mt-2 text-sm text-slate-600">These are adjustable operational starting targets. They do not replace clinical judgement or direct contact for urgent care. Targets apply to new work; existing deadlines remain unchanged. Reviews are due by 17:00 Mauritius time on their scheduled date.</p>
       <form onSubmit={savePolicy} className="mt-4 space-y-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{Object.entries(targetLabels).map(([key, label]) => <label key={key} className="text-sm font-medium text-slate-700">{label}<input className={`${field} mt-1`} type="number" min="1" max={key.endsWith("hours") ? 168 : 1440} step="1" required value={policy[key]} disabled={user.is_read_only} onChange={event => setPolicyDraft({ ...policy, [key]: Number(event.target.value) })} /></label>)}
         <label className="text-sm font-medium text-slate-700">Escalation supervisor<select className={`${field} mt-1`} value={policy.supervisor_user_id || ""} disabled={user.is_read_only} onChange={event => setPolicyDraft({ ...policy, supervisor_user_id: Number(event.target.value) || null })}><option value="">Available administrator</option>{data.owners.filter(owner => owner.role === "admin").map(owner => <option key={owner.id} value={owner.id}>{owner.full_name}</option>)}</select></label></div>

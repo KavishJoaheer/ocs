@@ -1,0 +1,73 @@
+.pending-actions { color: #173f4a; }
+.pending-actions button, .pending-actions select, .pending-actions a { font-size: .875rem; font-weight: 600; }
+.pending-actions button, .pending-actions summary { cursor: pointer; }
+.pending-actions :is(button, a, summary, input, select, textarea):focus-visible { outline: 2px solid #137b80; outline-offset: 3px; }
+.pending-actions button:disabled { cursor: not-allowed; }
+.pending-control { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 1px solid #d5e4e1; border-radius: 999px; padding: 9px 15px; background: white; color: #376168; line-height: 1.4; }
+.pending-control-primary { background: #137b80; border-color: #137b80; color: white; }
+.pending-control-primary:hover { background: #11676c; }
+.pending-control:disabled { opacity: .5; }
+.pending-filter-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pending-filter-pill { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; border: 1px solid #d5e4e1; border-radius: 999px; background: white; padding: 8px 14px; color: #376168; }
+.pending-filter-pill strong { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 999px; background: #e9f5f1; font-size: 12px; }
+.pending-filter-pill[data-attention="true"] { border-color: #e8c87c; background: #fff9ec; color: #795519; }
+.pending-filter-pill[aria-pressed="true"] { color: white; background: #137b80; border-color: #137b80; }
+.pending-filter-pill[aria-pressed="true"] strong { color: white; background: #ffffff24; }
+.pending-action-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d5e4e1; border-radius: 26px; background: #ffffffd9; }
+.pending-action-tabs { display: flex; padding: 4px; gap: 4px; border-radius: 999px; background: #edf5f2; }
+.pending-action-tabs button { min-height: 38px; padding: 7px 16px; border-radius: 999px; color: #376168; }
+.pending-action-tabs button[aria-pressed="true"] { background: #137b80; color: white; }
+.pending-action-search { position: relative; flex: 1; min-width: 220px; }
+.pending-action-search > svg { position: absolute; top: 50%; left: 15px; transform: translateY(-50%); color: #66878b; pointer-events: none; }
+.pending-action-search input { min-height: 44px; width: 100%; padding: 10px 44px; border: 1px solid #d5e4e1; border-radius: 999px; background: #f7fbf9; font-size: 14px; }
+.pending-action-search button { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 38px; height: 38px; border-radius: 999px; color: #58777d; }
+.pending-actions-help { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; font-size: 12px; color: #5b787d; }
+.pending-action-list { display: flex; flex-direction: column; gap: 12px; }
+.pending-action-card { position: relative; border: 1px solid #d5e4e1; border-left: 4px solid #9dd2c7; border-radius: 26px; padding: 20px; background: #fff; box-shadow: 0 5px 20px #234f5008; }
+.pending-action-card[data-attention="true"] { border-left-color: #dda93b; }
+.pending-action-content { display: flex; align-items: start; gap: 14px; }
+.pending-action-icon { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; border-radius: 50%; background: #e5f5ef; color: #137b80; }
+.pending-action-card[data-attention="true"] .pending-action-icon { background: #fff1d0; color: #947018; }
+.pending-action-details { flex: 1; min-width: 0; }
+.pending-action-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 8px; }
+.pending-action-category { font-size: 11px; color: #5c7a7f; font-weight: 600; margin-right: 4px; }
+.pending-action-badge { border: 1px solid #dce7e5; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 600; color: #5c7177; background: #f4f7f6; }
+.pending-action-badge.is-progress { color: #17666a; background: #e7f5f1; border-color: #bde1d7; }
+.pending-action-badge.is-resolved { color: #286b4a; background: #eaf7ee; border-color: #c6e2cd; }
+.pending-action-badge.is-overdue { color: #795519; background: #fff3d5; border-color: #edcd7e; }
+.pending-action-badge.is-urgent { color: #a14042; background: #fff0ee; border-color: #f1c8c3; }
+.pending-action-details h2 { font-size: 16px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.pending-action-patient { margin-top: 5px; font-size: 14px; color: #376168; overflow-wrap: anywhere; }
+.pending-action-meta { display: flex; flex-wrap: wrap; gap: 7px 20px; margin-top: 12px; font-size: 12px; color: #5d767e; }
+.pending-action-meta > span { display: flex; align-items: start; gap: 6px; min-width: 0; }
+.pending-action-meta svg { flex-shrink: 0; margin-top: 1px; }
+.pending-action-meta strong { color: #376168; font-weight: 600; }
+.pending-action-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 0 60px; }
+.pending-action-secondary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.pending-history-toggle { border-color: transparent; background: transparent; padding: 9px 10px; }
+.pending-history-toggle.is-selected { border-color: #bde1d7; background: #edf8f4; }
+.pending-action-more { position: relative; }
+.pending-action-more > summary { list-style: none; }
+.pending-action-more > summary::-webkit-details-marker { display: none; }
+.pending-action-more[open] > div { display: flex; flex-direction: column; position: absolute; right: 0; top: calc(100% + 6px); z-index: 25; width: 230px; max-width: calc(100vw - 64px); padding: 8px; border: 1px solid #d5e4e1; border-radius: 20px; background: white; box-shadow: 0 10px 30px #173f4a20; }
+.pending-action-more button { min-height: 44px; padding: 10px 12px; border-radius: 12px; text-align: left; color: #376168; }
+.pending-action-more button:hover { background: #edf8f4; }
+.pending-action-history { border-top: 1px solid #e3ede9; margin-top: 16px; padding-top: 16px; color: #5d767e; font-size: 12px; }
+.pending-actions-empty { border: 1px dashed #c5dcd4; border-radius: 26px; padding: 36px 20px; text-align: center; background: #ffffffa6; color: #5d767e; }
+.pending-actions-empty > svg { margin: 0 auto 10px; color: #137b80; }
+.pending-actions-settings { border: 1px solid #d5e4e1; border-radius: 26px; padding: 16px 20px; background: white; }
+@media (max-width: 767px) {
+  .pending-filter-pills { flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 6px; }
+  .pending-filter-pill { flex-shrink: 0; padding: 7px 12px; font-size: 12px; }
+  .pending-action-toolbar { padding: 12px; gap: 10px; border-radius: 24px; }
+  .pending-action-tabs { width: 100%; }
+  .pending-action-tabs button { flex: 1; }
+  .pending-action-search { flex-basis: 100%; min-width: 0; }
+  .pending-action-card { padding: 16px; border-radius: 24px; }
+  .pending-action-content { gap: 10px; }
+  .pending-action-icon { width: 36px; height: 36px; }
+  .pending-action-details h2 { font-size: 15px; }
+  .pending-action-controls { margin-left: 0; }
+  .pending-action-controls > :is(button, a) { flex: 1; }
+  .pending-action-secondary { justify-content: space-between; width: 100%; margin-left: 0; }
+}
