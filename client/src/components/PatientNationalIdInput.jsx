@@ -1,5 +1,5 @@
 import { cx } from "../lib/utils.js";
-import { PATIENT_ID_TYPES } from "../lib/patientIdentity.js";
+import { PATIENT_ID_TYPES, requiresPatientIdNumber } from "../lib/patientIdentity.js";
 
 function PatientNationalIdInput({
   value = "",
@@ -27,7 +27,7 @@ function PatientNationalIdInput({
           </select>
         </div>
       ) : null}
-      {idType !== "old_age" ? (
+      {requiresPatientIdNumber(idType) ? (
         <label className="flex flex-col gap-1.5">
           <span className={labelClass}>
             {PATIENT_ID_TYPES.find((type) => type.value === idType)?.label || "ID number"}{required ? " *" : ""}

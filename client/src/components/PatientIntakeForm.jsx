@@ -26,7 +26,7 @@ import { useMauritianNicPatientAutofill } from "../hooks/useMauritianNicPatientA
 import { cx } from "../lib/utils.js";
 import { capitalizeFirstLetter } from "../lib/patientText.js";
 
-import { validatePatientIdentity } from "../lib/patientIdentity.js";
+import { requiresPatientIdNumber, validatePatientIdentity } from "../lib/patientIdentity.js";
 
 const DRAFT_KEY = "ocs_patient_draft";
 
@@ -526,7 +526,7 @@ function PatientFormModal({
                 <PatientNationalIdInput
                   idType={form.patient_id_type || "national_id"}
                   onTypeChange={handleIdTypeChange}
-                  required={form.patient_id_type !== "old_age"}
+                  required={requiresPatientIdNumber(form.patient_id_type)}
                   value={form.patient_id_number}
                   variant="mobile"
                   onChange={handleDocumentNumberChange}
@@ -927,7 +927,7 @@ function PatientFormModal({
               <PatientNationalIdInput
                 idType={form.patient_id_type || "national_id"}
                 onTypeChange={handleIdTypeChange}
-                required={form.patient_id_type !== "old_age"}
+                required={requiresPatientIdNumber(form.patient_id_type)}
                 value={form.patient_id_number}
                 variant="desktop"
                 onChange={handleDocumentNumberChange}

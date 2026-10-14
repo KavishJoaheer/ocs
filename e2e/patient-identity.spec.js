@@ -13,13 +13,13 @@ for (const width of [390, 1280]) {
     const idNumber = page.locator('input[name="patient_id_number"]');
     const dob = page.getByLabel("Date of Birth", { exact: false });
     await expect(idType).toHaveValue("national_id");
-    await expect(idType.locator("option")).toHaveText(["National ID Number", "Driving Licence", "Passport Number", "Birth Certificate Number", "Old Age"]);
+    await expect(idType.locator("option")).toHaveText(["National ID Number", "Driving Licence", "Passport Number", "Birth Certificate Number", "Old Age", "No ID available"]);
     await expect(idNumber).toHaveAttribute("required", "");
     await idNumber.fill("B290493310239F");
     await expect(dob).toHaveValue("29/04/1993");
     await expect(dob).toHaveAttribute("readonly", "");
     await expect(page.getByText(/Age: \d+ years old/)).toBeVisible();
-    for (const type of ["driving_licence", "passport", "birth_certificate", "old_age"]) {
+    for (const type of ["driving_licence", "passport", "birth_certificate", "old_age", "no_id"]) {
       await idType.selectOption(type);
       await expect(dob).toHaveValue("");
       await expect(dob).not.toHaveAttribute("readonly", "");
@@ -27,7 +27,7 @@ for (const width of [390, 1280]) {
       const age = page.getByLabel("Age (years)");
       await expect(age).toHaveValue("");
       await expect(age).not.toHaveAttribute("required", "");
-      if (type === "old_age") await expect(idNumber).toHaveCount(0);
+      if (["old_age", "no_id"].includes(type)) await expect(idNumber).toHaveCount(0);
       else {
         await idNumber.fill("B290493310240F");
         await expect(dob).toHaveValue("");
@@ -48,7 +48,7 @@ for (const width of [390, 1280]) {
     await expect(dob).toHaveValue("10/08/1950");
     await expect(page.getByLabel("Age (years)")).toHaveValue("76");
     await page.screenshot({ path: `/tmp/ocs-patient-identity-${width}.png`, fullPage: true });
-    // Saving Old Age with all identity and birth fields blank must succeed.
+    // Saving a patient without identification or known birth details must succeed.
     await dob.fill("");
     await page.getByLabel("Age (years)").fill("");
     await page.getByRole("button", { name: /^Next(?::.*)?$/ }).click();
@@ -58,10 +58,11 @@ for (const width of [390, 1280]) {
     const saved = await savedResponse;
     expect(saved.status()).toBe(201);
     const patient = await saved.json();
-    expect(patient.patient_id_type).toBe("old_age");
+    expect(patient.patient_id_type).toBe("no_id");
     expect(patient.patient_id_number).toBe("");
     expect(patient.date_of_birth).toBe("");
     expect(patient.manual_age).toBeNull();
     await expect(page).toHaveURL(new RegExp(`/patients/${patient.id}$`));
+    await expect(page.getByText("No ID available", { exact: true })).toBeVisible();
   });
 }

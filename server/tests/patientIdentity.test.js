@@ -122,3 +122,24 @@ test("manual DOB, age zero, type edits and validation survive saving", async () 
   const invalid = await request("POST", "/patients", { ...basePatient, patient_id_type: "invalid" });
   assert.equal(invalid.status, 400);
 });
+
+test("No ID available creates distinct patients without a document and preserves optional details when edited", async () => {
+  const first = await request("POST", "/patients", { ...basePatient, patient_id_type: "no_id", patient_id_number: "STALE-DOCUMENT" });
+  const second = await request("POST", "/patients", { ...basePatient, patient_id_type: "no_id" });
+  for (const result of [first, second]) {
+    assert.equal(result.status, 201, JSON.stringify(result.data));
+    assert.equal(result.data.patient_id_type, "no_id");
+    assert.equal(result.data.patient_id_number, "");
+    assert.equal(result.data.date_of_birth, "");
+    assert.equal(result.data.manual_age, null);
+  }
+  assert.notEqual(first.data.patient_identifier, second.data.patient_identifier);
+  const edited = await request("PUT", `/patients/${first.data.id}`, { ...basePatient, patient_id_type: "no_id", manual_age: 38 });
+  assert.equal(edited.status, 200, JSON.stringify(edited.data));
+  assert.equal(edited.data.manual_age, 38);
+  assert.equal(edited.data.date_of_birth, "");
+  const reopened = await request("GET", `/patients/${first.data.id}`);
+  assert.equal(reopened.data.patient.patient_id_type, "no_id");
+  assert.equal(reopened.data.patient.patient_id_number, "");
+  assert.equal(reopened.data.patient.manual_age, 38);
+});

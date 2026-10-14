@@ -187,7 +187,7 @@ function normalizePatientPayload(body) {
   const status = String(body.status ?? "active").trim().toLowerCase();
   const assignedDoctorRaw = String(body.assigned_doctor_id ?? "").trim();
   const patientIdType = String(body.patient_id_type ?? "national_id").trim();
-  const patientIdNumber = patientIdType === "old_age" ? "" : normalizePatientIdNumber(body.patient_id_number);
+  const patientIdNumber = ["old_age", "no_id"].includes(patientIdType) ? "" : normalizePatientIdNumber(body.patient_id_number);
   // Older API clients do not send an ID type. Preserve their existing contract;
   // the intake form always supplies it and uses the document-specific rules.
   const hasIdentityType = body.patient_id_type !== undefined;
@@ -358,10 +358,10 @@ function validatePatientPayload(
   if (!buildPatientFullName(payload.first_name, payload.last_name)) {
     return "Patient name is required.";
   }
-  if (!["national_id", "driving_licence", "passport", "birth_certificate", "old_age"].includes(payload.patient_id_type)) {
+  if (!["national_id", "driving_licence", "passport", "birth_certificate", "old_age", "no_id"].includes(payload.patient_id_type)) {
     return "Select a valid ID type.";
   }
-  if (payload.has_identity_type && payload.patient_id_type !== "old_age" && !payload.patient_id_number) {
+  if (payload.has_identity_type && !["old_age", "no_id"].includes(payload.patient_id_type) && !payload.patient_id_number) {
     return "ID number is required for the selected ID type.";
   }
   if (payload.has_identity_type && payload.patient_id_type === "national_id" && !parseMauritianID(payload.patient_id_number)) {

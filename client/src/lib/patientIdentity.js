@@ -6,12 +6,17 @@ export const PATIENT_ID_TYPES = [
   { value: "passport", label: "Passport Number" },
   { value: "birth_certificate", label: "Birth Certificate Number" },
   { value: "old_age", label: "Old Age" },
+  { value: "no_id", label: "No ID available" },
 ];
+
+export function requiresPatientIdNumber(type) {
+  return !["old_age", "no_id"].includes(type);
+}
 
 export function validatePatientIdentity(form) {
   const type = form.patient_id_type || "national_id";
   const number = String(form.patient_id_number || "").trim();
-  if (type !== "old_age" && !number) {
+  if (requiresPatientIdNumber(type) && !number) {
     return `${PATIENT_ID_TYPES.find((item) => item.value === type)?.label || "ID number"} is required.`;
   }
   if (type === "national_id" && !parseMauritianID(number)) {
