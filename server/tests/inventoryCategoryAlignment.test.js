@@ -420,6 +420,54 @@ test("newly discontinued injections are retired from warehouse and doctor bags w
   }
 });
 
+test("IM Largactil is retired from every stock location without erasing history or similar injections", () => {
+  const folderId = db.prepare("SELECT id FROM inventory_folders WHERE name='IM Drugs' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+  const doctorIds = db.prepare("SELECT id FROM doctors ORDER BY id").all().map(row => Number(row.id));
+  assert.ok(doctorIds.length > 1);
+  const insert = db.prepare(`
+    INSERT INTO inventory (item_name, folder_id, stock_scope, owner_doctor_id, quantity, unit, cost_price)
+    VALUES (?, ?, ?, ?, 2, 'injection', 100)
+  `);
+  const ids = [Number(insert.run("IM Largactil", folderId, "ocs", null).lastInsertRowid)];
+  for (const doctorId of doctorIds) {
+    ids.push(Number(insert.run(" im largactil ", folderId, "doctor", doctorId).lastInsertRowid));
+  }
+  const keptId = Number(insert.run("IM Haloperidol", folderId, "ocs", null).lastInsertRowid);
+  const kept = db.prepare("SELECT * FROM inventory WHERE id=?").get(keptId);
+  const historyIds = [];
+  for (const id of ids) {
+    db.prepare(`INSERT INTO inventory_batches (item_id, quantity_remaining, unit_cost, expiry_date, received_date)
+      VALUES (?, 2, 100, '2030-12-30', '2026-10-01')`).run(id);
+    historyIds.push(Number(db.prepare(`
+      INSERT INTO inventory_movements (item_id, movement_type, quantity, previous_quantity, next_quantity, note)
+      VALUES (?, 'out', 1, 3, 2, 'Previous medication usage')
+    `).run(id).lastInsertRowid));
+  }
+  const oldHistory = historyIds.map(id => db.prepare("SELECT * FROM inventory_movements WHERE id=?").get(id));
+
+  alignInventoryCategories();
+  for (const id of ids) {
+    const row = db.prepare("SELECT quantity, archived_at FROM inventory WHERE id=?").get(id);
+    assert.equal(Number(row.quantity), 0);
+    assert.ok(row.archived_at);
+    assert.equal(db.prepare("SELECT SUM(quantity_remaining) AS remaining FROM inventory_batches WHERE item_id=?").get(id).remaining, 0);
+    const movement = db.prepare("SELECT * FROM inventory_movements WHERE item_id=? AND reference_type='catalogue_retirement'").get(id);
+    assert.equal(movement.quantity, 2);
+    assert.equal(JSON.parse(movement.meta_json).reason, "Discontinued");
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_audit_logs WHERE item_id=? AND action_type='retired_sku_write_off'").get(id).count, 1);
+  }
+  assert.deepEqual(historyIds.map(id => db.prepare("SELECT * FROM inventory_movements WHERE id=?").get(id)), oldHistory);
+  assert.deepEqual(db.prepare("SELECT * FROM inventory WHERE id=?").get(keptId), kept);
+  const { isOcsCatalogExcluded } = require("../src/lib/ocsCatalogExclusions");
+  assert.equal(isOcsCatalogExcluded("IM Largactil"), true);
+  const retry = alignInventoryCategories();
+  assert.equal(retry.archived, 0);
+  assert.equal(retry.written_off, 0);
+  for (const id of ids) {
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_movements WHERE item_id=? AND reference_type='catalogue_retirement'").get(id).count, 1);
+  }
+});
+
 test("unused suction, strapping, and Neurorubin items are written off and retired everywhere", () => {
   const retiredNames = [
     "Suction Tube for suction machine",

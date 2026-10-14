@@ -87,6 +87,7 @@ const RETIRED_OCS_IV_COMBINATION_SKUS = [
   "IV N/S + Solucortef",
 ];
 const RETIRED_OCS_DISCONTINUED_DRUG_SKUS = [
+  "IM Largactil",
   "Ranitidine / Aciloc 50mg",
   "Fentanyl patch",
   "Lasilix 40mg",
