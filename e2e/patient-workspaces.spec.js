@@ -6,6 +6,21 @@ const API = `http://127.0.0.1:${process.env.E2E_API_PORT || "3001"}/api`;
 const credentials = { doctor: "arun.dharee", operator: "operator01" };
 test.use({ actionTimeout: 15_000 });
 
+const patientIds = [];
+test.afterEach(() => {
+  const db = openE2eDb();
+  try {
+    // The CI suites share a database. Keep this suite's samples out of later directories and review queues.
+    const retirePatient = db.prepare("UPDATE patients SET deleted_at=CURRENT_TIMESTAMP, is_under_review=0 WHERE id=?");
+    db.transaction(() => {
+      for (const id of patientIds) retirePatient.run(id);
+    })();
+  } finally {
+    patientIds.length = 0;
+    db.close();
+  }
+});
+
 async function session(page, request, role) {
   const response = await request.post(`${API}/auth/login`, { data: { username: credentials[role], password: "Welcome@123" } });
   expect(response.ok()).toBeTruthy();
@@ -22,7 +37,9 @@ async function createPatient(request, headers, extra = {}) {
     ...extra,
   } });
   expect(response.ok(), await response.text()).toBeTruthy();
-  return response.json();
+  const patient = await response.json();
+  patientIds.push(patient.id);
+  return patient;
 }
 
 async function noOverflow(page) {
@@ -137,7 +154,9 @@ for (const width of [390, 1280]) {
     await page.getByRole("button", { name: /^Next(?::.*)?$/ }).click();
     const saved = page.waitForResponse(response => response.url().endsWith("/api/patients") && response.request().method() === "POST");
     await page.getByRole("button", { name: "Skip for now — save patient", exact: true }).click();
-    expect((await saved).status()).toBe(201);
+    const response = await saved;
+    expect(response.status()).toBe(201);
+    patientIds.push((await response.json()).id);
     await expect(page).toHaveURL(/\/patients\/\d+$/);
     expect(await page.evaluate(() => localStorage.getItem("ocs_patient_draft"))).toBeNull();
   });
