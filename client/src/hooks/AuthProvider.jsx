@@ -8,6 +8,7 @@ import {
   prefetchPatientOfflineDirectory,
 } from "../lib/patientOfflineSync.js";
 import { refreshPushSubscriptionOnLogin } from "../lib/pushNotifications.js";
+import { clearClinicalDrafts, hasClinicalDrafts } from "./useClinicalDraft.js";
 import { AuthContext } from "./authContext.js";
 
 const COOKIE_SESSION = "cookie-session";
@@ -21,6 +22,7 @@ export function AuthProvider({ children }) {
   const [hcmUnreadCount, setHcmUnreadCount] = useState(0);
 
   const logout = useCallback(async ({ remote = true } = {}) => {
+    if (remote && hasClinicalDrafts(user) && !window.confirm("You have unfinished consultation drafts. Signing out removes these drafts from this device. Sign out without completing them?")) return;
     const activeToken = getStoredAuthToken();
     const departingUserId = user?.id ?? null;
 
@@ -50,6 +52,7 @@ export function AuthProvider({ children }) {
       }
     }
 
+    clearClinicalDrafts();
     setStoredAuthToken(null);
     setToken(null);
     setUser(null);
@@ -72,7 +75,7 @@ export function AuthProvider({ children }) {
       );
     }
     await clearPatientOfflineCache();
-  }, [user?.id]);
+  }, [user]);
 
   const login = useCallback(async ({ username, password }) => {
     const payload = await api.post(

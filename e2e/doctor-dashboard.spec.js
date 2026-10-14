@@ -98,7 +98,7 @@ for (const width of [360, 430, 1440]) {
     await care.getByRole("link", { name: "Open call for Ravi Pillay", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/teleconsultations\\?request=${callId}$`));
     const call = page.locator("section").filter({ has: page.getByRole("link", { name: "Ravi Pillay", exact: true }) });
-    await expect(call.getByRole("button", { name: "Hide details", exact: true })).toBeVisible();
+    await expect(call.getByLabel("Patient’s consultation code")).toBeVisible();
     await expect(call.getByText(/code/i).first()).toBeVisible();
     await page.goto(`${STAFF}/`);
     await page.route(`**/api/visit-requests/${visitId}`, route => route.fulfill({ status: 503, json: { error: "Visit update unavailable" } }), { times: 1 });

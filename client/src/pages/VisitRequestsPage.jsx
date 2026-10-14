@@ -29,6 +29,8 @@ import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 import AppointmentChangeInbox from "../components/AppointmentChangeInbox.jsx";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
+import DoctorHomeVisits from "../components/visit-requests/DoctorHomeVisits.jsx";
 import OperatorVisitRequests from "../components/visit-requests/OperatorVisitRequests.jsx";
 
 const STATUS_OPTIONS = [
@@ -637,7 +639,7 @@ function VisitRequestCard({ request, doctors, onUpdate, canAssignDoctor = true, 
   );
 }
 
-function DoctorMobileVisitCard({ request, onUpdate }) {
+function DoctorVisitCard({ request, onUpdate, readOnly = false }) {
   const locked = CLOSED_STATUSES.includes(request.status);
   const [draft, setDraft] = useState(() => draftFromRequest(request));
   const [dirty, setDirty] = useState(false);
@@ -652,6 +654,10 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
     }
   }
 
+  useEffect(() => {
+    setUnsavedWork(`doctor-visit-${request.id}`, dirty && !locked);
+    return () => setUnsavedWork(`doctor-visit-${request.id}`, false);
+  }, [request.id, dirty, locked]);
   const advance = nextStatus(request.status, { isDoctor: true });
   const actionLabels = {
     assigned: "I'm on my way",
@@ -670,7 +676,11 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
 
   async function save(event, status) {
     event.preventDefault();
-    if (saving || locked) return;
+    if (saving || locked || readOnly) return;
+    if (dirty && draft.eta_minutes !== "" && (!Number.isInteger(Number(draft.eta_minutes)) || Number(draft.eta_minutes) < 0)) {
+      toast.error("Enter a whole number of minutes, zero or above.");
+      return;
+    }
     setSaving(true);
     try {
       await onUpdate(request.id, {
@@ -690,10 +700,10 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
   }
 
   return (
-    <article aria-label={`Visit for ${request.patient_name}`} className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_3px_16px_rgba(59,89,92,0.04)]">
-      <div className="p-4">
+    <article aria-label={`Visit for ${request.patient_name}`} className="doctor-home-card overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-[0_3px_16px_rgba(59,89,92,0.04)]">
+      <div className="p-4 md:flex md:items-center md:gap-6"><div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={cx("rounded-full px-2.5 py-1 text-[11px] font-semibold", locked ? "bg-slate-100 text-slate-600" : "bg-ocs-teal/10 text-ocs-teal")}>
+          <span className={cx("rounded-full px-2.5 py-1 text-[11px] font-semibold", locked ? "bg-slate-100 text-slate-600" : "bg-[#e6f2ef] text-[#137b80]")}>
             {statusLabel}
           </span>
           {request.urgency && request.urgency !== "routine" ? <UrgencyBadge urgency={request.urgency} /> : null}
@@ -707,6 +717,7 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
           <span className="min-w-0 break-words">{request.address || "No address provided"}</span>
         </p>
         {request.insurance_coverage?.is_linkham ? <div className="mt-3"><InsuranceCoverageBadge request={request} /></div> : null}
+        </div><div className="visit-actions min-w-0 md:w-72 md:shrink-0">
         {request.patient_contact_number || request.address ? (
           <div className="mt-4 flex gap-2">
             {request.patient_contact_number ? <a href={`tel:${request.patient_contact_number}`} aria-label={`Call ${request.patient_name}`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-ocs-slate"><Phone className="size-4" />Call patient</a> : null}
@@ -714,13 +725,13 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
           </div>
         ) : null}
         {!locked && advance ? (
-          <button type="button" disabled={saving || blockedAdvance} onClick={(event) => save(event, advance)} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50">
+          <button type="button" disabled={saving || readOnly || blockedAdvance} onClick={(event) => save(event, advance)} className="mt-3 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 text-sm font-bold text-white transition active:scale-[0.98] disabled:opacity-50">
             {saving ? "Updating visit…" : actionLabels[request.status]}
             {!saving ? <ArrowRight className="size-4" /> : null}
           </button>
         ) : null}
         {blockedAdvance ? <p className="mt-2 text-xs leading-5 text-rose-700">Contact dispatch to confirm insurance coverage before continuing.</p> : null}
-      </div>
+      </div></div>
       <details className="group border-t border-slate-100">
         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-xs font-semibold text-slate-500 [&::-webkit-details-marker]:hidden">
           {locked ? "Visit details" : "ETA & team notes"}
@@ -734,13 +745,13 @@ function DoctorMobileVisitCard({ request, onUpdate }) {
             <form onSubmit={save} className="mt-3 space-y-3">
               <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
                 ETA in minutes
-                <input type="number" min="0" step="1" inputMode="numeric" value={draft.eta_minutes} disabled={saving} onChange={(event) => updateDraft({ eta_minutes: event.target.value })} placeholder="e.g. 25" className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-base font-normal text-slate-900 outline-none focus:border-ocs-teal" />
+                <input type="number" min="0" step="1" inputMode="numeric" value={draft.eta_minutes} disabled={saving || readOnly} onChange={(event) => updateDraft({ eta_minutes: event.target.value })} placeholder="e.g. 25" className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-base font-normal text-slate-900 outline-none focus:border-ocs-teal" />
               </label>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor={`visit-notes-${request.id}`} className="text-xs font-semibold text-slate-600">Team notes</label>
-                <textarea id={`visit-notes-${request.id}`} rows={2} value={draft.staff_notes} disabled={saving} onChange={(event) => updateDraft({ staff_notes: event.target.value })} placeholder="Add a note for the clinic" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-base text-slate-900 outline-none focus:border-ocs-teal" />
+                <textarea id={`visit-notes-${request.id}`} rows={2} value={draft.staff_notes} disabled={saving || readOnly} onChange={(event) => updateDraft({ staff_notes: event.target.value })} placeholder="Add a note for the clinic" className="w-full resize-y rounded-xl border border-slate-200 p-3 text-base text-slate-900 outline-none focus:border-ocs-teal" />
               </div>
-              <button type="submit" disabled={!dirty || saving} className="min-h-11 w-full rounded-xl border border-ocs-teal/25 px-3 text-sm font-semibold text-ocs-teal disabled:opacity-40">{saving ? "Saving…" : "Save details"}</button>
+              <button type="submit" disabled={!dirty || saving || readOnly} className="min-h-11 w-full rounded-xl border border-ocs-teal/25 px-3 text-sm font-semibold text-ocs-teal disabled:opacity-40">{saving ? "Saving…" : "Save details"}</button>
             </form>
           )}
         </div>
@@ -893,9 +904,9 @@ export default function VisitRequestsPage() {
       }
     }
 
-    // Keep the operator detail panel open until the server confirms dispatch.
-    // Existing board views keep their optimistic update and rollback behaviour.
-    if (!isOperator) setRequests((current) =>
+    // Confirm operator and doctor actions before changing the displayed stage.
+    // Admin board views retain their optimistic update and rollback behaviour.
+    if (!isOperator && !isDoctor) setRequests((current) =>
       current.map((request) => (request.id === id ? { ...request, ...payload } : request)),
     );
     try {
@@ -986,6 +997,12 @@ export default function VisitRequestsPage() {
     ? requests.filter((request) => CLOSED_STATUSES.includes(request.status))
     : requests;
 
+  if (isDoctor) {
+    return <DoctorHomeVisits user={user} requests={requests} loading={loading} refreshing={refreshing}
+      loadError={loadError} onRefresh={() => loadRequests({ silent: true })} statusFilter={statusFilter}
+      onStatusFilter={setStatusFilter} renderDateFilter={renderDateFilter} hasDateFilter={hasDateFilter}
+      Card={DoctorVisitCard} onUpdate={handleUpdate} />;
+  }
   if (isOperator) {
     return <OperatorVisitRequests
       requests={requests} doctors={activeDoctors} doctorError={doctorError} onRetryDoctors={loadDoctors}
@@ -1132,7 +1149,7 @@ export default function VisitRequestsPage() {
       ) : isDoctorMobile ? (
         <section aria-label={statusFilter === "active" ? "Active visits" : "Visit history"} className="space-y-3">
           <p className="px-1 text-xs font-medium text-slate-500" aria-live="polite">{displayedRequests.length} {statusFilter === "active" ? "active visit" : "past visit"}{displayedRequests.length === 1 ? "" : "s"}{hasDateFilter ? " · Filtered by date" : ""}</p>
-          {displayedRequests.map((request) => <DoctorMobileVisitCard key={request.id} request={request} onUpdate={handleUpdate} />)}
+          {displayedRequests.map((request) => <DoctorVisitCard key={request.id} request={request} onUpdate={handleUpdate} />)}
         </section>
       ) : isBoard ? (
         <DispatchBoard

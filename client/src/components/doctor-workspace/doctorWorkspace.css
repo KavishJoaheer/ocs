@@ -1,0 +1,22 @@
+.doctor-workspace button { font-size: .8125rem; font-weight: 600; line-height: 1.4; }
+.doctor-workspace nav button[aria-pressed="true"] { background: #137b80; border-color: #137b80; color: white; }
+.doctor-workspace button:focus-visible, .doctor-workspace a:focus-visible, .doctor-workspace summary:focus-visible { outline: 2px solid #137b80; outline-offset: 3px; }
+.doctor-workspace .clinical-workspace { border-radius: 30px; border-color: #d5e4e1; box-shadow: 0 6px 24px #173f4a05; }
+.doctor-workspace .clinical-workspace button, .doctor-workspace .clinical-workspace a[class*="min-h-11"] { border-radius: 999px; }
+.doctor-workspace .clinical-workspace button[class*="bg-ocs-slate"] { background: #137b80; }
+.doctor-workspace .clinical-workspace textarea { border-radius: 18px; }
+.doctor-workspace .clinical-workspace fieldset { min-width: 0; }
+.doctor-workspace .doctor-home-card a, .doctor-workspace .doctor-home-card button { border-radius: 999px; }
+.doctor-workspace .doctor-home-card button[class*="bg-ocs-teal"] { background: #137b80; }
+.doctor-workspace .doctor-home-card { border-color: #d5e4e1; }
+.doctor-workspace .doctor-visits-board { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.doctor-visits-board .doctor-home-card > div { display: block; }
+.doctor-visits-board .doctor-home-card .visit-actions { width: 100%; }
+@media (min-width: 1500px) { .doctor-workspace .doctor-visits-board { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 767px) { .doctor-workspace .clinical-workspace { border-radius: 26px; } }
+.doctor-workspace .clinical-workspace [class*="rounded-xl"] { border-radius: 22px; }
+.doctor-workspace [aria-label="Visit layout"] button[aria-pressed="true"] { background: #137b80; color: white; }
+@media (min-width: 1024px) {
+  .doctor-workspace [aria-label="Patient queue"] { position: sticky; top: 24px; max-height: max(240px, calc(100svh - 310px)); overflow-y: auto; overscroll-behavior: contain; }
+  .doctor-workspace [aria-label="Patient queue"] > div:first-child { position: sticky; top: 0; z-index: 1; background: white; }
+}

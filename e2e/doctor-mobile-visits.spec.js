@@ -54,7 +54,7 @@ for (const width of [360, 430]) {
     const { visitId, session } = await prepareVisits(page, request);
     await page.setViewportSize({ width, height: 932 });
     await page.goto(`${STAFF_BASE}/visit-requests`);
-    await expect(page.getByRole("heading", { name: "Visit requests", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home visits", exact: true })).toBeVisible();
     const bottom = page.locator("#ocs-bottom-nav");
     await expect(bottom.getByRole("link")).toHaveCount(4);
     await expect(bottom.getByRole("link", { name: "Home visits", exact: true })).toHaveAttribute("aria-current", "page");
@@ -121,11 +121,20 @@ for (const width of [360, 430]) {
   });
 }
 
-test("doctor desktop visit board keeps its existing controls", async ({ page, request }) => {
+test("doctor desktop visits default to a readable list with an optional stage board", async ({ page, request }) => {
   await prepareVisits(page, request);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${STAFF_BASE}/visit-requests`);
-  await expect(page.getByRole("button", { name: "Live board", exact: true })).toBeVisible();
-  await expect(page.locator('[draggable="true"]').filter({ hasText: "Fever and persistent cough since yesterday" })).toBeVisible();
-  await expect(page.getByLabel("From", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Home visits", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
+  const card = page.getByRole("article").filter({ hasText: "Fever and persistent cough since yesterday" });
+  await expect(card.getByText("Amelia Marie Ramgoolam", { exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: "I'm on my way", exact: true })).toBeVisible();
+  await expect(page.getByLabel("From", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Board view" }).click();
+  await expect(page.getByRole("region", { name: "Ready to go", exact: true }).getByRole("article")).toBeVisible();
+  await expect(card.getByRole("button", { name: "I'm on my way", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "List view" }).click();
+  await expect(page.getByRole("region", { name: "Ready to go", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/ocs-doctor-visits-desktop.png", fullPage: true });
 });

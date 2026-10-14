@@ -159,8 +159,10 @@ function AppShell() {
   const userRole = user?.role;
   const isOperatorVisitRequests = userRole === "operator" && location.pathname === "/visit-requests";
   const isOperatorTeleconsultations = userRole === "operator" && location.pathname === "/teleconsultations";
-  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations;
+  const isDoctorCareWorkspace = userRole === "doctor" && ["/visit-requests", "/teleconsultations"].includes(location.pathname);
+  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace;
   const alwaysHideTopHeader =
+    isDoctorCareWorkspace ||
     (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
     (isMobile && isInventory && userRole === "doctor") ||

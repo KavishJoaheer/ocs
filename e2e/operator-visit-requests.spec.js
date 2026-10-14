@@ -121,6 +121,10 @@ for (const width of [360, 430, 820, 1440]) {
     await page.getByLabel("History status", { exact: true }).selectOption("cancelled");
     await expect(list(page,"Visit history").getByText("Previous Patient", { exact: true })).toBeVisible();
     await expect(list(page,"Visit history").getByText("Amelia Marie Ramgoolam", { exact: true })).toHaveCount(0);
+    // Moving off a success toast resumes its dismissal timer. At tablet width
+    // the transient notice can cover Filters and otherwise pause while hovered.
+    await page.mouse.move(0, 0);
+    await expect(page.locator('[data-rht-toaster] [role="status"]')).toHaveCount(0);
     await page.getByRole("button", { name: "Filters", exact: true }).click();
     await page.getByLabel("From", { exact: true }).fill("2040-01-02");
     await page.getByLabel("To", { exact: true }).fill("2040-01-01");
