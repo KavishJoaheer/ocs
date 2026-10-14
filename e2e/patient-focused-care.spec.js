@@ -57,7 +57,7 @@ for (const width of [360, 430]) {
 
   test(`teleconsultation request opens directly without history at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 932 });
-    await mockCare(page);
+    await mockCare(page, { requests: [] });
     await page.goto(`${CARE}/teleconsultation`);
     await expect(page.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
     await expect(page.getByText(/Past consultations/)).toHaveCount(0);
@@ -71,6 +71,20 @@ for (const width of [360, 430]) {
     await expect(page.getByText(/Past consultations/)).toHaveCount(0);
     await page.getByRole("button", { name: "Edit details", exact: true }).click();
     await expect(page.getByLabel("Reason for consultation")).toHaveValue("Review my medication");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  });
+
+  test(`completed teleconsultation stays visible before new intake at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 932 });
+    await mockCare(page);
+    await page.goto(`${CARE}/teleconsultation`);
+    await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
+    await expect(page.getByText(/Past consultations/)).toHaveCount(0);
+    await page.getByRole("button", { name: "Request another teleconsultation", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Request a teleconsultation", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Reason for consultation")).toHaveValue("");
+    for (const request of history) await expect(page.getByText(request.reason, { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });
 }
@@ -100,6 +114,8 @@ test("returning patients still need hotline screening before requesting care", a
   await mockCare(page, { eligible: false });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${CARE}/teleconsultation`);
+  await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Request another teleconsultation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Call the OCS hotline", exact: true })).toBeVisible();
   await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
