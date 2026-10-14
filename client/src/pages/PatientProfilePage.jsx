@@ -220,11 +220,13 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
   );
 }
 
-function HighlightStat({ icon: Icon, label, value, prominent = false, primary = false }) {
+function HighlightStat({ icon: Icon, label, value, prominent = false, primary = false, onClick }) {
+  const Tag = onClick ? "button" : "span";
   return (
-    <span className={cx(
+    <Tag type={onClick ? "button" : undefined} onClick={onClick} className={cx(
       "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full px-3 py-2",
       prominent ? "patient-profile-highlight" : "bg-[#eaf5f1] text-xs text-[#376168]",
+      onClick && "min-h-11 cursor-pointer hover:brightness-95",
     )}>
       {Icon ? <Icon className="size-4 shrink-0" aria-hidden="true" /> : null}
       <span className={prominent ? "patient-profile-highlight-label" : undefined}>{label}</span>
@@ -234,7 +236,7 @@ function HighlightStat({ icon: Icon, label, value, prominent = false, primary = 
         prominent ? "patient-profile-highlight-value" : "text-[#173f4a]",
         prominent && primary && "patient-profile-highlight-value-primary",
       )}>{value}</strong>
-    </span>
+    </Tag>
   );
 }
 
@@ -1472,7 +1474,7 @@ function PatientProfilePage() {
 
   const isOperatorDesktop = user.role === "operator" && !isMobile;
   const showPatientBillingUi = useMemo(
-    () => Boolean(data && canBillPatientForUser(user, data.patient) && !(user.role === "doctor" && isMobile)),
+    () => Boolean(data && canBillPatientForUser(user, data.patient) && !(["doctor", "operator"].includes(user.role) && isMobile)),
     [data, user, isMobile],
   );
 
@@ -1968,7 +1970,7 @@ function PatientProfilePage() {
   const identityType = PATIENT_ID_TYPES.find((type) => type.value === (data.patient.patient_id_type || "national_id"))?.label || "Identity document";
   const identityValue = data.patient.patient_id_type === "no_id" ? "No identification provided" : data.patient.patient_id_type === "old_age" && !data.patient.patient_id_number ? "No identifier required" : data.patient.patient_id_number;
   const patientSummary = <div className="patient-summary-cards space-y-3">
-    <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} prominent /> : null}</div>
+    <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} onClick={() => selectProfileTab("notes")} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} onClick={() => selectProfileTab("reports")} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} prominent onClick={consultations[0] ? () => setConsultationNoteViewer(consultations[0]) : undefined} /> : null}</div>
     <SectionCard title="Patient details" compact>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
         <ProfileDlItem label={identityType} value={identityValue} emphasize />
@@ -2021,7 +2023,7 @@ function PatientProfilePage() {
         <HighlightStat icon={UserRound} label="Age" value={profileAgeLabel} prominent />
         <StatusBadge value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
       </PatientWorkspaceHeader>
-      {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside className="patient-priority-notice rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
+      {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside aria-label="Allergy history" className="patient-priority-notice rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
       {isPatientUnderReview(data.patient) ? <LongTermReviewAlertBanner patient={data.patient} actions={longTermReviewLogAction} /> : null}
       <nav aria-label="Patient profile sections" className="patient-profile-tabs flex max-w-full gap-2 overflow-x-auto rounded-full py-1">
         {mobileProfileTabs.map((tab) => <button key={tab.key} type="button" aria-pressed={activeTab === tab.key} onClick={() => selectProfileTab(tab.key)} className={cx("patient-control shrink-0", activeTab === tab.key && "patient-control-primary")}>{tab.label}</button>)}

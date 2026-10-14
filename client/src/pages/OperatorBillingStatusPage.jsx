@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, DollarSign, FileText, ReceiptText, Search } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
@@ -270,6 +270,8 @@ export default function OperatorBillingStatusPage() {
       toast.error(error.message || "The invoice PDF could not be created.");
     }
   }
+
+  if (user.role === "operator" && isMobile) return <Navigate to="/" replace />;
 
   return (
     <div className="desktop-finance payment-follow-up mx-auto w-full max-w-7xl space-y-5">

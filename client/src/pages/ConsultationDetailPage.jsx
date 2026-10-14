@@ -14,12 +14,15 @@ import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
 import LoadingState from "../components/LoadingState.jsx";
 import EmptyState from "../components/EmptyState.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import { PATIENT_ID_TYPES, requiresPatientIdNumber } from "../lib/patientIdentity.js";
 import SectionCard from "../components/SectionCard.jsx";
 import StructuredConsultationFields from "../components/StructuredConsultationFields.jsx";
 import { consultationFormValues } from "../lib/consultationForm.js";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { canEditConsultationNote, canViewConsultationNotes } from "../lib/consultationAccess.js";
@@ -38,6 +41,7 @@ import {
 function ConsultationDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [consultation, setConsultation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -58,13 +62,18 @@ function ConsultationDetailPage() {
 
   const canEdit = consultation && canEditConsultationNote(user, consultation);
   const canViewNotes = canViewConsultationNotes(user);
-  const canAttachManualInvoice = user?.role === "operator";
+  const canAttachManualInvoice = user?.role === "operator" && !isMobile;
   const canViewManualInvoices = ["admin", "doctor", "operator"].includes(user?.role);
   const refreshKey = useLiveRefreshKey();
   const hasUnsavedNote =
     isEditing &&
     consultation != null &&
     Object.entries(consultationFormValues(consultation)).some(([key, value]) => form[key] !== value);
+
+  useEffect(() => {
+    setUnsavedWork(`consultation-note-${id}`, hasUnsavedNote);
+    return () => setUnsavedWork(`consultation-note-${id}`, false);
+  }, [id, hasUnsavedNote]);
 
   useEffect(() => {
     let ignore = false;
@@ -292,12 +301,15 @@ function ConsultationDetailPage() {
     );
   }
 
+  const identityType = consultation.patient_id_type || "national_id";
+  const identityLabel = PATIENT_ID_TYPES.find(type => type.value === identityType)?.label || "Patient ID";
+  const identityValue = consultation.patient_id_number || (identityType === "no_id" ? "No identification provided" : requiresPatientIdNumber(identityType) ? "Not recorded" : "No identifier required");
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Consultation record"
+    <div className="legacy-workspace consultation-record-workspace space-y-5">
+      <PatientWorkspaceHeader inlineActions role={user.role}
         title={`${consultation.patient_name} - ${formatDate(consultation.consultation_date)}`}
-        description={`${consultation.doctor_name} - ${consultation.specialization} - ${consultation.patient_identifier || "No OCS care number yet"}`}
+        subtitle={`${consultation.doctor_name} - ${consultation.specialization} - ${consultation.patient_identifier || "No OCS care number yet"}`}
         actions={
           <div className="flex flex-wrap gap-3">
             <Link
@@ -317,58 +329,15 @@ function ConsultationDetailPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-[26px] border border-slate-200/80 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-            OCS care number
-          </p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">
-            {consultation.patient_identifier || "Not assigned"}
-          </p>
-        </div>
+      <dl className="consultation-identity-strip">
+        <div><dt>OCS care number</dt><dd>{consultation.patient_identifier || "Not assigned"}</dd></div>
+        <div><dt>{identityLabel}</dt><dd>{identityValue}</dd></div>
+        <div><dt>Appointment time</dt><dd>{formatDateTime(consultation.appointment_date, consultation.appointment_time)}</dd></div>
+        <div><dt>Appointment status</dt><dd><StatusBadge value={consultation.appointment_status} /></dd></div>
+      </dl>
 
-        <div className="rounded-[26px] border border-slate-200/80 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-            Patient ID
-          </p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">
-            {consultation.patient_id_number || "Not recorded"}
-          </p>
-        </div>
-
-        <div className="rounded-[26px] border border-slate-200/80 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-            Appointment time
-          </p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">
-            {formatDateTime(consultation.appointment_date, consultation.appointment_time)}
-          </p>
-        </div>
-
-        <div className="rounded-[26px] border border-slate-200/80 bg-white p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
-            Billing
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            {consultation.bill_count ? (
-              <StatusBadge value={consultation.bill_status || "paid"} />
-            ) : (
-              <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                No bills yet
-              </span>
-            )}
-            <span className="text-lg font-semibold text-slate-950">
-              {formatCurrency(consultation.bill_total_amount)}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-slate-500">
-            {consultation.bill_count || 0} billing entr
-            {Number(consultation.bill_count || 0) === 1 ? "y" : "ies"}
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
+      <div className="consultation-content-grid">
+        <details className="consultation-supporting-details"><summary>Visit and billing details</summary>
         <SectionCard
           title="Visit details"
           subtitle="Linked patient, doctor, schedule, and billing context."
@@ -382,7 +351,7 @@ function ConsultationDetailPage() {
                 {consultation.patient_name}
               </p>
               <p className="mt-1 text-sm text-slate-600">
-                Patient ID: {consultation.patient_id_number || "Not recorded"}
+                {identityLabel}: {identityValue}
               </p>
             </div>
 
@@ -482,11 +451,11 @@ function ConsultationDetailPage() {
               )}
             </div>
           </div>
-        </SectionCard>
+        </SectionCard></details>
 
         <SectionCard
           title="Consultation note"
-          subtitle="Open the full note, then edit it directly on this page when needed."
+          subtitle="Private clinical note and patient-visible information are kept distinct."
           actions={
             canEdit && !isEditing ? (
               <button
@@ -541,10 +510,10 @@ function ConsultationDetailPage() {
               </label>
 
               {Object.hasOwn(form, "clinical_note") ? <StructuredConsultationFields form={form} setForm={setForm} /> : <label className="block space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Doctor notes</span>
+                <span className="text-sm font-semibold text-slate-700">Doctor notes (private)</span>
                 <textarea
                   required
-                  rows="18"
+                  rows="10"
                   value={form.doctor_notes}
                   onChange={(event) =>
                     setForm((current) => ({

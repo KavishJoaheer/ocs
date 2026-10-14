@@ -37,6 +37,7 @@ import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
 import DoctorDashboard from "../components/doctor-dashboard/DoctorDashboard.jsx";
+import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
 import OperatorPolicyVerifier from "../components/operator-dashboard/OperatorPolicyVerifier.jsx";
 import OperatorMobileLiveRequests from "../components/operator-dashboard/OperatorMobileLiveRequests.jsx";
@@ -65,9 +66,9 @@ function OperatorMobileLauncher({ user, dashboard }) {
 
   return (
     <div className="flex min-h-[70svh] w-full min-w-0 flex-col pb-4 pt-2">
-      <h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-[#173f4a]">
+      <div className="flex items-start justify-between gap-3"><h1 className="text-[1.65rem] font-bold leading-tight tracking-tight text-[#173f4a]">
         {getTimeOfDayGreeting()}, {firstName}
-      </h1>
+      </h1><AppUpdateBanner compact /></div>
       <p className="mt-1.5 text-sm text-[#485e65]">{dayjs().format("dddd, D MMMM")}</p>
 
       <div className="mt-6">

@@ -1,0 +1,64 @@
+.staff-workspace {
+  --workspace-ink: #173f4a;
+  --workspace-primary: #137b80;
+  --workspace-muted: #526d75;
+  --workspace-border: #d5e4e1;
+}
+.staff-workspace .legacy-workspace { color: var(--workspace-ink); }
+.staff-workspace .legacy-workspace :is(button, select, a[class*="min-h-"]) { border-radius: 999px; font-size: 14px; font-weight: 600; }
+.staff-workspace .legacy-workspace :is(button, a)[class*="bg-ocs-teal"],
+.staff-workspace .legacy-workspace :is(button, a)[class*="bg-sky-600"] { background: var(--workspace-primary); color: white; box-shadow: none; }
+.staff-workspace .legacy-workspace button[aria-pressed="true"] { background: var(--workspace-primary); color: white; }
+.staff-workspace .legacy-workspace :is(button, a, input, select, summary):focus-visible { outline: 2px solid var(--workspace-primary); outline-offset: 3px; }
+.staff-workspace .legacy-workspace :is(.text-gray-400, .text-slate-400),
+.staff-workspace .patient-directory-list :is(.text-gray-500, .text-slate-400) { color: var(--workspace-muted); }
+.staff-workspace .legacy-workspace section { border-radius: 26px; border-color: var(--workspace-border); box-shadow: none; }
+.staff-workspace .legacy-workspace textarea { border-radius: 16px; }
+.staff-workspace .mobile-supply-workspace { background: transparent; }
+.staff-workspace .mobile-supply-workspace > div[class*="grid-cols-2"] { border-radius: 999px; background: #edf5f2; box-shadow: none; }
+.staff-workspace .mobile-supply-workspace > div[class*="grid-cols-2"] button { min-height: 44px; }
+.staff-workspace .news-workspace > div[class*="border-dashed"] { padding-block: 24px; }
+.staff-workspace .news-workspace article { padding: 18px 20px; }
+.staff-workspace .news-workspace article time { color: var(--workspace-muted); }
+.workspace-filter-panel { min-width: 0; }
+.workspace-filter-panel > summary { display: none; }
+.workspace-filter-panel > div { padding-top: 8px; }
+.workspace-filter-panel[open] > summary svg { transform: rotate(180deg); }
+.consultation-identity-strip { display: flex; flex-wrap: wrap; gap: 12px 32px; padding: 14px 18px; border: 1px solid #d5e4e1; border-radius: 24px; background: white; font-size: 13px; }
+.consultation-identity-strip dt { font-size: 12px; color: #526d75; }
+.consultation-identity-strip dd { margin-top: 4px; font-weight: 600; }
+.consultation-content-grid { display: grid; gap: 20px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; }
+.consultation-content-grid > section { order: -1; }
+.consultation-supporting-details { border: 1px solid #d5e4e1; border-radius: 26px; padding: 16px; background: white; }
+.consultation-supporting-details > summary { cursor: pointer; min-height: 44px; font-weight: 600; }
+.consultation-supporting-details section { border: none; padding: 8px 0; }
+.consultation-supporting-details section > header { display: none; }
+.consultation-supporting-details :is(div[class*="bg-slate-50"], div[class*="border-slate-200"]) { border: none; border-radius: 0; background: transparent; padding: 10px 0; }
+.staff-workspace .appointments-workspace .appointment-calendar-day { min-height: 100px; max-height: 180px; overflow-y: auto; border-radius: 18px; padding: 12px; }
+.staff-workspace .appointments-workspace .appointment-calendar-day button { border-radius: 12px; padding: 8px; font-size: 12px; border-color: #d5e4e1; background: #eaf7f3; }
+.staff-workspace .appointments-workspace .appointment-calendar-day .text-sky-700 { color: var(--workspace-primary); }
+.staff-workspace .appointments-workspace .appointment-calendar-day button p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.staff-workspace .revenue-report .text-ocs-teal { color: var(--workspace-primary); }
+.appointment-agenda-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.appointment-agenda-controls button { min-height: 44px; padding: 8px 16px; border: 1px solid #d5e4e1; background: white; color: #376168; }
+.appointment-agenda-controls button[aria-pressed="true"] { background: #137b80; color: white; }
+.revenue-secondary > summary { cursor: pointer; list-style: none; }
+.revenue-secondary > summary::-webkit-details-marker { display: none; }
+.staff-workspace .patient-profile .patient-workspace-header .bg-amber-50 { background: #fff9ec; border-color: #eddbaf; }
+.staff-workspace .patient-profile [aria-label="Allergy history"] { border-left-width: 5px; }
+@media (max-width: 767px) {
+  .staff-workspace .legacy-workspace :is(input, select, textarea) { font-size: 16px; }
+  .workspace-filter-panel > summary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 16px; border: 1px solid #d5e4e1; border-radius: 999px; background: white; color: #376168; font-size: 14px; font-weight: 600; cursor: pointer; list-style: none; }
+  .workspace-filter-panel > summary::-webkit-details-marker { display: none; }
+  .workspace-filter-panel > div { padding: 12px 0; }
+  .stock-history-workspace .stock-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stock-history-workspace .stock-summary-grid > article { padding: 10px; }
+  .stock-history-workspace .stock-summary-grid > article:last-child { display: none; }
+  .stock-history-workspace .stock-summary-grid article p { font-size: 12px; margin-top: 5px; }
+  .stock-history-workspace .stock-summary-grid article p:nth-child(2) { font-size: 16px; }
+  .stock-history-workspace .stock-summary-grid article p:nth-child(n+3) { display: none; }
+  .revenue-report [aria-label="Report period"] { border-radius: 999px; }
+  .revenue-report [role="group"] button[aria-pressed="true"] { background: #137b80; color: white; }
+  .consultation-content-grid { grid-template-columns: minmax(0, 1fr); }
+  .consultation-identity-strip { gap: 12px 20px; }
+}

@@ -86,6 +86,7 @@ for (const role of ["doctor", "operator"]) {
         const header = workspace.locator(".patient-workspace-header");
         if (width < 768) {
           await expect(workspace.getByRole("link", { name: "New bill", exact: true })).toHaveCount(0);
+          await expect(workspace.getByRole("button", { name: "Billing", exact: true })).toHaveCount(0);
           await expect(header.getByRole("link", { name: "Call", exact: true })).toBeVisible();
         } else {
           await expect(header.getByRole("link", { name: "New bill", exact: true })).toBeVisible();
@@ -100,7 +101,7 @@ for (const role of ["doctor", "operator"]) {
       await workspace.getByRole("button", { name: "Notes", exact: true }).click();
       await expect(workspace.getByText("Progress noted.", { exact: true })).toBeVisible();
       await expect(workspace.getByRole("button", { name: /^Edit(?: note)?$/, exact: true })).toHaveCount(role === "doctor" ? 1 : 0);
-      if (role === "operator") {
+      if (role === "operator" && width >= 768) {
         await workspace.getByRole("button", { name: "Billing", exact: true }).click();
         await expect(workspace.getByRole("link", { name: "Open bill", exact: true })).toBeVisible();
         if (width < 768) {

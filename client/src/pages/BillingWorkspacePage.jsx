@@ -14,7 +14,7 @@ function BillingWorkspacePage() {
   const isMobile = useIsMobile();
   const [params] = useSearchParams();
 
-  if (user?.role === "doctor" && isMobile) {
+  if (["doctor", "operator"].includes(user?.role) && isMobile) {
     return <Navigate to="/" replace />;
   }
 

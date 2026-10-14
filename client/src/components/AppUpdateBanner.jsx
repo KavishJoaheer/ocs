@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CLIENT_BUILD_SHA } from "../lib/clientBuildSha.js";
 import { hasUnsavedWork, subscribeUnsavedWork } from "../lib/unsavedWork.js";
 import { api } from "../lib/api.js";
-import { RefreshCw } from "lucide-react";
+import { ArrowDownToLine } from "lucide-react";
 import Modal from "./Modal.jsx";
 
 const POLL_MS = 60_000;
@@ -81,7 +81,7 @@ export default function AppUpdateBanner({ compact = false }) {
   if (compact) {
     return <>
       <button type="button" onClick={() => setOpen(true)} aria-label="App update available" title="App update available" className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-[#d5e4e1] bg-white text-[#376168]">
-        <RefreshCw className="size-4" aria-hidden="true" /><span className="absolute right-1 top-1 size-2.5 rounded-full border-2 border-white bg-[#20c9c0]" aria-hidden="true" />
+        <ArrowDownToLine className="size-4" aria-hidden="true" /><span className="absolute right-1 top-1 size-2.5 rounded-full border-2 border-white bg-[#20c9c0]" aria-hidden="true" />
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="App update available" size="sm">
         <p className="text-sm leading-6 text-[#485e65]">A newer OCS release is available.{dirty ? " Unsaved work is open. Reloading can lose your changes." : " Reload to use the current version."}{confirmReload ? " Confirm reload to discard unsaved work." : ""}</p>

@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import HcmBulletinBanner from "../HcmBulletinBanner.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
 import PushNotificationBanner from "../PushNotificationBanner.jsx";
+import AppUpdateBanner from "../AppUpdateBanner.jsx";
 import { cx } from "../../lib/utils.js";
 import OperatorPolicyVerifier from "./OperatorPolicyVerifier.jsx";
 import OperatorDesktopLiveRequests from "./OperatorDesktopLiveRequests.jsx";
@@ -55,7 +56,7 @@ function OperatorOperationalPulse({ counts, lowStockAlert }) {
   return (
     <section className="ocs-cc-side-card px-4 py-4" aria-labelledby="ocs-cc-pulse-heading">
       <h2 id="ocs-cc-pulse-heading" className="font-display text-base font-semibold text-[#203f42]">
-        Follow-ups
+        Other tasks
       </h2>
       <div className="mt-3 space-y-1">
         <OperatorPulseRow
@@ -114,6 +115,7 @@ export default function OperatorCommandCentre({
             value={user.operation_status}
           />
           {!user.is_read_only ? <PushNotificationBanner role="operator" compact /> : null}
+          <AppUpdateBanner compact />
         </div>
       </header>
 

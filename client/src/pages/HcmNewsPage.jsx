@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dayjs from "dayjs";
-import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { useIsMobile } from "../hooks/useIsMobile.js";
+
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
 
@@ -160,7 +160,7 @@ function NewsPostCard({ post, user, onEdit, onDelete }) {
 }
 
 function HcmNewsPage() {
-  const isMobile = useIsMobile();
+
   const { user, refreshHcmUnreadCount } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -332,35 +332,10 @@ function HcmNewsPage() {
   const isEditing = Boolean(editor?.id);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={isMobile ? "Health care manager" : undefined}
-        title="HCM news board"
-        actions={
-          <>
-            <button
-              type="button"
-              onClick={() => loadPage()}
-              disabled={isRefreshing}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-
-            {user.role === "admin" ? (
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#26717c]"
-              >
-                <Plus className="size-4" />
-                + New Update
-              </button>
-            ) : null}
-          </>
-        }
-      />
+    <div className="legacy-workspace news-workspace space-y-5">
+      <PatientWorkspaceHeader inlineActions title="HCM news" subtitle="Updates for the OCS team." role={user.role}
+        onRefresh={() => loadPage()} refreshing={isRefreshing} refreshLabel="Refresh HCM news"
+        actions={user.role === "admin" ? <button type="button" onClick={openCreateModal} className="patient-control patient-control-primary"><Plus className="size-4" />New update</button> : null} />
 
       {feedPosts.length ? (
         <div className="mx-auto flex max-w-4xl flex-col gap-4">

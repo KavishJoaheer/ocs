@@ -23,7 +23,7 @@
 .pending-action-search button { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 38px; height: 38px; border-radius: 999px; color: #58777d; }
 .pending-actions-help { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin-top: 9px; font-size: 12px; color: #5b787d; }
 .pending-action-list { display: flex; flex-direction: column; gap: 12px; }
-.pending-action-card { position: relative; border: 1px solid #d5e4e1; border-left: 4px solid #9dd2c7; border-radius: 26px; padding: 20px; background: #fff; box-shadow: 0 5px 20px #234f5008; }
+.pending-action-card { position: relative; border: 1px solid #d5e4e1; border-left: 4px solid #9dd2c7; border-radius: 26px; padding: 16px 20px; background: #fff; }
 .pending-action-card[data-attention="true"] { border-left-color: #dda93b; }
 .pending-action-content { display: flex; align-items: start; gap: 14px; }
 .pending-action-icon { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; border-radius: 50%; background: #e5f5ef; color: #137b80; }
@@ -38,11 +38,11 @@
 .pending-action-badge.is-urgent { color: #a14042; background: #fff0ee; border-color: #f1c8c3; }
 .pending-action-details h2 { font-size: 16px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
 .pending-action-patient { margin-top: 5px; font-size: 14px; color: #376168; overflow-wrap: anywhere; }
-.pending-action-meta { display: flex; flex-wrap: wrap; gap: 7px 20px; margin-top: 12px; font-size: 12px; color: #5d767e; }
+.pending-action-meta { display: flex; flex-wrap: wrap; gap: 7px 20px; margin-top: 8px; font-size: 13px; color: #526d75; }
 .pending-action-meta > span { display: flex; align-items: start; gap: 6px; min-width: 0; }
 .pending-action-meta svg { flex-shrink: 0; margin-top: 1px; }
 .pending-action-meta strong { color: #376168; font-weight: 600; }
-.pending-action-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 0 60px; }
+.pending-action-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0 60px; }
 .pending-action-secondary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
 .pending-history-toggle { border-color: transparent; background: transparent; padding: 9px 10px; }
 .pending-history-toggle.is-selected { border-color: #bde1d7; background: #edf8f4; }
@@ -57,7 +57,7 @@
 .pending-actions-empty > svg { margin: 0 auto 10px; color: #137b80; }
 .pending-actions-settings { border: 1px solid #d5e4e1; border-radius: 26px; padding: 16px 20px; background: white; }
 @media (max-width: 767px) {
-  .pending-filter-pills { flex-wrap: nowrap; overflow-x: auto; padding: 2px 2px 6px; }
+  .pending-filter-pills { flex-wrap: wrap; padding: 2px; }
   .pending-filter-pill { flex-shrink: 0; padding: 7px 12px; font-size: 12px; }
   .pending-action-toolbar { padding: 12px; gap: 10px; border-radius: 24px; }
   .pending-action-tabs { width: 100%; }

@@ -1,6 +1,7 @@
-import { RefreshCw, Search, Truck } from "lucide-react";
+import { CircleHelp, RefreshCw, Search, Truck } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import Modal from "../Modal.jsx";
 import AppUpdateBanner from "../AppUpdateBanner.jsx";
 import PushNotificationBanner from "../PushNotificationBanner.jsx";
 
@@ -15,6 +16,7 @@ export default function MobileDoctorInventory({
   counts, filters, onFilter, refreshing, onRefresh, scopeLoading, children,
 }) {
   const services = stockKind === "services";
+  const [alertsHelpOpen, setAlertsHelpOpen] = useState(false);
   useEffect(() => {
     // Clip horizontal overflow without creating an ancestor scroll container;
     // search must stick to the phone viewport as the stock list scrolls.
@@ -57,8 +59,10 @@ export default function MobileDoctorInventory({
     </div>
     {!services ? <nav aria-label="Stock alerts" className="ocs-h-scroll pb-1">
       {alerts.map(([key, label]) => <button key={key} type="button" disabled={scopeLoading} aria-pressed={Boolean(filters[key])} aria-label={`${label}: ${scopeLoading ? "loading" : counts[key]}`} onClick={() => onFilter(key)} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3 disabled:opacity-50 ${filters[key] ? "border-[#137b80] bg-[#137b80] text-white" : counts[key] > 0 ? key === "near" || key === "missing" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-rose-200 bg-rose-50 text-rose-800" : "border-[#d5e4e1] bg-white text-[#376168]"}`}>{label}<strong className="rounded-full bg-white/75 px-2 py-0.5 text-xs tabular-nums text-[#376168]">{scopeLoading ? "…" : counts[key]}</strong></button>)}
+      <button type="button" aria-label="How stock alerts work" onClick={() => setAlertsHelpOpen(true)} className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-[#d5e4e1] bg-white text-[#376168]"><CircleHelp size={16} aria-hidden="true" /></button>
     </nav> : null}
     {services ? <p className="text-xs leading-5 text-[#5b7379]">Service prices for reference. Services do not use bag stock.</p> : null}
     {children}
+    <Modal open={alertsHelpOpen} onClose={() => setAlertsHelpOpen(false)} title="How stock alerts work" size="sm"><p className="text-sm leading-6 text-[#526d75]">Low and out-of-stock alerts apply to stocked items with minimum levels. Expiry alerts apply to existing stock.</p></Modal>
   </section>;
 }

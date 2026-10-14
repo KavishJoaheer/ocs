@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { BellRing, Search, X } from "lucide-react";
 import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import PendingActionCard from "../components/pending-actions/PendingActionCard.jsx";
+import ResponsiveFilterPanel from "../components/ResponsiveFilterPanel.jsx";
 import "../components/pending-actions/pendingActions.css";
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -100,13 +101,13 @@ export default function ActionInboxPage() {
   return <section className="pending-actions mx-auto w-full max-w-6xl space-y-4" aria-label="Pending actions">
     <PatientWorkspaceHeader title="Pending actions" subtitle="Requests, reviews and team tasks." role={user.role}
       onRefresh={refresh} refreshing={refreshing || loading} refreshLabel="Refresh actions" />
-    <nav className="pending-filter-pills" aria-label="Pending action filters">
+    <ResponsiveFilterPanel label="Action filters" active={filter !== "all"}><nav className="pending-filter-pills" aria-label="Pending action filters">
       {filters.map(item => <button key={item.value} type="button" className="pending-filter-pill"
         aria-pressed={view === "active" && filter === item.value} data-attention={Boolean(item.attention && item.count)}
         onClick={() => { if (view !== "active") setLoading(true); setView("active"); setFilter(item.value); }}>
         {item.label}<strong>{item.count}</strong>
       </button>)}
-    </nav>
+    </nav></ResponsiveFilterPanel>
     <div>
       <div className="pending-action-toolbar">
         <nav className="pending-action-tabs" aria-label="Pending action views">

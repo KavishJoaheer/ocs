@@ -51,7 +51,7 @@ export default function DoctorDashboard({ user, dashboard, mobile = false, onSta
     <div className="flex flex-wrap items-center gap-2">
       <Package className="size-4 shrink-0 text-[#137b80]" aria-hidden="true" />
       <span className="text-sm font-semibold text-[#173f4a]">My bag</span>
-      <span className={cx("rounded-full px-2.5 py-1 text-xs font-medium", bag.lowStockCount > 0 && !bag.error ? "bg-amber-100 text-amber-900" : "bg-[#edf6f3] text-[#376168]")}>{bag.loading ? "Checking stock…" : bag.error ? "Status unavailable" : bag.lowStockCount > 0 ? `${bag.lowStockCount} items low` : "Bag ready"}</span>
+      <span className={cx("rounded-full px-2.5 py-1 text-xs font-medium", bag.readiness.attention && !bag.error ? "bg-amber-100 text-amber-900" : "bg-[#edf6f3] text-[#376168]")}>{bag.loading ? "Checking stock…" : bag.error ? "Status unavailable" : bag.readiness.label}</span>
     </div>
   );
 
@@ -68,7 +68,7 @@ export default function DoctorDashboard({ user, dashboard, mobile = false, onSta
             <div className="flex items-center gap-2">
               <div className="relative">
                 <span aria-hidden="true" className={cx("pointer-events-none absolute left-3 top-1/2 size-2 -translate-y-1/2 rounded-full", user.operation_status === "available" ? "bg-emerald-500" : user.operation_status === "active" ? "bg-[#20c9c0]" : "bg-slate-400")} />
-                <select aria-label="Availability" value={user.operation_status || "offline"} disabled={isSavingStatus || user.is_read_only} onChange={event => onStatusChange(event.target.value)} className="min-h-11 appearance-none rounded-full border border-[#b8d9d4] bg-white pl-7 pr-7 text-xs font-semibold text-[#173f4a] disabled:opacity-50">
+                <select aria-label="Availability" title="Available for new requests; Active means on duty; Offline means unavailable." value={user.operation_status || "offline"} disabled={isSavingStatus || user.is_read_only} onChange={event => onStatusChange(event.target.value)} className="min-h-11 appearance-none rounded-full border border-[#b8d9d4] bg-white pl-7 pr-7 text-xs font-semibold text-[#173f4a] disabled:opacity-50">
                   <option value="available">Available</option><option value="active">Active</option><option value="offline">Offline</option>
                 </select>
                 <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-[#376168]" />
@@ -76,7 +76,7 @@ export default function DoctorDashboard({ user, dashboard, mobile = false, onSta
               <AppUpdateBanner compact />
             </div>
           </> : <>
-            <OperationStatusSelector tone="teal" value={user.operation_status} options={["available", "active", "offline"]} disabled={isSavingStatus || user.is_read_only} onChange={onStatusChange} showLabel={false} />
+            <OperationStatusSelector description="Available for new requests; Active means on duty; Offline means unavailable." tone="teal" value={user.operation_status} options={["available", "active", "offline"]} disabled={isSavingStatus || user.is_read_only} onChange={onStatusChange} showLabel={false} />
             {!user.is_read_only ? <PushNotificationBanner role="doctor" compact /> : null}
             <AppUpdateBanner compact />
           </>}

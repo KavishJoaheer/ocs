@@ -3041,7 +3041,7 @@ function InventoryContent() {
   const isCompactInventory = useIsMobile(1024);
   const desktopWorkspace = !isCompactInventory && (isDoctor || isOperator);
   const [stockKind, setStockKind] = useState("stock");
-  const InventoryHeader = desktopWorkspace ? InventoryWorkspaceHeader : PageHeader;
+  const InventoryHeader = desktopWorkspace || isOperator ? InventoryWorkspaceHeader : PageHeader;
   const showDeleteStockItem = isAdmin && contextIsOcs;
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
@@ -4651,7 +4651,7 @@ function InventoryContent() {
           />
         </>
       ) : (
-        <div className={cx(pageContainerClass, desktopWorkspace && "inventory-workspace", isOperator || desktopWorkspace ? "space-y-4 pb-1" : "space-y-6")}>
+        <div className={cx(pageContainerClass, (desktopWorkspace || isOperator) && "inventory-workspace legacy-workspace", isOperator || desktopWorkspace ? "space-y-4 pb-1" : "space-y-6")}>
       <InventoryHeader
         role={user.role} refreshing={listRefreshing} onRefresh={() => { void load(undefined, undefined, { silent: true }); if (logisticsTab === "queues") notifySupplyRequestsUpdated(); }}
         className={isOperator ? "mb-0" : undefined}

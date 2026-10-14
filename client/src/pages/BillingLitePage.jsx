@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
+import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
+import { setUnsavedWork } from "../lib/unsavedWork.js";
 import {
   ArrowLeft,
   CalendarDays,
@@ -299,8 +302,9 @@ function BillingLitePage() {
 
   useEffect(() => {
     const focused = view === "catalog" || view === "review";
+    setUnsavedWork("billing-workspace", focused);
     document.body.classList.toggle("billing-focus-mode", focused);
-    return () => document.body.classList.remove("billing-focus-mode");
+    return () => { document.body.classList.remove("billing-focus-mode"); setUnsavedWork("billing-workspace", false); };
   }, [view]);
 
   useEffect(() => {
@@ -1188,6 +1192,7 @@ function BillingLitePage() {
       <div className="billing-backdrop absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
 
       <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-10 pt-5">
+        {view !== "today" && <div className="billing-system-tools"><PushNotificationBanner compact role={user.role} /><AppUpdateBanner compact /></div>}
         {isLoading ? (
           <div className="flex min-h-[55svh] items-center justify-center">
             <LoaderCircle className="size-10 animate-spin text-white" aria-label="Loading quick billing" />
@@ -1201,7 +1206,8 @@ function BillingLitePage() {
                 <p className="text-sm font-bold text-white/70">{dayjs().format("dddd, D MMMM")}</p>
                 <h1 className="mt-1 text-3xl font-black tracking-tight">Billing</h1>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <PushNotificationBanner compact role={user.role} /><AppUpdateBanner compact />
                 <button
                   type="button"
                   onClick={() => setView("status")}

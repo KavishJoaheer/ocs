@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import LoadingState from "../components/LoadingState.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import RestockRequestModal from "../components/RestockRequestModal.jsx";
 import SupplyRequestDetailDrawer from "../components/SupplyRequestDetailDrawer.jsx";
 import LegacyReconciliationNotice from "../components/LegacyReconciliationNotice.jsx";
@@ -342,31 +343,10 @@ function DoctorSupplyRequestsPage() {
         onRefresh={() => { bumpRefresh(); setCatalogTick(value => value + 1); }}
         newRequestRef={newRequestButtonRef} onCreate={() => openCreateModal()} onEdit={openEditModal} onAmend={openAmendModal}
         onCancel={request => setConfirmAction({ type: "cancel", request })} onDetails={setDetailRequestId} updatingId={updatingId}
-      /> : <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-1 py-2 md:max-w-2xl md:px-0 md:py-4">
-        <div className="mb-1 flex items-center gap-2 px-1">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-gray-500 transition active:bg-white/80"
-            aria-label="Go back"
-          >
-            <ChevronLeft className="size-6 font-bold" strokeWidth={2.5} />
-          </button>
-          <h1 className="text-lg font-extrabold text-ocs-slate">My Supply Requests</h1>
-        </div>
-
-        <div className="px-1">
-          <button
-            ref={newRequestButtonRef}
-            type="button"
-            onClick={() => openCreateModal()}
-            disabled={catalogLoading && !catalogLoaded}
-            className="flex w-full min-h-11 items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.98] active:bg-ocs-teal/90 disabled:opacity-60"
-          >
-            <Plus className="size-4" />
-            New supply request
-          </button>
-        </div>
+      /> : <div className="legacy-workspace mobile-supply-workspace mx-auto flex w-full max-w-md flex-col gap-3.5 md:max-w-2xl">
+        <PatientWorkspaceHeader title="My Supply Requests" role={user.role} onRefresh={() => { bumpRefresh(); setCatalogTick(value => value + 1); }} refreshing={loading || historyLoading || catalogLoading} refreshLabel="Refresh supply requests"
+          actions={<><button type="button" className="patient-icon-control" onClick={() => navigate(-1)} aria-label="Go back"><ChevronLeft className="size-4" /></button>
+            <button ref={newRequestButtonRef} type="button" onClick={() => openCreateModal()} disabled={catalogLoading && !catalogLoaded} className="patient-control patient-control-primary"><Plus className="size-4" />New supply request</button></>} />
 
         <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-sm">
           {[
@@ -376,6 +356,7 @@ function DoctorSupplyRequestsPage() {
             <button
               key={item.id}
               type="button"
+              aria-pressed={tab === item.id}
               onClick={() => setTab(item.id)}
               className={cx(
                 "min-h-10 rounded-xl text-sm font-bold transition",

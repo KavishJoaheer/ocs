@@ -51,12 +51,14 @@ function OperationStatusSelector({
   className,
   tone = "light",
   showLabel = true,
+  description,
 }) {
   const onDark = tone === "onDark";
   const onTeal = tone === "teal";
 
   return (
     <div
+      title={description}
       className={cx(
         "flex flex-wrap items-center gap-2 text-sm",
         align === "right" ? "justify-end" : "justify-start",

@@ -150,13 +150,20 @@ export default function OperatorTeleconsultations({ user }) {
   const version = useRef(0);
   const busy = useRef(false);
   const drafts = useRef(new Map());
+  const initialViewChosen = useRef(Boolean(deepId));
   const load = useCallback(async () => {
     const current = ++version.current;
     setRefreshing(true);
     try {
       const data = await api.get("/teleconsultations");
       if (!Array.isArray(data.requests)) throw new Error("Invalid request response.");
-      if (current === version.current) { setRequests(data.requests); setHasMoreHistory(Boolean(data.has_more_history)); setLastUpdated(Date.now()); setError(""); }
+      if (current === version.current) {
+        if (!initialViewChosen.current) {
+          initialViewChosen.current = true;
+          if (!data.requests.some(row => requestView(row) === "attention") && data.requests.some(row => requestView(row) === "progress")) setView("progress");
+        }
+        setRequests(data.requests); setHasMoreHistory(Boolean(data.has_more_history)); setLastUpdated(Date.now()); setError("");
+      }
     } catch (failure) { if (current === version.current) setError(failure.message || "Could not load teleconsultations."); }
     finally { if (current === version.current) { setLoading(false); setRefreshing(false); } }
   }, []);
@@ -196,7 +203,7 @@ export default function OperatorTeleconsultations({ user }) {
     if (compact && dirty && selectedRequestId) setSheetOpen(true);
   }, [compact, dirty, selectedRequestId]);
   function openRequest(request) { guard(() => { setSelectedId(request.id); setSheetOpen(true); }); }
-  function changeView(next) { guard(() => { setView(next); setStage("all"); setSelectedId(null); setSheetOpen(false); }); }
+  function changeView(next) { guard(() => { initialViewChosen.current = true; setView(next); setStage("all"); setSelectedId(null); setSheetOpen(false); }); }
 
   async function action(request, name, body) {
     if (busy.current || user.is_read_only) return false;

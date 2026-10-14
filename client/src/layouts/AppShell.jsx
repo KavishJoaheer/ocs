@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import dayjs from "dayjs";
 import { Outlet, useLocation } from "react-router-dom";
+import "../components/workspaceConsistency.css";
 import BottomNav from "../components/BottomNav.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
@@ -173,8 +174,10 @@ function AppShell() {
   const isIssuedBillingView = location.pathname === "/billing" && ["doctor", "operator"].includes(userRole)
     && (billingParams.has("billId") || ["paid", "unpaid"].includes(billingParams.get("status")) || billingParams.get("view") === "invoices");
   const isDesktopFinanceWorkspace = !isMobile && (["/stock-history", "/live-report", "/operator/pending-payment"].includes(location.pathname) || isIssuedBillingView);
-  const hasOperatorWorkspaceHeader = isDesktopFinanceWorkspace || isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
+  const isSharedWorkspace = ["/billing", "/stock-history", "/live-report", "/hcm-news", "/appointments", "/supply-requests"].includes(location.pathname) || /^\/consultations\/[^/]+$/.test(location.pathname) || (isInventory && userRole === "operator");
+  const hasOperatorWorkspaceHeader = isSharedWorkspace || (isDashboard && ["doctor", "operator"].includes(userRole)) || isDesktopFinanceWorkspace || isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
   const alwaysHideTopHeader =
+    isSharedWorkspace ||
     isDesktopFinanceWorkspace ||
     isPendingActionsWorkspace ||
     isDoctorCareWorkspace ||
@@ -282,7 +285,7 @@ function AppShell() {
       <div className={`mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} lg:flex-row`}>
         <Sidebar />
 
-        <main id="ocs-app-main" className={`min-h-0 min-w-0 w-full max-w-full flex-1 ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none`}>
+        <main id="ocs-app-main" className={`${["doctor", "operator"].includes(userRole) ? "staff-workspace" : ""} min-h-0 min-w-0 w-full max-w-full flex-1 ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none`}>
           {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
               className="hidden border-b border-ocs-teal/15 bg-white/68 px-5 py-3 backdrop-blur-xl md:block lg:px-8"

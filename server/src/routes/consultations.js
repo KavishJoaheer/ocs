@@ -56,6 +56,7 @@ function getConsultationById(consultationId) {
         p.full_name AS patient_name,
         p.patient_identifier,
         p.patient_id_number,
+        p.patient_id_type,
         d.full_name AS doctor_name,
         d.specialization,
         a.appointment_date,

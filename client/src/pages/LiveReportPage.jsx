@@ -391,11 +391,12 @@ function WeekStrip({ rows }) {
   );
 }
 
-function BillRow({ row, onOpen, showDoctor }) {
+function BillRow({ row, onOpen, showDoctor, readOnly = false }) {
+  const Tag = readOnly ? "div" : "button";
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(row)}
+    <Tag
+      type={readOnly ? undefined : "button"}
+      onClick={readOnly ? undefined : () => onOpen(row)}
       className="flex w-full items-center gap-3 border-t border-slate-100 px-1 py-3 text-left transition hover:bg-slate-50/80"
     >
       <div className="min-w-0 flex-1">
@@ -412,8 +413,8 @@ function BillRow({ row, onOpen, showDoctor }) {
           <StatusBadge value={row.status} />
         </div>
       </div>
-      <ChevronRight className="size-4 shrink-0 text-slate-300" aria-hidden />
-    </button>
+      {!readOnly && <ChevronRight className="size-4 shrink-0 text-slate-300" aria-hidden />}
+    </Tag>
   );
 }
 
@@ -717,29 +718,12 @@ export default function LiveReportPage() {
   }
 
   return (
-    <div className={cx("desktop-finance revenue-report space-y-5 md:space-y-6", refreshing && "opacity-90")}>
+    <div className={cx("desktop-finance legacy-workspace revenue-report space-y-5 md:space-y-6", refreshing && "opacity-90")}>
       <div className={isMobile ? "flex flex-col gap-4" : "space-y-4"}>
-        {!isMobile && <PatientWorkspaceHeader inlineActions title="Revenue Report" subtitle={`${rangeLabel || "Selected period"}${report.volumeReport?.entityLabel ? ` · ${report.volumeReport.entityLabel}` : ""}`}
+        {<PatientWorkspaceHeader inlineActions={!isMobile} title="Revenue Report" subtitle={`${rangeLabel || "Selected period"}${report.volumeReport?.entityLabel ? ` · ${report.volumeReport.entityLabel}` : ""}`}
           role={user.role} onRefresh={() => setReportRefreshToken(value => value + 1)} refreshing={refreshing} refreshLabel="Refresh revenue report"
-          actions={<button type="button" disabled={refreshing || loading} onClick={exportCsv} className="finance-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} />}
-        {isMobile &&
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 md:hidden">
-            Analytics
-          </p>
-          <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-ocs-slate md:mt-0 md:text-3xl">
-            Revenue Report
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {rangeLabel || "Selected period"}
-            {report.volumeReport?.entityLabel ? ` · ${report.volumeReport.entityLabel}` : ""}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            {dateBasis === "payment"
-              ? "Collected follows payment date. Unpaid is still visits in this window."
-              : "Money follows the visit date."}
-          </p>
-        </div>}
+          actions={<button type="button" disabled={refreshing || loading} onClick={exportCsv} className="patient-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} />}
+        <p className="text-xs text-[#5b7379]">{dateBasis === "payment" ? "Collected follows payment date. Outstanding covers invoices with payment activity in this period." : "Figures follow the visit date."}</p>
         <div className={isMobile ? "flex min-w-0 flex-col gap-2" : "revenue-controls"}>
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
             {isAdmin && doctors.length > 0 ? (
@@ -826,12 +810,12 @@ export default function LiveReportPage() {
                   {formatCurrency(collected)}
                 </p>
               </div>
-              <Link to={unpaidHref} className="bg-white p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-400">Unpaid</p>
+              <div className="bg-amber-50/60 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-800">Unpaid</p>
                 <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
                   {formatCurrency(unpaid)}
                 </p>
-              </Link>
+              </div>
               <div className="bg-white p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Visits</p>
                 <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">{visitCount}</p>
@@ -1026,15 +1010,15 @@ export default function LiveReportPage() {
             <div>
               <h2 className="text-base font-semibold text-ocs-slate">Bills</h2>
               <p className="mt-0.5 text-xs text-slate-500">
-                {isMobile ? "Tap a row to open billing." : "Click a row to open that bill."}
+                {isMobile && isDoctor ? "Issued invoices in the selected period." : isMobile ? "Tap a row to open billing." : "Click a row to open that bill."}
               </p>
             </div>
-            <Link
+            {!(isDoctor && isMobile) && <Link
               to={billingHref({ period, date: anchorDate, dateBasis, doctorId: billingDoctorId })}
               className="text-xs font-semibold text-ocs-teal hover:underline"
             >
               Open billing
-            </Link>
+            </Link>}
           </div>
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="relative min-w-0 flex-1">
@@ -1073,6 +1057,7 @@ export default function LiveReportPage() {
                   row={row}
                   onOpen={openBill}
                   showDoctor={showClinicDoctors}
+                  readOnly={isDoctor}
                 />
               ))}
             </div>
@@ -1161,7 +1146,7 @@ export default function LiveReportPage() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <details className="revenue-secondary" open={!isMobile}><summary className="patient-control mb-3">More report details</summary><div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <section className="rounded-2xl border border-slate-100 bg-white p-5 md:p-6">
           <div className="mb-4 flex items-center gap-2">
             <Users className="size-4 text-ocs-teal" aria-hidden />
@@ -1194,6 +1179,7 @@ export default function LiveReportPage() {
         </section>
       </div>
 
+      </details>
       {Array.isArray(statement.paymentMethodBreakdown) &&
       statement.paymentMethodBreakdown.some((row) => Number(row.amount || 0) > 0) &&
       !isDoctor ? (

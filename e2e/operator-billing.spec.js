@@ -215,28 +215,19 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("button", { name: "Attach photo", exact: true })).toBeVisible();
   });
 
-  test("mobile billing keeps the operator navigation focused and protects the invoice form", async ({ page, request }) => {
+  test("operator mobile billing and payment links return to the care dashboard", async ({ page, request }) => {
     const operator = await loginOperator(request);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${STAFF_BASE}/billing`);
-
-    await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible({ timeout: 20_000 });
-    const bottomNav = page.locator("#ocs-bottom-nav");
-    await expect(bottomNav.getByRole("link")).toHaveCount(3);
-    await expect(bottomNav.getByRole("link", { name: "Home", exact: true })).toBeVisible();
-    await expect(bottomNav.getByRole("link", { name: "Add patient", exact: true })).toBeVisible();
-    await expect(bottomNav.getByRole("link", { name: "Reviews", exact: true })).toBeVisible();
-    for (const hiddenDestination of ["Patients", "Visits", "Billing", "Follow-up", "Inventory", "Stock history", "HCM news"]) {
-      await expect(bottomNav.getByRole("link", { name: hiddenDestination, exact: true })).toHaveCount(0);
+    for (const path of ["/billing", "/billing?billId=1", "/operator/pending-payment", "/operator/billing-status"]) {
+      await page.goto(`${STAFF_BASE}${path}`);
+      await expect(page).toHaveURL(`${STAFF_BASE}/`);
+      await expect(page.getByRole("button", { name: "Issue and record payment", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Raise an invoice", exact: true })).toHaveCount(0);
     }
-
-    await advanceOperatorInvoiceToReview(page, request, operator.token);
-    await expect(page.getByLabel("Receipt reference")).toBeVisible();
-    await expect(page.getByText(/This invoice will appear in Payment follow-up/i)).toBeVisible();
-    await page.getByRole("button", { name: /Payment received/i }).click();
-    await expect(page.getByLabel("Payment method")).toBeVisible();
-    await expect(page.getByText(/Payment is recorded when the invoice is issued/i)).toBeVisible();
+    const bottomNav = page.locator("#ocs-bottom-nav");
+    await expect(bottomNav.getByRole("link")).toHaveText(["Home", "Add patient", "Reviews"]);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Good");
   });
 
   test("operator issues the invoice and records the payment", async ({ page, request }) => {

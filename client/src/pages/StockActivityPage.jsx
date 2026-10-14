@@ -3,8 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+
 import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import ResponsiveFilterPanel from "../components/ResponsiveFilterPanel.jsx";
 import StockHistoryTable from "../components/finance-workspace/StockHistoryTable.jsx";
 import "../components/finance-workspace/financeWorkspace.css";
 import ReverseWriteOffModal from "../components/inventory/ReverseWriteOffModal.jsx";
@@ -331,25 +332,10 @@ function StockActivityPage() {
   }
 
   return (
-    <div className="desktop-finance stock-history-workspace space-y-5">
-      {!isMobile ? <PatientWorkspaceHeader inlineActions title="Stock history" subtitle={user.role === "doctor" ? "Movements in your doctor bag." : "Stock movements, transfers and audit records."}
+    <div className="desktop-finance legacy-workspace stock-history-workspace space-y-5">
+      <PatientWorkspaceHeader inlineActions={!isMobile} title="Stock history" subtitle={user.role === "doctor" ? "Movements in your doctor bag." : "Stock movements, transfers and audit records."}
         role={user.role} onRefresh={() => setInventoryTick(value => value + 1)} refreshing={loading} refreshLabel="Refresh stock history"
-        actions={<button type="button" onClick={handleExportCsv} className="finance-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} /> : (
-      <PageHeader
-        eyebrow="Inventory"
-        title="Stock history"
-        actions={
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[#4FB8B3] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-95"
-          >
-            <Download className="size-4" />
-            Download CSV
-          </button>
-        }
-      />
-      )}
+        actions={<button type="button" onClick={handleExportCsv} className="patient-control"><Download className="size-4" aria-hidden="true" />Download CSV</button>} />
 
       {user?.role === "doctor" ? null : (
       <div className="stock-summary-grid grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
@@ -432,7 +418,11 @@ function StockActivityPage() {
             </p>
           </div>
         ) : null}
-        <div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
+        {isMobile && <label className="relative mb-3 flex min-h-11 items-center gap-2 rounded-full border border-[#d5e4e1] bg-white px-4">
+          <Search size={16} aria-hidden="true" /><input aria-label="Search stock movements" value={searchDraft} onChange={event => setSearchDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); setSearch(searchDraft.trim()); setPage(1); } }} placeholder="Search item" className="min-w-0 flex-1 bg-transparent py-2 text-base outline-none" />
+          <button type="button" className="min-h-11 text-sm font-semibold text-[#137b80]" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }}>Apply</button>
+        </label>}
+        <ResponsiveFilterPanel active={filtersActive}><div className="mb-4 flex min-w-0 flex-row flex-wrap items-end gap-3">
           {user?.role === "doctor" ? null : (
           <label className="min-w-0 flex-1 space-y-1 sm:min-w-[10rem] sm:max-w-[14rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">User</span>
@@ -500,7 +490,7 @@ function StockActivityPage() {
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">To</span>
             <input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm" />
           </label>
-          <label className="min-w-0 flex-1 space-y-1 sm:min-w-[12rem]">
+          {!isMobile && <label className="min-w-0 flex-1 space-y-1 sm:min-w-[12rem]">
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Search item</span>
             <div className="flex h-11 items-center rounded-2xl border border-slate-200 bg-white px-3">
               <Search className="size-4 shrink-0 text-slate-400" />
@@ -519,7 +509,7 @@ function StockActivityPage() {
               />
               <button type="button" className="shrink-0 text-xs font-semibold text-[#4FB8B3]" onClick={() => { setSearch(searchDraft.trim()); setPage(1); }}>Apply</button>
             </div>
-          </label>
+          </label>}
           {filtersActive ? (
             <button
               type="button"
@@ -530,7 +520,7 @@ function StockActivityPage() {
               Clear all
             </button>
           ) : null}
-        </div>
+        </div></ResponsiveFilterPanel>
 
         {loading ? (
           <LoadingState message="Loading stock activity..." />

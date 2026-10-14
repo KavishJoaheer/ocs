@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
-import { countDoctorBagLowStock } from "../lib/doctorInventoryAlerts.js";
+import { countDoctorBagLowStock, doctorBagReadiness } from "../lib/doctorInventoryAlerts.js";
 import { DOCTOR_BAG_INVENTORY_EVENT } from "../lib/inventorySync.js";
 import { api } from "../lib/api.js";
 
@@ -62,12 +62,14 @@ export function useDoctorBagInventory({ enabled = true } = {}) {
   }, [enabled, loadBagInventory]);
 
   const lowStockCount = useMemo(() => countDoctorBagLowStock(bagItems), [bagItems]);
+  const readiness = useMemo(() => doctorBagReadiness(bagItems), [bagItems]);
 
   return {
     bagItems,
     loading,
     error,
     lowStockCount,
+    readiness,
     hasLowStockAlert: lowStockCount > 0,
     reload: loadBagInventory,
   };

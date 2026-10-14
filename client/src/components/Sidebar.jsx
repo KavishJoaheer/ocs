@@ -51,7 +51,7 @@ const navItems = [
   },
   {
     to: "/visit-requests",
-    label: "Home visits",
+    label: "Home Visit Request",
     icon: ClipboardList,
     roles: ["admin", "doctor", "operator"],
   },

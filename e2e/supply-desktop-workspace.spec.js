@@ -91,7 +91,7 @@ test("doctor desktop creation supports keyboard selection and history stays comp
   const download=page.waitForEvent("download"); await page.getByRole("button",{name:"Export CSV",exact:true}).click(); expect((await download).suggestedFilename()).toBe("my-supply-request-history.csv");
   await row.getByRole("button",{name:"View details",exact:true}).click(); await expect(page.getByRole("dialog",{name:`Request #${completed.id}`,exact:true})).toBeVisible();
   await page.getByRole("dialog",{name:`Request #${completed.id}`,exact:true}).getByRole("button",{name:"Close dialog",exact:true}).click();
-  await page.setViewportSize({width:375,height:812}); await expect(page.getByText("Total",{exact:true})).toBeVisible(); await expect(page.getByLabel("Refresh supply requests")).toHaveCount(0);
+  await page.setViewportSize({width:375,height:812}); await expect(page.getByText("Total",{exact:true})).toBeVisible(); await expect(page.getByLabel("Refresh supply requests")).toBeVisible();
 });
 
 test("operator preparation retries a failed load and preserves picking and collection",async({page,request})=>{

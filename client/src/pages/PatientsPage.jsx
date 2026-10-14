@@ -274,6 +274,23 @@ function PatientsPage() {
   const restoredScroll = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
+  const scopeRestored = useRef(false);
+  const scopeRestoring = useRef(false);
+  useEffect(() => {
+    if (user.role !== "doctor") return;
+    const key = `ocs_patient_scope_${user.id}`;
+    if (!scopeRestored.current) {
+      scopeRestored.current = true;
+      if (!searchParams.size && window.sessionStorage.getItem(key) === "my_assigned") {
+        scopeRestoring.current = true;
+        setSearchParams({ filter: "my_assigned" }, { replace: true });
+        return;
+      }
+    }
+    if (scopeRestoring.current && !myAssignedFilterActive) return;
+    scopeRestoring.current = false;
+    window.sessionStorage.setItem(key, myAssignedFilterActive ? "my_assigned" : "all");
+  }, [user.role, user.id, searchParams, setSearchParams, myAssignedFilterActive]);
   const isMobile = useIsMobile();
   const canCreatePatients = ["admin", "doctor", "operator"].includes(user.role);
   const canDeletePatients = ["admin", "operator"].includes(user.role);
@@ -712,6 +729,7 @@ function PatientsPage() {
   }
 
   function clearMyAssignedFilter() {
+    window.sessionStorage.setItem(`ocs_patient_scope_${user.id}`, "all");
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("filter");
     setSearchParams(nextParams, { replace: true, state: { directoryContext: { search, statusFilter: "all", doctorIdFilter: "", page: 1 } } });
@@ -871,7 +889,7 @@ function PatientsPage() {
       )}
     >
       <PatientWorkspaceHeader title="Patients" subtitle={`${pagination?.total || 0} ${isRecentlyDeletedView ? "recently deleted records" : "patient records"}`} role={user.role} onRefresh={() => void handleMobileDirectoryRefresh()} refreshing={refreshing} actions={headerActions}>
-        {user.role === "doctor" ? <Link className={cx("patient-control", myAssignedFilterActive && "patient-control-primary")} to="/patients?filter=my_assigned">My patients</Link> : null}
+        {user.role === "doctor" ? <Link className={cx("patient-control", myAssignedFilterActive && "patient-control-primary")} to="/patients?filter=my_assigned" onClick={() => window.sessionStorage.setItem(`ocs_patient_scope_${user.id}`, "my_assigned")}>My patients</Link> : null}
       </PatientWorkspaceHeader>
       {isMobile ? searchField : null}
       {offlineDirectoryActive && isDoctorMobile ? <p className="rounded-full bg-amber-50 px-4 py-2 text-sm text-amber-800">Offline — showing cached directory</p> : null}

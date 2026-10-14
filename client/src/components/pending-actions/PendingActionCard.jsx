@@ -40,8 +40,8 @@ export default function PendingActionCard({ task, user, busy, selected, onAcknow
         </div>
       </div>
       <div className="pending-action-controls">
-        {canAcknowledge && <button disabled={busy} className="pending-control pending-control-primary" onClick={onAcknowledge}><Check size={16} aria-hidden="true" />{task.owner_user_id ? "Acknowledge" : "Claim and acknowledge"}</button>}
-        <Link className={`pending-control ${!canAcknowledge && !canReview ? "pending-control-primary" : ""}`} to={task.url}>Open workflow<ArrowUpRight size={15} aria-hidden="true" /></Link>
+        {canAcknowledge && <button disabled={busy} className="pending-control" title="Acknowledge receipt. The task stays open until its work is completed." onClick={onAcknowledge}><Check size={16} aria-hidden="true" />{task.owner_user_id ? "Acknowledge" : "Claim and acknowledge"}</button>}
+        <Link className={`pending-control ${!canReview ? "pending-control-primary" : ""}`} to={task.url}>Open workflow<ArrowUpRight size={15} aria-hidden="true" /></Link>
         {canReview && <button disabled={busy} className={`pending-control ${!canAcknowledge ? "pending-control-primary" : ""}`} onClick={() => onAsk("resolve")}>Record review outcome</button>}
         <div className="pending-action-secondary">
           <button className={`pending-control pending-history-toggle ${selected ? "is-selected" : ""}`} aria-expanded={selected} onClick={onHistory}><History size={15} aria-hidden="true" />Action history</button>

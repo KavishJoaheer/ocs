@@ -16,11 +16,11 @@ import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
-import { useIsMobile } from "../hooks/useIsMobile.js";
+
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { api } from "../lib/api.js";
 import { cx } from "../lib/utils.js";
@@ -201,7 +201,7 @@ function AppointmentFormModal({
 }
 
 function AppointmentsPage() {
-  const isMobile = useIsMobile();
+
   const { user } = useAuth();
   const canManageAppointments = user.role === "admin";
   const canUpdateStatus = user.role === "admin" || user.role === "doctor";
@@ -210,8 +210,9 @@ function AppointmentsPage() {
   const [appointments, setAppointments] = useState([]);
   const [refsLoading, setRefsLoading] = useState(true);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
-  const [filters, setFilters] = useState({ doctorId: "", status: "" });
-  const [viewMode, setViewMode] = useState("calendar");
+  const [filters, setFilters] = useState({ doctorId: user.role === "doctor" ? String(user.doctor_id || "") : "", status: user.role === "doctor" ? "scheduled" : "" });
+  const [viewMode, setViewMode] = useState(user.role === "doctor" ? "agenda" : "calendar");
+  const [agendaRange, setAgendaRange] = useState("today");
   const [visibleMonth, setVisibleMonth] = useState(dayjs().startOf("month"));
   const [editor, setEditor] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -259,6 +260,9 @@ function AppointmentsPage() {
     loadAppointments();
   }, [filters, refreshKey]);
 
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Indian/Mauritius", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const agendaEnd = dayjs(today).add(6, "day").format("YYYY-MM-DD");
+  const visibleAppointments = viewMode === "agenda" ? appointments.filter(appointment => appointment.appointment_date >= today && appointment.appointment_date <= (agendaRange === "week" ? agendaEnd : today)).sort((a,b) => `${a.appointment_date} ${a.appointment_time}`.localeCompare(`${b.appointment_date} ${b.appointment_time}`)) : appointments;
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const appointmentsByDate = useMemo(() => {
     return appointments.reduce((grouped, appointment) => {
@@ -317,36 +321,19 @@ function AppointmentsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={isMobile ? "Scheduling" : undefined}
-        title="Appointments"
-        description={
-          isMobile
-            ? "Switch between a month calendar and a detailed list, then update doctor assignments or patient status in a few clicks."
-            : undefined
-        }
-        actions={
-          canManageAppointments ? (
-            <button
-              type="button"
-              onClick={() => setEditor({ appointment: null })}
-              className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-sky-700"
-            >
-              <Plus className="size-4" />
-              Add appointment
-            </button>
-          ) : null
-        }
-      />
+    <div className="legacy-workspace appointments-workspace space-y-5">
+      <PatientWorkspaceHeader inlineActions title="Appointments" subtitle={`${user.role === "doctor" && filters.doctorId === String(user.doctor_id) ? "Your schedule" : filters.doctorId ? doctors.find(doctor => String(doctor.id) === filters.doctorId)?.full_name || "Selected doctor" : "All doctors"} · Mauritius time`} role={user.role} onRefresh={() => void loadAppointments()} refreshing={appointmentsLoading} refreshLabel="Refresh appointments"
+        actions={canManageAppointments ? <button type="button" onClick={() => setEditor({ appointment: null })} className="patient-control patient-control-primary"><Plus className="size-4" />Add appointment</button> : null} />
 
       <SectionCard
         title="Schedule"
-        subtitle="Filter by doctor or status, then review by calendar or list."
+        subtitle="Choose an agenda, month calendar or complete list."
         actions={
-          <div className="flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          <div className="flex flex-wrap rounded-full border border-slate-200 bg-slate-50 p-1">
+            <button type="button" aria-pressed={viewMode === "agenda"} onClick={() => setViewMode("agenda")} className="min-h-11 rounded-full px-4 py-2 text-sm font-semibold">Agenda</button>
             <button
               type="button"
+              aria-pressed={viewMode === "calendar"}
               onClick={() => setViewMode("calendar")}
               className={cx(
                 "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
@@ -360,6 +347,7 @@ function AppointmentsPage() {
             </button>
             <button
               type="button"
+              aria-pressed={viewMode === "list"}
               onClick={() => setViewMode("list")}
               className={cx(
                 "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
@@ -376,6 +364,7 @@ function AppointmentsPage() {
       >
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           <select
+            aria-label="Schedule doctor"
             value={filters.doctorId}
             onChange={(event) =>
               setFilters((current) => ({ ...current, doctorId: event.target.value }))
@@ -391,6 +380,7 @@ function AppointmentsPage() {
           </select>
 
           <select
+            aria-label="Schedule status"
             value={filters.status}
             onChange={(event) =>
               setFilters((current) => ({ ...current, status: event.target.value }))
@@ -404,6 +394,7 @@ function AppointmentsPage() {
           </select>
         </div>
 
+        {viewMode === "agenda" && <nav aria-label="Agenda period" className="appointment-agenda-controls">{[["today", "Today"], ["week", "Next 7 days"]].map(([value,label]) => <button key={value} type="button" aria-pressed={agendaRange === value} onClick={() => setAgendaRange(value)}>{label}</button>)}<span className="text-xs text-[#526d75]">{visibleAppointments.length} appointments · Mauritius time</span></nav>}
         {appointments.length ? (
           viewMode === "calendar" ? (
             <div className="space-y-5">
@@ -443,7 +434,7 @@ function AppointmentsPage() {
                     <div
                       key={day.iso}
                       className={cx(
-                        "min-h-44 rounded-[24px] border p-4",
+                        "appointment-calendar-day min-h-28 rounded-[18px] border p-3",
                         day.isCurrentMonth
                           ? "border-slate-200 bg-white"
                           : "border-slate-100 bg-slate-50/80 text-slate-400",
@@ -463,6 +454,7 @@ function AppointmentsPage() {
                           <button
                             key={appointment.id}
                             type="button"
+                            title={`${appointment.appointment_time} · ${appointment.patient_name} · ${appointment.doctor_name}`}
                             onClick={canManageAppointments ? () => setEditor({ appointment }) : undefined}
                             className={cx(
                               "w-full rounded-2xl border border-sky-100 bg-sky-50/70 p-3 text-left transition",
@@ -508,7 +500,8 @@ function AppointmentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {appointments.map((appointment) => (
+                    {!visibleAppointments.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-sm text-[#526d75]">No appointments in this period. Choose Next 7 days or List to see other dates.</td></tr>}
+                    {visibleAppointments.map((appointment) => (
                       <tr key={appointment.id} className="border-t border-slate-200/70">
                         <td className="px-5 py-4 font-semibold text-slate-950">
                           {appointment.patient_name}
@@ -586,7 +579,7 @@ function AppointmentsPage() {
         ) : (
           <EmptyState
             title="No appointments match the current filters"
-            description="Try another doctor or status filter, or create a new appointment to populate the schedule."
+            description={canManageAppointments ? "Try another doctor or status filter, or create a new appointment." : "Try another status or date view to see your schedule."}
           />
         )}
       </SectionCard>

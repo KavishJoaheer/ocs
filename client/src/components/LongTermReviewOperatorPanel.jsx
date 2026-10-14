@@ -128,7 +128,7 @@ export default function LongTermReviewOperatorPanel({
       {compact ? <button type="button" onClick={() => setFiltersOpen(true)} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-[#d5e4e1] bg-white px-3 text-sm font-semibold text-[#376168]"><Filter aria-hidden="true" className="size-4" />Filters{extraFilterCount > 0 ? <span className="rounded-full bg-[#e3f5f0] px-1.5 text-xs">{extraFilterCount}</span> : null}</button> : <div className="grid w-[440px] shrink-0 grid-cols-2 gap-3">{filters}</div>}
     </div>
 
-    <nav aria-label="Review due status" className="flex max-w-full gap-2 overflow-x-auto pb-1">
+    <nav aria-label="Review due status" className="flex max-w-full flex-wrap gap-2 pb-1">
       {TIMING_FILTERS.map(filter => {
         const count = filter.id === "due_7_days" ? timingCounts.next7 : timingCounts[filter.id];
         return <button key={filter.id} type="button" aria-pressed={timingFilter === filter.id} onClick={() => setTimingFilter(filter.id)} title={filter.id === "due_7_days" ? "Today and the next 7 days" : undefined} className={cx("inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 text-sm font-semibold", timingFilter === filter.id ? "border-[#137b80] bg-[#137b80] text-white" : filter.id === "overdue" && count > 0 ? "border-rose-200 bg-rose-50 text-rose-800" : ["today", "due_7_days"].includes(filter.id) && count > 0 ? "border-amber-200 bg-amber-50 text-amber-900" : "border-[#d5e4e1] bg-white text-[#376168]")}>

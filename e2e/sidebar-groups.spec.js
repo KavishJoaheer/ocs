@@ -34,7 +34,7 @@ for (const actor of roles) {
     expect(await nav.getByRole("link").evaluateAll(links => links.every(link => link.getBoundingClientRect().height >= 44))).toBeTruthy();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     if (["doctor", "operator"].includes(actor.role)) {
-      await expect(nav.getByRole("region", { name: "Patient care", exact: true }).getByRole("link", { name: /^Home visits/ })).toBeVisible();
+      await expect(nav.getByRole("region", { name: "Patient care", exact: true }).getByRole("link", { name: /^Home Visit Request/ })).toBeVisible();
       await expect(nav.getByRole("link", { name: "Teleconsultations", exact: true })).toBeVisible();
       await nav.getByRole("link", { name: /^Pending actions/ }).click();
       await expect(page).toHaveURL(`${STAFF}/action-inbox`);
