@@ -117,9 +117,9 @@ for (const width of [360, 430]) {
     await expect(page).toHaveURL(/\/operator\/long-term-review$/);
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
     const menu = page.getByRole("dialog", { name: "Navigation menu", exact: true });
-    await expect(menu.getByRole("link", { name: "Manage teleconsultations", exact: true })).toBeVisible();
+    await expect(menu.getByRole("link", { name: "Teleconsultations", exact: true })).toBeVisible();
     await page.screenshot({ path: `/tmp/ocs-operator-menu-${width}.png`, fullPage: true });
-    await menu.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
+    await menu.getByRole("link", { name: "Teleconsultations", exact: true }).click();
     await expect(page).toHaveURL(/\/teleconsultations$/);
     await expect(menu).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Teleconsultations", exact: true })).toBeVisible();

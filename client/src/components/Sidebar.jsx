@@ -41,7 +41,7 @@ function formatMobileDrawerDisplayName(user) {
 
 const navItems = [
   { to: "/action-inbox", label: "Pending actions", icon: BellRing, roles: ["admin", "doctor", "operator", "lab_tech"] },
-  { to: "/teleconsultations", label: "Manage teleconsultations", icon: ClipboardList, roles: ["admin", "doctor", "operator"] },
+  { to: "/teleconsultations", label: "Teleconsultations", icon: ClipboardList, roles: ["admin", "doctor", "operator"] },
   {
     to: "/",
     label: "Dashboard",
@@ -51,7 +51,7 @@ const navItems = [
   },
   {
     to: "/visit-requests",
-    label: "Visit requests",
+    label: "Home visits",
     icon: ClipboardList,
     roles: ["admin", "doctor", "operator"],
   },
@@ -127,7 +127,7 @@ const navItems = [
   },
   {
     to: "/live-report",
-    label: "Revenue Report",
+    label: "Revenue report",
     icon: PieChart,
     roles: ["admin", "doctor"],
   },
@@ -177,6 +177,22 @@ const navItems = [
   },
 ];
 
+const navGroups = [
+  { id: "overview", paths: ["/", "/action-inbox"] },
+  { id: "care", label: "Patient care", paths: ["/patients", "/visit-requests", "/teleconsultations", "/appointments", "/doctor/long-term-review", "/operator/long-term-review", "/admin/long-term-review"] },
+  { id: "finance", label: "Finance", paths: ["/billing", "/operator/pending-payment", "/admin/finance", "/admin/accounts", "/live-report"] },
+  { id: "stock", label: "Stock & supplies", paths: ["/inventory", "/supply-requests", "/stock-history"] },
+  { id: "administration", label: "Administration", paths: ["/team-operations"] },
+  { id: "updates", paths: ["/patient-care-content", "/hcm-news"] },
+];
+
+function groupNavItems(items) {
+  return navGroups.map(group => ({
+    ...group,
+    items: group.paths.flatMap(path => items.filter(item => item.to === path)),
+  })).filter(group => group.items.length > 0);
+}
+
 const DESKTOP_ONLY_PATHS = new Set(["/appointments"]);
 
 function resolveNavTarget(to) {
@@ -202,7 +218,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           "group flex items-center transition-all",
           drawer
             ? "gap-3.5 px-4 py-3 text-[15px] font-semibold text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate"
-            : cx("gap-3 px-4 py-3 text-sm font-semibold", ["operator", "doctor"].includes(user.role) ? "rounded-full" : "rounded-2xl"),
+            : cx("min-h-11 gap-3 px-4 py-2.5 text-sm font-semibold", ["operator", "doctor"].includes(user.role) ? "rounded-full" : "rounded-2xl"),
           mobile
             ? "min-w-fit border border-ocs-teal/20 bg-white/80 text-ocs-grey hover:bg-white"
             : !drawer && "text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate",
@@ -232,6 +248,23 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
   );
 }
 
+function SidebarNavigation({ items, drawer = false, badgeCount, onNavigate }) {
+  return (
+    <nav aria-label={drawer ? "Additional navigation" : "Main navigation"} className="space-y-4">
+      {groupNavItems(items).map(group => (
+        <section key={group.id} aria-label={group.label || (group.id === "overview" ? "Overview" : "Updates")}
+          className={group.id === "updates" ? "border-t border-ocs-teal/15 pt-3" : undefined}>
+          {group.label ? <h2 className="mb-1.5 px-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-ocs-grey">{group.label}</h2> : null}
+          <div className="space-y-1">
+            {group.items.map(item => <SidebarLink key={item.to} item={item} drawer={drawer}
+              badgeCount={badgeCount(item)} onNavigate={onNavigate} />)}
+          </div>
+        </section>
+      ))}
+    </nav>
+  );
+}
+
 function Sidebar() {
   const { logout, user, hcmUnreadCount } = useAuth();
   const appointmentChangeCount = useAppointmentChangeCount();
@@ -253,13 +286,8 @@ function Sidebar() {
 
   const visibleNavItems = useMemo(
     () => {
-      const items = navItems.filter((item) => item.roles.includes(user.role)).map(item => ["doctor", "operator"].includes(user.role) && item.to === "/visit-requests" ? { ...item, label: "Home Visit Request" } : item);
-      if (!["operator", "doctor"].includes(user.role)) return items;
-      const primaryPaths = ["/", "/patients", "/visit-requests", "/teleconsultations"];
-      return [
-        ...primaryPaths.flatMap((path) => items.filter((item) => item.to === path)),
-        ...items.filter((item) => !primaryPaths.includes(item.to)),
-      ];
+      const items = navItems.filter((item) => item.roles.includes(user.role));
+      return groupNavItems(items).flatMap(group => group.items);
     },
     [user.role],
   );
@@ -288,7 +316,7 @@ function Sidebar() {
   const tabletNavItems = useMemo(
     () =>
       user.role === "operator"
-        ? [...getBottomNavItemsForRole(user.role), ...persistentNavItems.filter((item) => item.to === "/teleconsultations")]
+        ? [...getBottomNavItemsForRole(user.role), ...persistentNavItems.filter((item) => ["/action-inbox", "/teleconsultations"].includes(item.to))]
         : persistentNavItems,
     [persistentNavItems, user.role],
   );
@@ -297,7 +325,7 @@ function Sidebar() {
     () =>
       visibleNavItems.filter(
         (item) =>
-          (user.role !== "operator" || item.to === "/teleconsultations") &&
+          (user.role !== "operator" || ["/action-inbox", "/teleconsultations"].includes(item.to)) &&
           !bottomPaths.has(item.to) &&
           !DESKTOP_ONLY_PATHS.has(item.to) &&
           !item.hideInMobileDrawer,
@@ -461,20 +489,8 @@ function Sidebar() {
 
             {drawerNavItems.length > 0 ? (
               <div className="mt-2 min-h-0 flex-1">
-                <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-gray-500">
-                  More
-                </p>
-                <nav className="mt-2 space-y-1">
-                  {drawerNavItems.map((item) => (
-                    <SidebarLink
-                      key={item.to}
-                      item={item}
-                      drawer
-                      onNavigate={() => setDrawerOpen(false)}
-                      badgeCount={navBadgeCount(item)}
-                    />
-                  ))}
-                </nav>
+                <SidebarNavigation items={drawerNavItems} drawer
+                  onNavigate={() => setDrawerOpen(false)} badgeCount={navBadgeCount} />
               </div>
             ) : null}
           </div>
@@ -541,7 +557,7 @@ function Sidebar() {
       </div>
 
       {/* ─── Desktop: full sidebar ─── */}
-      <aside className="hidden w-full min-w-0 border-r border-ocs-teal/15 bg-white/88 text-ocs-slate shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
+      <aside aria-label="Desktop navigation" className="hidden w-full min-w-0 border-r border-ocs-teal/15 bg-white/88 text-ocs-slate shadow-[8px_0_35px_rgba(59,89,92,0.05)] backdrop-blur-xl lg:flex lg:w-72 lg:shrink-0 lg:flex-col">
         <div className="flex flex-1 flex-col px-5 py-5">
           <div className={["operator", "doctor"].includes(user.role) ? "inline-flex w-full px-2 py-1" : "inline-flex w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}>
             <BrandMark
@@ -577,19 +593,8 @@ function Sidebar() {
             </div>
           )}
 
-          <div className="mt-6">
-            <p className="px-4 text-xs font-semibold uppercase tracking-[0.3em] text-ocs-grey">
-              Navigation
-            </p>
-            <nav className="mt-3 space-y-2">
-              {persistentNavItems.map((item) => (
-                <SidebarLink
-                  key={item.to}
-                  item={item}
-                  badgeCount={navBadgeCount(item)}
-                />
-              ))}
-            </nav>
+          <div className="mt-4">
+            <SidebarNavigation items={persistentNavItems} badgeCount={navBadgeCount} />
           </div>
 
         </div>

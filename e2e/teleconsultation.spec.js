@@ -137,7 +137,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(alerts).toHaveCount(0);
     await expect(carePage.getByRole("heading", { name: "Request accepted by OCS", exact: true })).toBeVisible();
     await opPage.setViewportSize({ width: 1280, height: 900 });
-    await opPage.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
+    await opPage.getByRole("navigation", { name: "Main navigation", exact: true }).getByRole("link", { name: "Teleconsultations", exact: true }).click();
     await expect(opPage.getByRole("heading", { name: "Teleconsultations", exact: true, level: 1 })).toBeVisible();
     await opPage.getByLabel("Search teleconsultations").fill(patientName);
     let card = opPage.getByRole("complementary", { name: "Request details", exact: true });
