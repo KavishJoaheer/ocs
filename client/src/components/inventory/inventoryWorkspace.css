@@ -16,3 +16,10 @@
 .inventory-receive-form label { display: block; }
 .inventory-workspace [class*="text-gray-400"], .inventory-workspace [class*="text-slate-400"] { color: #657c82; }
 .inventory-workspace .inventory-summary > div[class*="rounded-2xl"] { border-radius: 26px; border-color: #d5e4e1; }
+.doctor-mobile-inventory button, .doctor-mobile-inventory a, .doctor-mobile-inventory select, .doctor-inventory-use-form button { font-size: .8125rem; font-weight: 600; line-height: 1.4; }
+.doctor-mobile-inventory button, .doctor-mobile-inventory a, .doctor-inventory-use-form button { border-radius: 999px; }
+.doctor-mobile-inventory button:focus-visible, .doctor-mobile-inventory a:focus-visible, .doctor-mobile-inventory select:focus-visible { outline: 2px solid #137b80; outline-offset: 2px; }
+.doctor-mobile-inventory .doctor-bag-use:not(:disabled), .doctor-mobile-inventory button[class*="bg-[#2d8f98]"], .doctor-inventory-use-form button[class*="bg-teal-600"] { background: #137b80; }
+.doctor-mobile-inventory .doctor-inventory-card { box-shadow: 0 3px 12px rgba(23,63,74,.035); }
+.doctor-inventory-use-form input, .doctor-inventory-use-form select, .doctor-inventory-use-form textarea { font-size: 1rem; border-color: #cde2de; border-radius: 20px; }
+html.doctor-mobile-inventory-page, body.doctor-mobile-inventory-page, body.doctor-mobile-inventory-page #root, body.doctor-mobile-inventory-page #root > div { overflow-x: clip; }

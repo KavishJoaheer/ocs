@@ -161,7 +161,8 @@ function AppShell() {
   const isOperatorVisitRequests = userRole === "operator" && location.pathname === "/visit-requests";
   const isOperatorTeleconsultations = userRole === "operator" && location.pathname === "/teleconsultations";
   const isDoctorCareWorkspace = userRole === "doctor" && ["/visit-requests", "/teleconsultations"].includes(location.pathname);
-  const isInventoryWorkspace = isInventory && !isCompactInventory && ["doctor", "operator"].includes(userRole);
+  const inventoryDoctorMobile = isMobile && isInventory && userRole === "doctor";
+  const isInventoryWorkspace = isInventory && ((!isCompactInventory && ["doctor", "operator"].includes(userRole)) || inventoryDoctorMobile);
   const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace;
   const alwaysHideTopHeader =
     isDoctorCareWorkspace ||
@@ -180,7 +181,6 @@ function AppShell() {
     location.pathname === "/operator/billing-status";
   const isLiveReport = location.pathname === "/live-report";
   const isVisitRequests = location.pathname === "/visit-requests";
-  const inventoryDoctorMobile = isMobile && isInventory && userRole === "doctor";
   const hideDesktopTopHeader =
     !isMobile &&
     (isPatientProfile ||
@@ -260,13 +260,13 @@ function AppShell() {
       className={
         isLinkhamPortal
           ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-transparent text-slate-900"
-          : "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-transparent text-slate-900"
+          : `min-h-svh w-full min-w-0 max-w-[100vw] ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none bg-transparent text-slate-900`
       }
     >
-      <div className="mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col overflow-x-hidden lg:flex-row">
+      <div className={`mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} lg:flex-row`}>
         <Sidebar />
 
-        <main id="ocs-app-main" className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overscroll-x-none">
+        <main id="ocs-app-main" className={`min-h-0 min-w-0 w-full max-w-full flex-1 ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none`}>
           {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
               className="hidden border-b border-ocs-teal/15 bg-white/68 px-5 py-3 backdrop-blur-xl md:block lg:px-8"
