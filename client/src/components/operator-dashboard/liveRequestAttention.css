@@ -1,0 +1,36 @@
+.live-care-panel[data-active="true"] {
+  border-width: 2px;
+  border-color: #d7a334;
+  background: radial-gradient(circle at 100% 0, #ffdf8b80, transparent 55%), linear-gradient(135deg, #fff6dc, #fffdf5);
+  box-shadow: 0 12px 30px #aa730019, inset 0 3px 0 #efbd50;
+}
+.live-care-heading[data-active="true"] {
+  background: #f5c455;
+  color: #4b3611;
+  box-shadow: 0 3px 12px #a66f161a;
+}
+.live-care-heading[data-active="true"] .live-care-dot { background: #8a5b0a; }
+.live-care-heading[data-active="true"] .live-care-count {
+  min-width: 36px;
+  padding: 4px 10px;
+  background: #fff9e9;
+  color: #5f400d;
+  font-size: 18px;
+  font-weight: 800;
+}
+.live-care-group[data-active="true"] .live-care-category {
+  background: #ffe4a6;
+  color: #614310;
+  box-shadow: inset 0 0 0 1px #ebc064;
+}
+.live-care-group[data-active="true"] .live-care-category-count { background: #fffdf6; color: #614310; }
+.live-care-panel .live-care-open {
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid #137b80;
+  border-radius: 999px;
+  background: #137b80;
+  color: #fff;
+}
+.live-care-panel .live-care-open:hover { background: #10696d; }
+.live-care-panel .live-care-open:focus-visible { outline: 2px solid #137b80; outline-offset: 3px; }

@@ -11,21 +11,22 @@ function PatientAvatar({ name }) {
 export default function OperatorDesktopLiveRequests({ visits, readOnly = false }) {
   const { requests, loading, error, busyId, load, accept } = useOperatorTeleconsultations({ readOnly });
   const urgencyOrder = { emergency: 0, urgent: 1, routine: 2 };
-  const homeVisits = [...(visits?.visit_requests || [])].sort((a, b) => (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2));
+  const homeVisits = [...(visits?.visit_requests || [])].sort((a, b) => (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2)
+    || Number(!b.assigned_doctor_id) - Number(!a.assigned_doctor_id) || a.id - b.id);
   const visitCount = Number(visits?.active_count ?? homeVisits.length);
   const total = visitCount + requests.length;
 
   return (
-    <section aria-label="Live requests" className="overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-5 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)]">
+    <section aria-label="Live requests" data-active={total > 0} className="live-care-panel overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-5 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)]">
       <div className="mb-4">
-        <OperatorLiveHeading count={!loading && !error && visits ? total : null} />
+        <OperatorLiveHeading active={total > 0} count={!loading && !error && visits ? total : null} />
       </div>
 
       <div className="grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-        <section aria-label="Home Visit Request" className="min-w-0 pb-4 lg:pb-0 lg:pr-5">
+        <section aria-label="Home Visit Request" data-active={visitCount > 0} className="live-care-group min-w-0 pb-4 lg:pb-0 lg:pr-5">
           <div className="flex min-h-11 flex-wrap items-center justify-between gap-2">
-            <h3 className="inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Home Visit Request{visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{visitCount}</span> : null}</h3>
-            <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">View requests <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
+            <h3 className="live-care-category inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Home Visit Request{visits ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{visitCount}</span> : null}</h3>
+            <Link to="/visit-requests" className="live-care-open inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">View requests <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
           {!visits ? <p role="alert" className="py-3 text-sm text-red-800">Could not load home visits. Open View requests to retry.</p> : !homeVisits.length ? <p className="py-3 text-sm text-[#485e65]">No active home visits</p> : (
             <ul className="max-h-80 divide-y divide-[#d6e9e6] overflow-y-auto overscroll-contain">
@@ -51,10 +52,10 @@ export default function OperatorDesktopLiveRequests({ visits, readOnly = false }
           )}
         </section>
 
-        <section aria-label="Teleconsultations" className="min-w-0 pt-4 lg:pl-5 lg:pt-0">
+        <section aria-label="Teleconsultations" data-active={requests.length > 0} className="live-care-group min-w-0 pt-4 lg:pl-5 lg:pt-0">
           <div className="flex min-h-11 flex-wrap items-center justify-between gap-2">
-            <h3 className="inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Teleconsultations{!loading && !error ? <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{requests.length}</span> : null}</h3>
-            <Link to="/teleconsultations" aria-label="Manage teleconsultations" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">Manage calls <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
+            <h3 className="live-care-category inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Teleconsultations{!loading && !error ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{requests.length}</span> : null}</h3>
+            <Link to="/teleconsultations" aria-label="Manage teleconsultations" className="live-care-open inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">Manage calls <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
           {error ? <p role="alert" className="py-3 text-sm text-red-800">{error}<button type="button" onClick={load} className="ml-2 min-h-11 font-semibold underline">Retry teleconsultations</button></p> : null}
           {loading ? <p role="status" className="py-3 text-sm text-[#485e65]">Loading teleconsultations…</p> : null}

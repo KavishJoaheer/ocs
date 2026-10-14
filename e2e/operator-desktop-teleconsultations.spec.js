@@ -118,6 +118,11 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   await expect(visits.getByText(second.name, { exact: true })).toBeVisible();
   const workspace = page.getByRole("region", { name: "Live requests", exact: true });
   await expect(workspace.getByLabel("6 active requests", { exact: true })).toHaveText("6");
+  await expect(workspace).toHaveAttribute("data-active", "true");
+  await expect(workspace).toHaveCSS("border-top-color", "rgb(215, 163, 52)");
+  await expect(visits).toHaveAttribute("data-active", "true");
+  await expect(visits.getByRole("listitem").first()).toContainText(first.name);
+  await workspace.screenshot({ path: `/tmp/ocs-operator-live-requests-active-${width}.png` });
   if (width >= 768) {
     await visits.getByRole("link", { name: `Assign home visit for ${first.name}`, exact: true }).click();
     await expect(page).toHaveURL(/\/visit-requests$/);
@@ -129,6 +134,7 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   await expect(visits.getByText(second.name, { exact: true })).toBeVisible();
   await expect(workspace.getByLabel("5 active requests", { exact: true })).toHaveText("5");
   const queue = page.getByRole("region", { name: /^Teleconsultations/ });
+  await expect(queue).toHaveAttribute("data-active", "true");
   if (width < 768) await expect(page.getByRole("region", { name: "Live requests", exact: true }).getByRole("region", { name: /^Teleconsultations/ })).toBeVisible();
   await expect(queue.getByText(first.name, { exact: true })).toBeVisible();
   await expect(queue.getByText(second.name, { exact: true })).toBeVisible();
@@ -165,6 +171,21 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
   await page.goto(`${STAFF}/patients`);
   await expect(mobileAlerts).toContainText(second.name);
   await expect(queue).toHaveCount(0);
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto(`${STAFF}/`);
+  for (const current of [second, accepted, assigned]) {
+    const cancelled = await request.post(`${API}/teleconsultations/${current.id}/close`, { headers,
+      data: { outcome: "cancelled", outcome_note: "Dashboard regression complete", follow_up: "Contact OCS for further care" } });
+    expect(cancelled.ok()).toBeTruthy();
+  }
+  await expect(queue).toHaveAttribute("data-active", "false");
+  await expect(visits).toHaveAttribute("data-active", "true");
+  await expect(workspace).toHaveAttribute("data-active", "true");
+  const finishedVisit = await request.patch(`${API}/visit-requests/${ongoingVisitId}`, { headers, data: { status: "cancelled" } });
+  expect(finishedVisit.ok()).toBeTruthy();
+  await expect(workspace).toHaveAttribute("data-active", "false");
+  await expect(workspace.getByLabel("0 active requests", { exact: true })).toHaveText("0");
+  await expect(workspace).not.toHaveCSS("border-top-color", "rgb(215, 163, 52)");
 });
 
 test(`teleconsultation queue supports error recovery at ${width}px`, async ({ page, request }) => {

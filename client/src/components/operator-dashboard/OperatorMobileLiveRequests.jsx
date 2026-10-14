@@ -7,18 +7,19 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
   const { requests, loading, error, busyId, load, accept } = useOperatorTeleconsultations({ readOnly });
   const urgencyOrder = { emergency: 0, urgent: 1, routine: 2 };
   const homeVisits = [...(visits?.visit_requests || [])]
-    .sort((a, b) => (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2)).slice(0, 2);
+    .sort((a, b) => (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2)
+      || Number(!b.assigned_doctor_id) - Number(!a.assigned_doctor_id) || a.id - b.id).slice(0, 2);
   const visitCount = Number(visits?.active_count ?? homeVisits.length);
   const total = visitCount + requests.length;
 
   return (
-    <section aria-label="Live requests" className="overflow-hidden rounded-[30px] border border-[#cde9e6] bg-[linear-gradient(145deg,#edf9f7,#f6fcfb)] shadow-[0_8px_26px_rgba(26,127,122,0.06)]">
+    <section aria-label="Live requests" data-active={total > 0} className="live-care-panel overflow-hidden rounded-[30px] border border-[#cde9e6] bg-[linear-gradient(145deg,#edf9f7,#f6fcfb)] shadow-[0_8px_26px_rgba(26,127,122,0.06)]">
       <div className="px-4 pb-2 pt-5">
-        <OperatorLiveHeading count={!loading && !error && visits ? total : null} />
+        <OperatorLiveHeading active={total > 0} count={!loading && !error && visits ? total : null} />
       </div>
 
-      <section aria-label="Home Visit Request" className="px-4 pb-4 pt-3">
-        <h3 className="inline-flex rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Home Visit Request</h3>
+      <section aria-label="Home Visit Request" data-active={visitCount > 0} className="live-care-group px-4 pb-4 pt-3">
+        <h3 className="live-care-category inline-flex items-center gap-2 rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Home Visit Request{visits ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visitCount}</span> : null}</h3>
         {!visits ? <p role="alert" className="mt-3 text-xs text-red-800">Could not load home visit requests. Open View requests to retry.</p> : homeVisits.length ? (
           <ul className="mt-1 divide-y divide-[#d0e7e4]">
             {homeVisits.map(request => (
@@ -44,8 +45,8 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
         ) : <p className="mt-3 text-[13px] text-[#485e65]">{visitCount ? "Open View requests for active requests." : "No active home visits"}</p>}
       </section>
 
-      <section aria-labelledby="operator-mobile-calls-heading" className="mx-4 border-t border-[#cce4e0] py-4">
-        <h3 id="operator-mobile-calls-heading" className="inline-flex rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Teleconsultations</h3>
+      <section aria-labelledby="operator-mobile-calls-heading" data-active={requests.length > 0} className="live-care-group mx-4 border-t border-[#cce4e0] py-4">
+        <h3 id="operator-mobile-calls-heading" className="live-care-category inline-flex items-center gap-2 rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Teleconsultations{!loading && !error ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{requests.length}</span> : null}</h3>
         {loading ? <p role="status" className="mt-3 text-[13px] text-[#485e65]">Loading teleconsultations…</p> : null}
         {error ? <p role="alert" className="mt-2 text-xs text-red-800">{error}<button type="button" onClick={load} className="ml-2 min-h-11 font-semibold underline">Retry teleconsultations</button></p> : null}
         {!loading && !error && !requests.length ? <p className="mt-3 text-[13px] text-[#485e65]">No active teleconsultations</p> : null}
@@ -66,9 +67,9 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
         </ul> : null}
       </section>
 
-      <div className="mx-4 grid grid-cols-2 border-t border-[#cce4e0] py-2">
-        <Link to="/visit-requests" className="inline-flex min-h-11 items-center justify-center gap-2 border-r border-[#cce4e0] text-xs font-semibold text-[#137b80]">View requests <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
-        <Link to="/teleconsultations" aria-label="Manage teleconsultations" className="inline-flex min-h-11 items-center justify-center gap-2 text-xs font-semibold text-[#137b80]">Manage calls <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
+      <div className="mx-4 grid grid-cols-2 gap-2 border-t border-[#cce4e0] py-3">
+        <Link to="/visit-requests" className="live-care-open inline-flex min-h-11 items-center justify-center gap-2 text-xs font-semibold text-[#137b80]">View requests <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
+        <Link to="/teleconsultations" aria-label="Manage teleconsultations" className="live-care-open inline-flex min-h-11 items-center justify-center gap-2 text-xs font-semibold text-[#137b80]">Manage calls <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
       </div>
     </section>
   );

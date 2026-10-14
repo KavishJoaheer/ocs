@@ -59,6 +59,12 @@ for (const width of [360, 430, 1440]) {
     const visit = care.getByRole("listitem", { name: "Home visit for Anjali Devi", exact: true });
     await expect(visit).toBeVisible();
     await expect(care.getByLabel("2 active assignments", { exact: true })).toHaveText("2");
+    await expect(care).toHaveAttribute("data-active", "true");
+    await expect(care).toHaveCSS("border-top-color", "rgb(215, 163, 52)");
+    await expect(care.getByRole("region", { name: "Assigned home visits", exact: true })).toHaveAttribute("data-active", "true");
+    await expect(care.getByRole("region", { name: "Assigned teleconsultations", exact: true })).toHaveAttribute("data-active", "true");
+    await expect(care.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
+    await expect(care.getByRole("link", { name: "View calls", exact: true })).toBeVisible();
     await expect(care.getByRole("listitem", { name: "Teleconsultation for Ravi Pillay", exact: true })).toBeVisible();
     await expect(doctor.getByText("Other Doctor Patient", { exact: true })).toHaveCount(0);
     await expect(doctor.getByRole("button", { name: /Accept/ })).toHaveCount(0);
@@ -71,6 +77,7 @@ for (const width of [360, 430, 1440]) {
     await expect(visit.getByRole("link", { name: "Directions", exact: true })).toHaveAttribute("href", /google.com\/maps\/search/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.screenshot({ path: `/tmp/ocs-doctor-dashboard-${width}.png`, fullPage: true });
+    await care.screenshot({ path: `/tmp/ocs-doctor-assigned-care-active-${width}.png` });
     if (width < 768) {
       const bottom = page.locator("#ocs-bottom-nav");
       await expect(bottom.getByRole("link")).toHaveText(["Home", "Patients", "Home Visit Request", "Inventory"]);
@@ -114,11 +121,36 @@ for (const width of [360, 430, 1440]) {
     await page.goto(`${STAFF}/`);
     await expect(visit).toHaveCount(0);
     await expect(care.getByLabel("1 active assignments", { exact: true })).toHaveText("1");
+    await expect(care).toHaveAttribute("data-active", "true");
+    await expect(care.getByRole("region", { name: "Assigned home visits", exact: true })).toHaveAttribute("data-active", "false");
     const closed = await request.post(`${API}/teleconsultations/${callId}/close`, { headers, data: { outcome: "referred", outcome_note: "Patient requires in-person assessment", follow_up: "OCS dispatch will arrange a home visit" } });
     expect(closed.ok()).toBeTruthy();
     await expect(care.getByText("Ravi Pillay", { exact: true })).toHaveCount(0, { timeout: 20_000 });
+    await expect(care).toHaveAttribute("data-active", "false");
+    await expect(care).toHaveCSS("border-top-color", "rgb(191, 228, 223)");
+    await expect(care.getByLabel("0 active assignments", { exact: true })).toHaveText("0");
   });
 }
+
+test("doctor dashboard puts assigned calls ahead of calls already in progress", async ({ page, request }) => {
+  const { actor, patients } = await prepare(page, request);
+  const db = openE2eDb();
+  try {
+    const patient = patients[2];
+    const patientUser = db.prepare("INSERT INTO patient_users (patient_id, full_name, phone) VALUES (?, ?, ?)").run(patient.id, patient.full_name, "57001125").lastInsertRowid;
+    const id = db.prepare(`INSERT INTO teleconsultation_requests
+      (patient_id,patient_user_id,reason,current_location,callback_number,status,consultation_code,consent_version,consent_snapshot,assigned_doctor_id)
+      VALUES (?,?,'Call already underway','Moka','23057001125','in_consultation','123457','test-v1','[]',?)`)
+      .run(patient.id, patientUser, actor.user.doctor_id).lastInsertRowid;
+    callIds.push(Number(id));
+  } finally { db.close(); }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${STAFF}/`);
+  const calls = page.getByRole("region", { name: "Assigned teleconsultations", exact: true });
+  await expect(calls.getByRole("listitem")).toHaveCount(2);
+  await expect(calls.getByRole("listitem").first()).toHaveAttribute("aria-label", "Teleconsultation for Ravi Pillay");
+  await expect(calls.getByRole("listitem").last()).toHaveAttribute("aria-label", "Teleconsultation for Sarah Noel");
+});
 
 test("doctor dashboard distinguishes unavailable data and respects blocked insurance", async ({ page, request }) => {
   await prepare(page, request);

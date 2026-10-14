@@ -7,10 +7,11 @@ const ACTIONS = { assigned: "I'm on my way", en_route: "I've arrived", arrived: 
 export default function DoctorAssignedCare({ care, mobile, readOnly }) {
   const { visits, calls, errors, loading, busyId, load, advance } = care;
   const priority = { emergency: 0, urgent: 1, routine: 2 };
-  const orderedVisits = [...visits].sort((a, b) => (priority[a.urgency] ?? 2) - (priority[b.urgency] ?? 2));
-  const orderedCalls = [...calls].sort((a, b) => Number(b.status === "in_consultation") - Number(a.status === "in_consultation") || a.id - b.id);
+  const orderedVisits = [...visits].sort((a, b) => (priority[a.urgency] ?? 2) - (priority[b.urgency] ?? 2)
+    || Number(b.status === "assigned") - Number(a.status === "assigned") || a.id - b.id);
+  const orderedCalls = [...calls].sort((a, b) => Number(b.status === "assigned") - Number(a.status === "assigned") || a.id - b.id);
   const hasError = errors.visits || errors.calls;
-  const titleClass = "inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-xs font-semibold text-[#173f4a]";
+  const titleClass = "live-care-category inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-xs font-semibold text-[#173f4a]";
   const actionClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#137b80] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#10696d] disabled:opacity-50";
 
   function errorMessage(message) {
@@ -18,13 +19,13 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
   }
 
   return (
-    <section aria-label="Assigned care" className="min-w-0 overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-4 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)] sm:px-5">
-      <div className="mb-4"><OperatorLiveHeading title="Assigned care" count={!loading && !hasError ? visits.length + calls.length : null} countLabel={`${visits.length + calls.length} active assignments`} /></div>
+    <section aria-label="Assigned care" data-active={visits.length + calls.length > 0} className="live-care-panel min-w-0 overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-4 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)] sm:px-5">
+      <div className="mb-4"><OperatorLiveHeading title="Assigned care" active={visits.length + calls.length > 0} count={!loading && !hasError ? visits.length + calls.length : null} countLabel={`${visits.length + calls.length} active assignments`} /></div>
       <div className={`grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] ${!mobile ? "lg:grid-cols-2 lg:divide-x lg:divide-y-0" : ""}`}>
-        <section aria-label="Assigned home visits" className={`min-w-0 pb-4 ${!mobile ? "lg:pb-0 lg:pr-5" : ""}`}>
+        <section aria-label="Assigned home visits" data-active={visits.length > 0} className={`live-care-group min-w-0 pb-4 ${!mobile ? "lg:pb-0 lg:pr-5" : ""}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 ${mobile ? "" : "min-h-11"}`}>
-            <h3 className={titleClass}>Home Visit Request{!loading && !errors.visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
-            {!mobile ? <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View requests<ChevronRight className="size-3.5" aria-hidden="true" /></Link> : null}
+            <h3 className={titleClass}>Home Visit Request{!loading && !errors.visits ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
+            <Link to="/visit-requests" className="live-care-open inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View requests<ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
           {errors.visits ? errorMessage(errors.visits) : null}
           {loading ? <p role="status" className="py-3 text-sm text-[#485e65]">Loading home visits…</p> : !errors.visits && !visits.length ? <p className="py-3 text-sm text-[#485e65]">No assigned home visits</p> : null}
@@ -49,10 +50,10 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
             })}
           </ul> : null}
         </section>
-        <section aria-label="Assigned teleconsultations" className={`min-w-0 pt-4 ${!mobile ? "lg:pl-5 lg:pt-0" : ""}`}>
+        <section aria-label="Assigned teleconsultations" data-active={calls.length > 0} className={`live-care-group min-w-0 pt-4 ${!mobile ? "lg:pl-5 lg:pt-0" : ""}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 ${mobile ? "" : "min-h-11"}`}>
-            <h3 className={titleClass}>Teleconsultations{!loading && !errors.calls ? <span className="rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{calls.length}</span> : null}</h3>
-            {!mobile ? <Link to="/teleconsultations" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View calls<ChevronRight className="size-3.5" aria-hidden="true" /></Link> : null}
+            <h3 className={titleClass}>Teleconsultations{!loading && !errors.calls ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{calls.length}</span> : null}</h3>
+            <Link to="/teleconsultations" className="live-care-open inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View calls<ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
           {errors.calls ? errorMessage(errors.calls) : null}
           {loading ? <p role="status" className="py-3 text-sm text-[#485e65]">Loading teleconsultations…</p> : !errors.calls && !calls.length ? <p className="py-3 text-sm text-[#485e65]">No assigned teleconsultations</p> : null}
