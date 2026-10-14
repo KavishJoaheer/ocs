@@ -97,7 +97,7 @@ function LongTermReviewAlertBanner({ patient, actions }) {
   const date = patient.review_due_date ? formatScheduledReviewDate(patient.review_due_date) : "Date not scheduled";
   const time = formatReviewAppointmentTime(patient.review_appointment_time);
   const doctor = getReviewDoctorName(patient);
-  return <aside data-testid="patient-review-summary" className="rounded-[24px] border border-amber-200 bg-[#fff9ed] px-4 py-3 text-[#705822]">
+  return <aside data-testid="patient-review-summary" className="patient-priority-notice rounded-[24px] border border-amber-200 bg-[#fff9ed] px-4 py-3 text-[#705822]">
     <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="text-sm font-bold">Review appointment</p><p className="mt-1 break-words text-sm">{[date, time, doctor].filter(Boolean).join(" · ")}</p></div>{actions}</div>
     {patient.review_reason_note ? <details className="mt-2 text-sm"><summary className="cursor-pointer font-semibold">Review reason</summary><p className="mt-2 whitespace-pre-wrap break-words">{patient.review_reason_note}</p></details> : null}
   </aside>;
@@ -220,8 +220,22 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
   );
 }
 
-function HighlightStat({ icon: Icon, label, value }) {
-  return <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eaf5f1] px-3 py-2 text-xs text-[#376168]"><Icon className="size-4 shrink-0" aria-hidden="true" /><span>{label}</span><strong className="break-words text-[#173f4a]">{value}</strong></span>;
+function HighlightStat({ icon: Icon, label, value, prominent = false, primary = false }) {
+  return (
+    <span className={cx(
+      "inline-flex max-w-full min-w-0 items-center gap-2 rounded-full px-3 py-2",
+      prominent ? "patient-profile-highlight" : "bg-[#eaf5f1] text-xs text-[#376168]",
+    )}>
+      {Icon ? <Icon className="size-4 shrink-0" aria-hidden="true" /> : null}
+      <span className={prominent ? "patient-profile-highlight-label" : undefined}>{label}</span>
+      {prominent ? <span aria-hidden="true">·</span> : null}
+      <strong className={cx(
+        "min-w-0 break-words",
+        prominent ? "patient-profile-highlight-value" : "text-[#173f4a]",
+        prominent && primary && "patient-profile-highlight-value-primary",
+      )}>{value}</strong>
+    </span>
+  );
 }
 
 function MobileBillingStatusBar({ status }) {
@@ -1456,10 +1470,13 @@ function PatientProfilePage() {
     setSearchParams(next, { replace: true });
   }, [canManageConsultations, searchParams, setSearchParams]);
 
+  const isOperatorDesktop = user.role === "operator" && !isMobile;
   const showPatientBillingUi = useMemo(
     () => Boolean(data && canBillPatientForUser(user, data.patient) && !(user.role === "doctor" && isMobile)),
     [data, user, isMobile],
   );
+
+  const canStartProfileBill = showPatientBillingUi && !(user.role === "operator" && isMobile);
 
   const mobileProfileTabs = useMemo(
     () =>
@@ -1951,7 +1968,7 @@ function PatientProfilePage() {
   const identityType = PATIENT_ID_TYPES.find((type) => type.value === (data.patient.patient_id_type || "national_id"))?.label || "Identity document";
   const identityValue = data.patient.patient_id_type === "no_id" ? "No identification provided" : data.patient.patient_id_type === "old_age" && !data.patient.patient_id_number ? "No identifier required" : profileLine(data.patient.patient_id_number);
   const patientSummary = <div className="patient-summary-cards space-y-3">
-    <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} /> : null}</div>
+    <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} prominent /> : null}</div>
     <SectionCard title="Patient details" compact>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
         <ProfileDlItem label={identityType} value={identityValue} emphasize />
@@ -1976,23 +1993,35 @@ function PatientProfilePage() {
 
   return (
     <div className="patient-workspace patient-profile ocs-page w-full min-w-0 max-w-full space-y-3">
-      <PatientWorkspaceHeader title={data.patient.full_name} subtitle={`Age: ${profileAgeLabel} · ${profileAddressLabel}`} role={user.role} onRefresh={reloadPatientProfile} actions={<>
+      <PatientWorkspaceHeader title={data.patient.full_name} subtitle={showMobileAddress ? profileAddressLabel : undefined} role={user.role} onRefresh={reloadPatientProfile} actions={<>
         <Link className="patient-icon-control" to={location.state?.patientsReturnTo || "/patients"} state={{ directoryContext: location.state?.directoryContext, patientsScrollY: location.state?.patientsScrollY }} aria-label="Back to patients"><ArrowLeft className="size-4" /></Link>
-        {canManageConsultations ? <button className="patient-control patient-control-primary" aria-label="Add consultation note" onClick={() => setConsultationComposerOpen(true)}><Plus className="size-4" /><span>{isMobile ? "Add note" : "Add consultation note"}</span></button> : showPatientBillingUi ? <Link className="patient-control patient-control-primary" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
-        {showMobileContact ? <a className="patient-control" href={`tel:${rawContactDigits}`}><Phone className="size-4" />Call</a> : null}
+        {canManageConsultations ? <button className="patient-control patient-control-primary" aria-label="Add consultation note" onClick={() => setConsultationComposerOpen(true)}><Plus className="size-4" /><span>{isMobile ? "Add note" : "Add consultation note"}</span></button> : canStartProfileBill ? <Link className="patient-control patient-control-primary" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
+        {isOperatorDesktop && canFlagLongTermReviewAccess ? (
+          <button
+            type="button"
+            className="patient-control"
+            disabled={isSavingLongTermReview || isPatientUnderReview(data.patient)}
+            onClick={() => setLongTermReviewModalOpen(true)}
+          >
+            <Flag className="size-4" />
+            {isPatientUnderReview(data.patient) ? "Review flagged" : "Flag for Review"}
+          </button>
+        ) : showMobileContact ? <a className="patient-control" href={`tel:${rawContactDigits}`}><Phone className="size-4" />Call</a> : null}
         <details className="patient-more-actions"><summary aria-label="More actions" title="More actions" className={isMobile ? "patient-icon-control" : "patient-control"}><MoreHorizontal className="size-4" /><span className={isMobile ? "sr-only" : ""}>More actions</span></summary><div>
           {canEditPatientProfile ? <button type="button" className="patient-control" onClick={() => setPatientEditorOpen(true)}><SquarePen className="size-4" />Edit profile</button> : null}
           {["admin", "operator"].includes(user.role) ? <button type="button" className="patient-control" onClick={() => setCareInvitationPatientId(data.patient.id)}>Send OCS Care link</button> : null}
           {canFlagLongTermReviewAccess ? <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} /> : null}
           {user.role === "admin" ? <OperatorAccessManager patientId={data.patient.id} access={data.operatorAccess || []} operatorOptions={data.operatorOptions || []} onChanged={reloadPatientProfile} /> : null}
-          {canFlagLongTermReviewAccess ? <LongTermReviewFlagButton patient={data.patient} disabled={isSavingLongTermReview} isSaving={isSavingLongTermReview} onRequestFlag={() => setLongTermReviewModalOpen(true)} onUnflag={handleUnflagLongTermReview} /> : null}
+          {canFlagLongTermReviewAccess && (!isOperatorDesktop || isPatientUnderReview(data.patient)) ? <LongTermReviewFlagButton patient={data.patient} disabled={isSavingLongTermReview} isSaving={isSavingLongTermReview} onRequestFlag={() => setLongTermReviewModalOpen(true)} onUnflag={handleUnflagLongTermReview} /> : null}
           {canManageLabReports && (canModifyClinicalData || user.role === "lab_tech") ? <button type="button" className="patient-control" onClick={() => setReportEditor({ id: null })}><Paperclip className="size-4" />Attach report</button> : null}
-          {showPatientBillingUi && canManageConsultations ? <Link className="patient-control" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
+          {canStartProfileBill && canManageConsultations ? <Link className="patient-control" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
         </div></details>
       </>}>
-        <span className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#376168]">OCS care number · {data.patient.patient_identifier || "Not assigned"}</span><StatusBadge value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
+        <HighlightStat label="OCS care number" value={data.patient.patient_identifier || "Not assigned"} prominent primary />
+        <HighlightStat icon={UserRound} label="Age" value={profileAgeLabel} prominent />
+        <StatusBadge value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
       </PatientWorkspaceHeader>
-      {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside className="rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
+      {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside className="patient-priority-notice rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
       {isPatientUnderReview(data.patient) ? <LongTermReviewAlertBanner patient={data.patient} actions={longTermReviewLogAction} /> : null}
       <nav aria-label="Patient profile sections" className="patient-profile-tabs flex max-w-full gap-2 overflow-x-auto rounded-full py-1">
         {mobileProfileTabs.map((tab) => <button key={tab.key} type="button" aria-pressed={activeTab === tab.key} onClick={() => selectProfileTab(tab.key)} className={cx("patient-control shrink-0", activeTab === tab.key && "patient-control-primary")}>{tab.label}</button>)}

@@ -48,3 +48,23 @@
 @media (max-width: 1023px) {
   .patient-profile .patient-profile-tabs { top: calc(4rem + var(--sat, 0px)); }
 }
+
+.patient-profile .patient-profile-highlight {
+  min-height: 40px;
+  border: 1px solid #e8bb56;
+  background: #fff1cf;
+  color: #795519;
+  font-size: .875rem;
+  line-height: 1.35;
+}
+.patient-profile-highlight-label {
+  flex-shrink: 0;
+  font-size: .75rem;
+  font-weight: 500;
+}
+.patient-profile-highlight-value { font-size: .875rem; font-weight: 700; }
+.patient-profile-highlight-value-primary { font-size: 1rem; }
+.patient-profile .patient-priority-notice {
+  border-color: #e8bb56;
+  border-left: 4px solid #c68a1d;
+}

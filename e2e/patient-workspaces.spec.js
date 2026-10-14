@@ -83,7 +83,15 @@ for (const role of ["doctor", "operator"]) {
         await expect(workspace.getByRole("button", { name: "Add consultation note", exact: true })).toHaveCount(1);
         await expect(workspace.getByRole("button", { name: "Billing", exact: true })).toHaveCount(width < 768 ? 0 : 1);
       } else {
-        await expect(workspace.getByRole("link", { name: "New bill", exact: true })).toBeVisible();
+        const header = workspace.locator(".patient-workspace-header");
+        if (width < 768) {
+          await expect(workspace.getByRole("link", { name: "New bill", exact: true })).toHaveCount(0);
+          await expect(header.getByRole("link", { name: "Call", exact: true })).toBeVisible();
+        } else {
+          await expect(header.getByRole("link", { name: "New bill", exact: true })).toBeVisible();
+          await expect(header.getByRole("link", { name: "Call", exact: true })).toHaveCount(0);
+          await expect(header.getByRole("button", { name: "Review flagged", exact: true })).toBeDisabled();
+        }
         await expect(workspace.getByRole("button", { name: "Add consultation note", exact: true })).toHaveCount(0);
         await expect(workspace.getByRole("button", { name: "Reports", exact: true })).toHaveCount(0);
       }
@@ -221,4 +229,26 @@ test("newer directory searches stay visible when an older response arrives late"
   await olderArrived;
   await expect(page.locator(".patient-directory-list").getByText(fastPatient.full_name, { exact: true })).toBeVisible();
   await expect(page.locator(".patient-directory-list").getByText(slowPatient.full_name, { exact: true })).toHaveCount(0);
+});
+
+test("operator desktop can flag a patient for review directly from the profile header", async ({ page, request }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { headers } = await session(page, request, "operator");
+  const patient = await createPatient(request, headers);
+  await page.goto(`${STAFF}/patients/${patient.id}`);
+  const header = page.locator(".patient-workspace-header");
+  await expect(header.getByRole("link", { name: "Call", exact: true })).toHaveCount(0);
+  await header.getByRole("button", { name: "Flag for Review", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Flag for review appointment", exact: true });
+  await dialog.getByLabel("Target review date", { exact: true }).fill("2026-11-20");
+  await dialog.getByLabel("Reason note", { exact: true }).fill("Review progress after treatment.");
+  const savedResponse = page.waitForResponse(response => response.url().endsWith(`/api/patients/${patient.id}/long-term-review`) && response.request().method() === "PATCH");
+  await dialog.getByRole("button", { name: "Save flag", exact: true }).click();
+  const saved = await savedResponse;
+  expect(saved.ok(), await saved.text()).toBeTruthy();
+  await expect(dialog).toBeHidden();
+  await expect(header.getByRole("button", { name: "Review flagged", exact: true })).toBeDisabled();
+  await expect(page.getByTestId("patient-review-summary")).toContainText("20 Nov, 2026");
+  await header.locator("summary", { hasText: "More actions" }).click();
+  await expect(header.getByRole("button", { name: "Under Active Review", exact: true })).toBeVisible();
 });
