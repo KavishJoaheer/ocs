@@ -34,10 +34,12 @@ for (const width of [320,360,390,430]) {
     await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "My bag", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "Physical stock", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".doctor-inventory-card").filter({ hasText: "Selling price:" })).toHaveCount(0);
     await page.getByPlaceholder("Search items").fill(name);
     const card = page.locator(".doctor-inventory-card").filter({ hasText: name });
     await expect(card).toContainText("3 available · tablet"); await expect(card).toContainText("Minimum: 5"); await expect(card).toContainText("Expiry:");
+    await expect(card.getByText("Selling price: Rs 10.00", { exact: true })).toBeVisible();
+    expect((await card.getByText("Selling price: Rs 10.00", { exact: true }).boundingBox()).y)
+      .toBeGreaterThan((await card.locator("p").filter({ hasText: /^3 available/ }).boundingBox()).y);
     expect((await card.boundingBox()).y).toBeLessThan(450);
     await page.screenshot({ path: `/tmp/ocs-doctor-inventory-mobile-updated-${width}.png` });
     await page.getByRole("button", { name: "Clear search", exact: true }).click();
@@ -63,11 +65,47 @@ for (const width of [320,360,390,430]) {
     await expect(page.getByRole("button", { name: "Use", exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
     await page.getByRole("button", { name: "Refresh inventory", exact: true }).click(); await expect(page.getByText("7 available · tablet")).toBeVisible();
+    await expect(page.locator(".doctor-inventory-card").filter({ hasText: name }).getByText("Selling price: Rs 10.00", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Add to request", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Request Supply from OCS", exact: true })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`itemId=${source.id}`));
   });
 }
+
+test("mobile doctors can check prices for out-of-stock items and services without showing an unset price as free", async ({ page, request }) => {
+  const { doctor, source, item, name } = await prepareBag(page, request);
+  const db = openE2eDb();
+  try {
+    db.prepare("UPDATE inventory_batches SET quantity_remaining=0 WHERE item_id=?").run(item.id);
+    db.prepare("UPDATE inventory SET quantity=0 WHERE id=?").run(item.id);
+  } finally { db.close(); }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${STAFF}/inventory`);
+  await page.getByPlaceholder("Search items").fill(name);
+  const card = page.locator(".doctor-inventory-card").filter({ hasText: name });
+  await expect(card).toContainText("0 available");
+  await expect(card.getByRole("button", { name: "Use", exact: true })).toBeDisabled();
+  await expect(card.getByText("Selling price: Rs 10.00", { exact: true })).toBeVisible();
+  const prices = openE2eDb();
+  try { prices.prepare("UPDATE inventory SET cost_price=0, selling_price=0 WHERE id IN (?, ?)").run(source.id, item.id); }
+  finally { prices.close(); }
+  await page.getByRole("button", { name: "Refresh inventory", exact: true }).click();
+  await expect(card.getByText(/Selling price:/)).toHaveCount(0);
+  await expect(card).not.toContainText("Rs 0.00");
+  const inventory = await request.get(`${API}/inventory`, { headers: { Authorization: `Bearer ${doctor.token}` } });
+  expect(inventory.ok()).toBeTruthy();
+  const catalogue = await inventory.json();
+  const service = catalogue.my_stock.find(row => row.item_kind === "service" && Number(row.selling_price) > 0);
+  expect(service).toBeTruthy();
+  await page.getByRole("button", { name: "Clear search", exact: true }).click();
+  await page.getByRole("button", { name: "Services", exact: true }).click();
+  await page.getByPlaceholder("Search items").fill(service.item_name);
+  const serviceCard = page.locator(".doctor-inventory-card").filter({ has: page.getByText(service.item_name, { exact: true }) });
+  const amount = Number(service.selling_price).toLocaleString("en-MU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  await expect(serviceCard.getByText(`Selling price: Rs ${amount}`, { exact: true })).toBeVisible();
+  await expect(serviceCard.getByRole("button", { name: "Use", exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
+});
 
 test("mobile patient use needs a consultation and records stock against its bill", async ({ page, request }) => {
   const { doctor, item, name } = await prepareBag(page, request);

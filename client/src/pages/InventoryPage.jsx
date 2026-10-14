@@ -2804,6 +2804,8 @@ function MobileDoctorBagActions({
 
 function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentation = false }) {
   const isService = item.item_kind === "service";
+  const sellingPrice = Number(item.selling_price || 0);
+  const hasSellingPrice = Number.isFinite(sellingPrice) && sellingPrice > 0;
   const low = isLowStock ?? isAtOrBelowPar(item);
   const expired = itemHasExpiredStock(item);
   const quarantined = itemHasQuarantinedStock(item);
@@ -2837,13 +2839,16 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
               />}
             </div>
           ) : null}
-          <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
+          {doctorPresentation && (hasSellingPrice || isService) ? <p className="mt-1 text-sm leading-snug text-[#376168]">
+            {hasSellingPrice ? <>Selling price: <strong className="font-semibold tabular-nums">{formatRupees(sellingPrice)}</strong></> : <span className="text-xs text-slate-500">Price not set</span>}
+          </p> : null}
+          {!doctorPresentation || !isService ? <p className="mt-1 text-xs font-semibold leading-snug text-slate-500">
             <span className={!isService && !item.nearest_usable_expiry && !item.has_non_expiring ? "text-slate-400" : ""}>
               {doctorPresentation && !isService && Number(item.on_hand_quantity ?? item.quantity ?? 0) > 0 ? "Expiry: " : ""}{isService
-                ? doctorPresentation && Number(item.selling_price || 0) <= 0 ? "Price not set" : `Selling price: ${formatRupees(item.selling_price)}`
+                ? `Selling price: ${formatRupees(item.selling_price)}`
                 : formatInventoryExpiry(item)}
             </span>
-          </p>
+          </p> : null}
         </div>
       </div>
       {actions}
