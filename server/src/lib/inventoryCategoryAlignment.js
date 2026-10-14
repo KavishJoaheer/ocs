@@ -32,6 +32,19 @@ const CATEGORY_RULES = [
     aliases: ["Lasilix 20mg (IM/IV)"],
     folderName: "IM Drugs",
   },
+  ...[
+    ["IM Adrenaline", 82.68],
+    ["IM Atropine", 60],
+    ["IM Duron", 106.18],
+  ].map(([itemName, costPrice]) => ({
+    itemName,
+    folderName: "IM Drugs",
+    ensureEverywhere: true,
+    minimumQuantity: 2,
+    costPrice,
+    sellingPrice: 1200,
+    notes: "",
+  })),
   {
     itemName: "IM Ceftriaxone 1g + lidocaine",
     folderName: "Services",
@@ -356,7 +369,7 @@ function alignInventoryCategories() {
     INSERT INTO inventory (
       item_name, item_kind, folder_id, stock_scope, owner_doctor_id, quantity, minimum_quantity,
       unit, cost_price, selling_price, notes, attributes, moa_notes, expiry_date, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, '', '', NULL, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, '', '', NULL, CURRENT_TIMESTAMP)
   `);
   const updateRows = db.prepare(`
     UPDATE inventory
@@ -432,10 +445,11 @@ function alignInventoryCategories() {
               folderId,
               location.scope,
               location.ownerDoctorId,
+              Number(rule.minimumQuantity || 0),
               rule.unit || "unit",
               Number(rule.costPrice || 0),
               Number(rule.sellingPrice || 0),
-              "Price must be configured before billing.",
+              rule.notes ?? "Price must be configured before billing.",
             );
             inserted += 1;
           }

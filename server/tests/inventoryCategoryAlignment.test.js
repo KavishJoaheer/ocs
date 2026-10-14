@@ -136,7 +136,7 @@ test("category alignment moves warehouse and doctor rows without changing stock 
   const first = alignInventoryCategories();
   assert.ok(first.updated >= TARGET_ITEMS.length * 3);
   const activeDoctorCount = Number(db.prepare("SELECT COUNT(*) AS count FROM doctors WHERE deleted_at IS NULL").get().count);
-  assert.equal(first.inserted, 4 * (activeDoctorCount + 1));
+  assert.equal(first.inserted, 7 * (activeDoctorCount + 1));
   assert.equal(first.renamed, 3);
   assert.equal(first.conflicts, 0);
 
@@ -850,6 +850,69 @@ test("named syrups and IV lasilix leave the warehouse and stay in doctor bags", 
   const bag = db.prepare("SELECT archived_at, quantity FROM inventory WHERE id = ?").get(bagId);
   assert.equal(bag.archived_at, null);
   assert.equal(Number(bag.quantity), 2);
+});
+
+test("new IM drugs start at zero with configured prices and minimum stock in every location", () => {
+  const items = [
+    ["IM Adrenaline", 82.68],
+    ["IM Atropine", 60],
+    ["IM Duron", 106.18],
+  ];
+  const doctorIds = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id").all()
+    .map((row) => Number(row.id));
+  const loadRows = db.prepare(`
+    SELECT i.*, f.name AS folder_name
+    FROM inventory i JOIN inventory_folders f ON f.id = i.folder_id
+    WHERE i.item_name = ? AND i.archived_at IS NULL
+    ORDER BY i.stock_scope, i.owner_doctor_id
+  `);
+
+  for (const [name, costPrice] of items) {
+    const rows = loadRows.all(name);
+    assert.equal(rows.length, doctorIds.length + 1, name);
+    assert.equal(rows.filter((row) => row.stock_scope === "ocs" && row.owner_doctor_id === null).length, 1, name);
+    assert.deepEqual(rows.filter((row) => row.stock_scope === "doctor").map((row) => row.owner_doctor_id), doctorIds, name);
+    for (const row of rows) {
+      assert.equal(row.folder_name, "IM Drugs", name);
+      assert.equal(row.item_kind, "stock", name);
+      assert.equal(row.quantity, 0, name);
+      assert.equal(row.minimum_quantity, 2, name);
+      assert.equal(row.cost_price, costPrice, name);
+      assert.equal(row.selling_price, 1200, name);
+      assert.equal(row.notes, "", name);
+      assert.equal(row.expiry_date, null, name);
+      assert.equal(db.prepare("SELECT COUNT(*) AS count FROM inventory_batches WHERE item_id = ?").get(row.id).count, 0, name);
+    }
+  }
+
+  const warehouse = loadRows.all("IM Adrenaline").find((row) => row.stock_scope === "ocs");
+  db.prepare("UPDATE inventory SET quantity = 5, minimum_quantity = 3, cost_price = 90, selling_price = 1250 WHERE id = ?").run(warehouse.id);
+  db.prepare(`
+    INSERT INTO inventory_batches (item_id, quantity_remaining, expiry_date, unit_cost)
+    VALUES (?, 5, '2030-12-31', 90)
+  `).run(warehouse.id);
+  const beforeRetry = items.flatMap(([name]) => loadRows.all(name));
+  const retry = alignInventoryCategories();
+  assert.equal(retry.inserted, 0);
+  assert.deepEqual(items.flatMap(([name]) => loadRows.all(name)), beforeRetry,
+    "restarts must not duplicate items or reset received stock, prices or minimum quantities");
+  assert.equal(db.prepare("SELECT quantity_remaining FROM inventory_batches WHERE item_id = ?").get(warehouse.id).quantity_remaining, 5);
+
+  const newDoctorId = Number(db.prepare("INSERT INTO doctors (full_name, specialization, is_active) VALUES ('New IM catalogue doctor', 'General Medicine', 1)").run().lastInsertRowid);
+  try {
+    alignInventoryCategories();
+    for (const [name, costPrice] of items) {
+      const bag = loadRows.all(name).filter((row) => row.owner_doctor_id === newDoctorId);
+      assert.equal(bag.length, 1, name);
+      assert.equal(bag[0].quantity, 0, name);
+      assert.equal(bag[0].minimum_quantity, 2, name);
+      assert.equal(bag[0].cost_price, costPrice, name);
+      assert.equal(bag[0].selling_price, 1200, name);
+    }
+  } finally {
+    db.prepare("DELETE FROM inventory WHERE owner_doctor_id = ?").run(newDoctorId);
+    db.prepare("DELETE FROM doctors WHERE id = ?").run(newDoctorId);
+  }
 });
 
 test("Sachet Monuril moves from pediatric drugs to oral drugs in the warehouse and doctor bags", () => {
