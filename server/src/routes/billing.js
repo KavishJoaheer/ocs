@@ -608,6 +608,7 @@ function parseVisitReference(value) {
 
 function quickVisitBaseRows(doctorId, {
   consultationId = null,
+  patientId = null,
   patientIdentifier = "",
   todayOnly = false,
   search = "",
@@ -637,7 +638,9 @@ function quickVisitBaseRows(doctorId, {
       JOIN appointments a ON a.id = c.appointment_id
       JOIN patients p ON p.id = c.patient_id
       JOIN doctors d ON d.id = c.doctor_id
-      WHERE c.doctor_id = @doctorId
+      WHERE (c.doctor_id = @doctorId OR (@doctorId IS NULL AND @patientId IS NOT NULL))
+        AND (@patientId IS NULL OR p.id = @patientId)
+        AND (@doctorId IS NOT NULL OR (d.is_active = 1 AND d.deleted_at IS NULL))
         AND c.voided_at IS NULL
         AND p.deleted_at IS NULL
         AND (
@@ -728,6 +731,7 @@ function quickVisitBaseRows(doctorId, {
     .all({
       doctorId,
       consultationId,
+      patientId,
       patientIdentifier,
       todayOnly: todayOnly ? 1 : 0,
       search: normalizedSearch,
@@ -2320,7 +2324,11 @@ router.get("/quick/picker-options", (req, res) => {
   const doctors = ["operator", "admin"].includes(req.auth?.role) ? quickBillingDoctorOptions() : [];
   const localDate = db.prepare("SELECT date('now', '+4 hours') AS value").get().value;
   const cutoverDate = getBillingCutoverDate(db);
-  if (!doctorId) return res.json({
+  const requestedPatientId = Number(req.query.patientId || 0);
+  const patientId = Number.isInteger(requestedPatientId) && requestedPatientId > 0 ? requestedPatientId : null;
+  // A profile handoff may span several consultation doctors, but must stay
+  // restricted to that patient. Doctor accounts retain their own visit scope.
+  if (!doctorId && !patientId) return res.json({
     doctors,
     patients: [],
     cutover_date: cutoverDate || null,
@@ -2340,6 +2348,7 @@ router.get("/quick/picker-options", (req, res) => {
   const patientMap = new Map();
   const visitRows = quickVisitBaseRows(doctorId, {
     consultationId,
+    patientId,
     search,
     billableRole: req.auth?.role,
     limit: limit + 1,
@@ -2948,7 +2957,8 @@ router.get("/quick/submissions", (req, res) => {
         a.appointment_time,
         b.status AS bill_status,
         b.source_reference,
-        b.finalized_at
+        b.finalized_at,
+        b.total_amount AS invoice_total
       FROM billing_lite_submissions s
       JOIN consultations c ON c.id = s.consultation_id
       JOIN appointments a ON a.id = c.appointment_id
@@ -2971,6 +2981,7 @@ router.get("/quick/submissions", (req, res) => {
       visit_time: row.appointment_time,
       item_count: Number(row.item_count || 0),
       amount_added: roundCurrency(row.amount_added),
+      invoice_total: roundCurrency(row.invoice_total),
       items: normalizeBillingItems(row.items_json).map((item) => ({
         description: item.description,
         quantity: item.quantity,

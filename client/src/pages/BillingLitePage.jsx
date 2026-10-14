@@ -37,8 +37,11 @@ import {
   queueQuickBillingMutation,
 } from "../lib/inventoryOfflineSync.js";
 import { folderTone } from "../lib/folderTones.js";
+import BillingDesktopSummary, { BillingProgress, BillingVisitIdentity } from "../components/billing-workspace/BillingDesktopSummary.jsx";
+import "../components/billing-workspace/billingWorkspace.css";
 
 const STATUS_META = {
+  awaiting_operator: { label: "Awaiting issue", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   ready: { label: "Ready to bill", className: "bg-amber-50 text-amber-800 ring-amber-200" },
   needs_doctor: { label: "Needs clarification", className: "bg-rose-50 text-rose-800 ring-rose-200" },
   ready_for_payment: { label: "Ready for payment", className: "bg-violet-50 text-violet-800 ring-violet-200" },
@@ -134,6 +137,7 @@ function VisitCard({ visit, onSelect }) {
       >
         <span className="flex w-16 shrink-0 flex-col items-center justify-center bg-[#e8f8f6] text-[#15666a]">
           <span className="text-xs font-extrabold uppercase tracking-wide">{formatVisitDate(visit.visit_date).split(",")[0]}</span>
+          <span className="hidden text-[10px] font-semibold md:block">{dayjs(visit.visit_date).isValid() ? dayjs(visit.visit_date).format("D MMM") : ""}</span>
           <span className="mt-0.5 text-lg font-black tabular-nums">{formatVisitTime(visit.visit_time)}</span>
         </span>
         <span className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
@@ -209,6 +213,12 @@ function BillingLitePage() {
   const requestedConsultationId = Number(searchParams.get("consultationId") || 0);
   const requestedSubmissionConsultationId = Number(searchParams.get("submissionConsultationId") || 0);
   const requestedDoctorId = operatorIssueOnly ? String(searchParams.get("doctorId") || "") : "";
+  const requestedPatientId = Number(searchParams.get("patientId") || 0);
+  const [profilePatientId, setProfilePatientId] = useState(
+    Number.isInteger(requestedPatientId) && requestedPatientId > 0 ? requestedPatientId : null,
+  );
+  const profilePatientIdRef = useRef(profilePatientId);
+  const profileOpenedRef = useRef(false);
   const [view, setView] = useState(searchParams.get("view") === "status" ? "status" : "today");
   const [submissions, setSubmissions] = useState([]);
   const [submissionTotal, setSubmissionTotal] = useState(0);
@@ -312,6 +322,7 @@ function BillingLitePage() {
     try {
       const pickerQuery = new URLSearchParams({ limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
       const activeBillingDoctorId = billingDoctorIdRef.current;
+      if (profilePatientIdRef.current) pickerQuery.set("patientId", String(profilePatientIdRef.current));
       if (operatorIssueOnly && activeBillingDoctorId) pickerQuery.set("doctorId", activeBillingDoctorId);
       if (Number.isInteger(requestedConsultationId) && requestedConsultationId > 0) {
         pickerQuery.set("consultationId", String(requestedConsultationId));
@@ -328,7 +339,21 @@ function BillingLitePage() {
       setSubmissions(Array.isArray(submissionPayload?.submissions) ? submissionPayload.submissions : []);
       setSubmissionTotal(Number(submissionPayload?.total || 0));
       setSubmissionPage(0);
-      setPatientOptions(Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : []);
+      const patients = Array.isArray(pickerPayload?.patients) ? pickerPayload.patients : [];
+      setPatientOptions(patients);
+      if (profilePatientIdRef.current && !profileOpenedRef.current) {
+        profileOpenedRef.current = true;
+        const patient = patients.find((option) => Number(option.patient_id) === profilePatientIdRef.current);
+        if (patient) {
+          setSelectedPatientId(String(patient.patient_id));
+          setSelectedPickerVisitId(patient.visits.length === 1 && !pickerPayload.has_more ? String(patient.visits[0].consultation_id) : "");
+          const doctorIds = [...new Set(patient.visits.map((visit) => String(visit.doctor_id)))];
+          if (operatorIssueOnly && doctorIds.length === 1 && !pickerPayload.has_more) {
+            billingDoctorIdRef.current = doctorIds[0];
+            setBillingDoctorId(doctorIds[0]);
+          }
+        }
+      }
       setPatientOptionsHasMore(Boolean(pickerPayload?.has_more));
       setPatientOptionsOffset(Number(pickerPayload?.next_offset || 0));
       setDoctorOptions(Array.isArray(pickerPayload?.doctors) ? pickerPayload.doctors : []);
@@ -382,6 +407,7 @@ function BillingLitePage() {
   }, [submissionPage, submissionRefreshToken, submissionSearch, submissionStatus, view]);
 
   async function selectBillingDoctor(doctorId) {
+    billingDoctorIdRef.current = doctorId;
     setBillingDoctorId(doctorId);
     setPatientOptions([]);
     setPatientOptionsHasMore(false);
@@ -404,12 +430,15 @@ function BillingLitePage() {
     setPaymentReference("");
     setPaymentDate(dayjs().format("YYYY-MM-DD"));
     setRecordPaymentNow(!operatorIssueOnly);
-    if (!doctorId) return;
+    if (!doctorId && !profilePatientId) return;
     setIsCatalogLoading(true);
     try {
-      const query = new URLSearchParams({ doctorId, limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
+      const query = new URLSearchParams({ limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
+      if (doctorId) query.set("doctorId", doctorId);
+      if (profilePatientId) query.set("patientId", String(profilePatientId));
       const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
       setPatientOptions(Array.isArray(payload?.patients) ? payload.patients : []);
+      if (profilePatientId && payload?.patients?.[0]) choosePatient(payload.patients[0]);
       setPatientOptionsHasMore(Boolean(payload?.has_more));
       setPatientOptionsOffset(Number(payload?.next_offset || 0));
       if (Array.isArray(payload?.doctors)) setDoctorOptions(payload.doctors);
@@ -495,6 +524,7 @@ function BillingLitePage() {
     const timeout = window.setTimeout(async () => {
       try {
         const query = new URLSearchParams({ search: needle, limit: String(PATIENT_PICKER_PAGE_SIZE), offset: "0" });
+        if (profilePatientId) query.set("patientId", String(profilePatientId));
         if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
         const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
         if (!ignore) {
@@ -512,7 +542,7 @@ function BillingLitePage() {
       ignore = true;
       window.clearTimeout(timeout);
     };
-  }, [billingDoctorId, operatorIssueOnly, patientPickerOpen, patientSearch]);
+  }, [billingDoctorId, operatorIssueOnly, patientPickerOpen, patientSearch, profilePatientId]);
 
   const categories = useMemo(() => {
     const names = new Set(catalog.map((item) => item.subcategory || item.category).filter(Boolean));
@@ -667,6 +697,10 @@ function BillingLitePage() {
       return;
     }
     setSelectedVisit(visit);
+    if (operatorIssueOnly) {
+      billingDoctorIdRef.current = String(visit.doctor_id);
+      setBillingDoctorId(String(visit.doctor_id));
+    }
     const nextType = visit.consultation_fee?.type || "Day Consultation";
     const nextAmount = Number(visit.consultation_fee?.amount ?? consultationFees[nextType] ?? 0);
     setConsultationType(nextType);
@@ -703,7 +737,7 @@ function BillingLitePage() {
   }
 
   async function loadMorePatients() {
-    if (patientPageLoading || (operatorIssueOnly && !billingDoctorId)) return;
+    if (patientPageLoading || (operatorIssueOnly && !billingDoctorId && !profilePatientId)) return;
     const search = patientSearch.trim();
     const searching = search.length >= 2 && patientSearchResults !== null;
     setPatientPageLoading(true);
@@ -713,6 +747,7 @@ function BillingLitePage() {
         offset: String(searching ? patientSearchOffset : patientOptionsOffset),
       });
       if (searching) query.set("search", search);
+      if (profilePatientId) query.set("patientId", String(profilePatientId));
       if (operatorIssueOnly) query.set("doctorId", billingDoctorId);
       const payload = await api.get(`/billing/quick/picker-options?${query.toString()}`);
       const incoming = Array.isArray(payload?.patients) ? payload.patients : [];
@@ -737,7 +772,7 @@ function BillingLitePage() {
     setIsCatalogLoading(true);
     try {
       const doctorQuery = operatorIssueOnly
-        ? `?doctorId=${encodeURIComponent(billingDoctorId)}`
+        ? `?doctorId=${encodeURIComponent(visit.doctor_id || billingDoctorId)}`
         : "";
       const payload = await api.get(`/billing/quick/catalog/${visit.consultation_id}${doctorQuery}`);
       const items = Array.isArray(payload?.items) ? payload.items : [];
@@ -858,6 +893,20 @@ function BillingLitePage() {
       toast.error(error.message || "No matching visit was found.");
     } finally {
       setIsLookingUp(false);
+    }
+  }
+
+  async function reviewClarification(submission) {
+    setIsCatalogLoading(true);
+    try {
+      const payload = await api.get(`/billing/quick/lookup?reference=${encodeURIComponent(submission.visit_number)}`);
+      const visit = payload?.visits?.find((option) => option.consultation_id === submission.consultation_id);
+      if (!visit?.can_submit) throw new Error("This consultation is no longer available for correction.");
+      await chooseVisit(visit);
+    } catch (error) {
+      toast.error(error.message || "The consultation could not be opened.");
+    } finally {
+      setIsCatalogLoading(false);
     }
   }
 
@@ -1135,8 +1184,8 @@ function BillingLitePage() {
   ).length;
 
   return (
-    <div className="relative min-h-[70svh] rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
-      <div className="absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
+    <div className="billing-workspace relative min-h-[70svh] rounded-[2rem] bg-[#eff8f7] text-[#173f47] shadow-[0_18px_60px_rgba(23,77,80,0.1)]">
+      <div className="billing-backdrop absolute inset-x-0 top-0 z-0 h-72 rounded-t-[2rem] bg-[radial-gradient(circle_at_15%_15%,rgba(102,226,206,0.24),transparent_34%),linear-gradient(145deg,#123f46_0%,#17666a_52%,#2b8d8b_100%)]" />
 
       <main className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-10 pt-5">
         {isLoading ? (
@@ -1146,8 +1195,8 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "today" ? (
-          <section>
-            <div className="mb-6 flex items-end justify-between gap-4 text-white">
+          <section className="billing-entry">
+            <div className="billing-page-heading mb-6 flex items-end justify-between gap-4 text-white">
               <div>
                 <p className="text-sm font-bold text-white/70">{dayjs().format("dddd, D MMMM")}</p>
                 <h1 className="mt-1 text-3xl font-black tracking-tight">Billing</h1>
@@ -1192,8 +1241,22 @@ function BillingLitePage() {
               </div>
             ) : null}
 
+            <BillingProgress step={0} />
+            {profilePatientId ? (
+              <div className="billing-profile-context mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold">{selectedPatient ? `Billing for ${selectedPatient.patient_name}` : "No eligible consultations for this patient and doctor."}</p>
+                <button type="button" className="rounded-full border border-amber-300 bg-white px-4 py-2 text-sm font-bold" onClick={() => {
+                  profilePatientIdRef.current = null;
+                  setProfilePatientId(null);
+                  setSelectedPatientId("");
+                  setSelectedPickerVisitId("");
+                  void loadDashboard();
+                }}>All patients</button>
+              </div>
+            ) : null}
+            <div className="billing-entry-grid">
             {operatorIssueOnly ? (
-              <div className="relative z-20 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
+              <div className="billing-doctor-filter relative z-20 mb-4 rounded-[1.5rem] border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
                 <label className="block">
                   <span className="text-sm font-black text-slate-700">Consultation doctor</span>
                   <select
@@ -1201,7 +1264,7 @@ function BillingLitePage() {
                     onChange={(event) => void selectBillingDoctor(event.target.value)}
                     className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-bold text-[#173f47] outline-none transition focus:border-[#2aa7a0] focus:bg-white"
                   >
-                    <option value="">Select doctor first</option>
+                    <option value="">{profilePatientId ? "All consultation doctors for this patient" : "Select doctor first"}</option>
                     {doctorOptions.map((doctor) => (
                       <option key={doctor.id} value={doctor.id}>{doctor.full_name}</option>
                     ))}
@@ -1213,7 +1276,7 @@ function BillingLitePage() {
               </div>
             ) : null}
 
-            <div className="relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white/95 p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
+            <div className="billing-visit-queue relative z-10 mb-4 rounded-[1.5rem] border border-white/70 bg-white/95 p-4 shadow-[0_12px_35px_rgba(23,77,80,0.11)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-black text-[#173f47]">Visits needing billing</h2>
@@ -1226,7 +1289,7 @@ function BillingLitePage() {
                   ) : null}
                 </div>
               </div>
-              {operatorIssueOnly && !billingDoctorId ? (
+              {operatorIssueOnly && !billingDoctorId && !profilePatientId ? (
                 <div className="mt-3 rounded-2xl bg-[#eff8f7] px-4 py-4 text-center text-sm font-bold text-[#17666a]">
                   Select the consultation doctor to see visits needing billing.
                 </div>
@@ -1263,7 +1326,7 @@ function BillingLitePage() {
 
             <div
               id="billing-visit-picker"
-              className={`relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:block md:p-6 ${priorityVisits.length && !visitPickerExpanded ? "hidden" : "block"}`}
+              className={`billing-selection relative z-20 mb-6 rounded-[2rem] border border-white/70 bg-white p-5 shadow-[0_16px_45px_rgba(23,77,80,0.15)] md:block md:p-6 ${priorityVisits.length && !visitPickerExpanded ? "hidden" : "block"}`}
             >
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -1285,7 +1348,7 @@ function BillingLitePage() {
                   <label className="text-sm font-black text-slate-700">1. Patient</label>
                   <button
                     type="button"
-                    disabled={operatorIssueOnly && !billingDoctorId}
+                    disabled={operatorIssueOnly && !billingDoctorId && !profilePatientId}
                     onClick={() => setPatientPickerOpen((open) => !open)}
                     className="mt-2 flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-left outline-none transition focus:border-[#2aa7a0] disabled:cursor-not-allowed disabled:opacity-60"
                     aria-haspopup="listbox"
@@ -1421,7 +1484,7 @@ function BillingLitePage() {
                     <option value="">{selectedPatient ? "Select consultation" : "Select patient first"}</option>
                     {filteredPickerVisits.map((visit) => (
                       <option key={visit.consultation_id} value={visit.consultation_id}>
-                        {formatVisitDate(visit.visit_date)} · {formatVisitTime(visit.visit_time)} · {visit.visit_number}
+                        {formatVisitDate(visit.visit_date)} · {formatVisitTime(visit.visit_time)} · {visit.visit_number}{profilePatientId ? ` · ${visit.doctor_name}` : ""}
                       </option>
                     ))}
                   </select>
@@ -1438,7 +1501,7 @@ function BillingLitePage() {
                 </button>
               </div>
             </div>
-
+            </div>
           </section>
         ) : null}
 
@@ -1480,7 +1543,7 @@ function BillingLitePage() {
                   Find visit
                 </button>
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-500">Only visits completed by your doctor account can be opened.</p>
+              <p className="mt-3 text-sm font-semibold text-slate-500">{operatorIssueOnly ? "Only visits belonging to the selected consultation doctor can be opened." : "Only visits completed by your doctor account can be opened."}</p>
             </form>
 
             {lookupResults.length > 1 ? (
@@ -1494,8 +1557,8 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "catalog" && selectedVisit ? (
-          <section className="billing-mobile-action-space">
-            <div className="mb-5 flex items-center justify-between gap-3 text-white">
+          <section className="billing-catalog billing-mobile-action-space">
+            <div className="billing-page-heading mb-5 flex items-center justify-between gap-3 text-white">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white/70">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
                 <h1 className="truncate text-2xl font-black">{consumablesReviewed ? "Consumables used" : "Charges"}</h1>
@@ -1510,7 +1573,7 @@ function BillingLitePage() {
               <button
                 type="button"
                 onClick={reviewBilling}
-                className="relative hidden min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95 md:flex"
+                className="billing-catalog-header-action relative hidden min-h-12 items-center gap-2 rounded-2xl bg-[#f2b52b] px-4 font-black text-[#173f47] transition active:scale-95 md:flex"
               >
                 <ShoppingBasket className="size-5" />
                 {consumablesReviewed ? "Review invoice" : "Choose consumables"}
@@ -1520,6 +1583,10 @@ function BillingLitePage() {
               </button>
             </div>
 
+            <BillingVisitIdentity visit={selectedVisit} />
+            <BillingProgress step={consumablesReviewed ? 2 : 1} />
+            <div className="billing-catalog-layout">
+            <div className="billing-catalog-main">
             {selectedVisit.submission_status === "needs_doctor" ? (
               <div className="mb-4 rounded-[1.5rem] border border-amber-200 bg-amber-50 p-4 text-amber-950">
                 <p className="font-black">Replace the earlier submission</p>
@@ -1564,7 +1631,7 @@ function BillingLitePage() {
               <p className="mt-2 text-xs font-semibold text-slate-500">Confirm or adjust prices once on the final review screen. Maximum consultation price: Rs 4,500.</p>
             </div>
 
-            <div className="sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
+            <div className="billing-catalog-filters sticky top-20 z-20 rounded-[1.5rem] border border-white/70 bg-white/95 p-3 shadow-[0_12px_35px_rgba(23,77,80,0.12)] backdrop-blur-xl md:p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
@@ -1601,7 +1668,7 @@ function BillingLitePage() {
             </div>
 
             {visibleCatalog.length ? (
-              <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
+              <div className="billing-catalog-list mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-3">
                 {visibleCatalog.map((item) => {
                   const quantity = Number(cart[item.id] || 0);
                   const available = Number(item.available_to_use || 0);
@@ -1620,7 +1687,7 @@ function BillingLitePage() {
                   return (
                     <article
                       key={item.id}
-                      className={`relative flex min-h-52 flex-col rounded-2xl border bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,77,80,0.1)] ${
+                      className={`billing-catalog-item relative flex min-h-52 flex-col rounded-2xl border bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,77,80,0.1)] ${
                         quantity > 0 ? "border-[#2aa7a0] bg-teal-50/40 ring-2 ring-[#2aa7a0]/20" : "border-slate-200"
                       } ${isUnavailable ? "bg-slate-50" : "shadow-[0_6px_20px_rgba(23,77,80,0.06)]"}`}
                     >
@@ -1634,7 +1701,7 @@ function BillingLitePage() {
                       >
                         <Star className={`size-5 ${isFavorite ? "fill-current" : ""}`} />
                       </button>
-                      <div className="pr-10">
+                      <div className="billing-item-name pr-10">
                         <p className="line-clamp-2 text-base font-semibold leading-6 text-[#173f47]" title={item.item_name}>{item.item_name}</p>
                         <p
                           className="mt-2 inline-flex max-w-full rounded-full border px-2.5 py-1 text-xs font-semibold"
@@ -1643,7 +1710,7 @@ function BillingLitePage() {
                           <span className="truncate">{item.subcategory || item.category}</span>
                         </p>
                       </div>
-                      <div className="mt-auto pt-5">
+                      <div className="billing-item-details mt-auto pt-5">
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
                         <div className="min-w-0">
                           <p className={`text-lg font-semibold ${isUnavailable ? "text-slate-400" : "text-[#17666a]"}`}>
@@ -1725,6 +1792,13 @@ function BillingLitePage() {
               </div>
             )}
 
+            </div>
+            <BillingDesktopSummary
+              visit={selectedVisit} consultationType={consultationType} consultationTotal={consultationTotal}
+              selectedItems={selectedItems} reviewedSupplyPrice={reviewedSupplyPrice} grandTotal={grandTotal}
+              onAction={reviewBilling} actionLabel={consumablesReviewed ? "Review invoice" : "Choose consumables"}
+            />
+            </div>
             <button
               type="button"
               onClick={reviewBilling}
@@ -1742,8 +1816,12 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "review" && selectedVisit ? (
-          <section className="billing-mobile-action-space mx-auto max-w-2xl">
-            <div className="mb-5 flex items-center justify-between gap-3">
+          <section className="billing-review billing-mobile-action-space mx-auto max-w-2xl">
+            <div className="billing-page-heading mb-5 flex items-center justify-between gap-3">
+              <div className="hidden min-w-0 flex-1 md:block">
+                <p className="text-sm font-semibold">Billing</p>
+                <h1 className="text-2xl font-black">Review invoice</h1>
+              </div>
               <button
                 type="button"
                 onClick={() => setView("catalog")}
@@ -1759,11 +1837,15 @@ function BillingLitePage() {
                 Cancel
               </button>
             </div>
-            <div className="overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
-              <div className="flex items-end justify-between gap-4 bg-[#173f47] px-5 py-5 text-white sm:px-6">
+            <BillingVisitIdentity visit={selectedVisit} />
+            <BillingProgress step={3} />
+            <div className="billing-review-layout">
+            <div className="billing-review-form overflow-hidden rounded-[2.25rem] border border-white/70 bg-white shadow-[0_24px_65px_rgba(23,77,80,0.18)]">
+              <div className="billing-review-heading flex items-end justify-between gap-4 bg-[#173f47] px-5 py-5 text-white sm:px-6">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-white/65">{selectedVisit.patient_identifier} · {selectedVisit.visit_number}</p>
-                  <h1 className="mt-1 text-2xl font-black sm:text-3xl">Review invoice</h1>
+                  <h1 className="mt-1 text-2xl font-black sm:text-3xl md:hidden">Review invoice</h1>
+                  <h2 className="hidden text-lg font-bold md:block">Charges and payment</h2>
                 </div>
                 <button
                   type="button"
@@ -1793,6 +1875,7 @@ function BillingLitePage() {
                           max={MAX_CONSULTATION_FEE}
                           step="0.01"
                           value={consultationPrice}
+                          aria-label="Consultation price"
                           onChange={(event) => setConsultationPrice(event.target.value)}
                           className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-right font-black text-[#173f47] outline-none focus:border-[#2aa7a0]"
                         />
@@ -1997,7 +2080,7 @@ function BillingLitePage() {
                   ) : null}
                 </div>
 
-                <div className="mt-2 flex items-center justify-between rounded-2xl bg-[#fff5cf] px-5 py-5">
+                <div className="billing-mobile-total mt-2 flex items-center justify-between rounded-2xl bg-[#fff5cf] px-5 py-5">
                   <div>
                     <p className="text-sm font-bold text-slate-600">Invoice total</p>
                     <p className="text-sm font-semibold text-slate-500">
@@ -2007,16 +2090,17 @@ function BillingLitePage() {
                   <p className="text-2xl font-black text-[#173f47]">{formatRupees(grandTotal)}</p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={submitBilling}
-                  disabled={isSubmitting}
-                  className="mt-6 hidden min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#17666a] px-6 text-lg font-black text-white shadow-[0_15px_35px_rgba(23,102,106,0.25)] transition active:scale-[0.98] disabled:opacity-60 md:flex"
-                >
-                  {isSubmitting ? <LoaderCircle className="size-6 animate-spin" /> : <Send className="size-6" />}
-                  {isSubmitting ? "Issuing…" : operatorIssueOnly ? (recordPaymentNow ? "Issue and record payment" : "Issue unpaid invoice") : "Issue invoice"}
-                </button>
+
               </div>
+            </div>
+            <BillingDesktopSummary
+              visit={selectedVisit} consultationType={consultationType} consultationTotal={consultationTotal}
+              selectedItems={selectedItems} reviewedSupplyPrice={reviewedSupplyPrice} grandTotal={grandTotal}
+              onAction={submitBilling} disabled={isSubmitting}
+              actionLabel={isSubmitting ? "Issuing…" : operatorIssueOnly ? (recordPaymentNow ? "Issue and record payment" : "Issue unpaid invoice") : "Issue invoice"}
+              paymentNotice={recordPaymentNow ? "Payment is recorded when the invoice is issued" : "This invoice will appear in Payment follow-up"}
+              finalReview
+            />
             </div>
             <button
               type="button"
@@ -2071,7 +2155,8 @@ function BillingLitePage() {
         ) : null}
 
         {!isLoading && view === "status" ? (
-          <section>
+          <section className="billing-updates">
+            <div className="billing-updates-heading billing-page-heading">
             <button
               type="button"
               onClick={() => resetFlow("today")}
@@ -2091,6 +2176,7 @@ function BillingLitePage() {
               >
                 <RefreshCw className="size-5" />
               </button>
+            </div>
             </div>
             <div className="mb-5 grid gap-3 rounded-2xl border border-white/70 bg-white p-4 shadow-[0_12px_35px_rgba(23,77,80,0.12)] sm:grid-cols-[1fr_14rem]">
               <label>
@@ -2141,9 +2227,9 @@ function BillingLitePage() {
             ) : null}
             {displayedSubmissions.length ? (
               <>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="billing-update-list grid gap-4 md:grid-cols-2">
                 {displayedSubmissions.map((submission) => (
-                  <article key={submission.id} className="rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(23,77,80,0.08)]">
+                  <article key={submission.id} className="billing-update-row rounded-[1.75rem] border border-slate-200/80 bg-white p-5 shadow-[0_14px_40px_rgba(23,77,80,0.08)]">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-lg font-black">{submission.patient_name || submission.patient_masked_name}</p>
@@ -2160,6 +2246,10 @@ function BillingLitePage() {
                         <p className="text-sm font-bold text-slate-400">Supplies added</p>
                         <p className="mt-1 font-black">{submission.item_count || "None"}</p>
                       </div>
+                    </div>
+                    <div className="billing-update-amount hidden md:block">
+                      <p className="text-xs font-semibold text-slate-500">Invoice total</p>
+                      <p className="mt-1 font-bold">{submission.offline ? "Pending sync" : formatRupees(submission.invoice_total)}</p>
                     </div>
                     {submission.workflow_note ? (
                       <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-800">
@@ -2220,11 +2310,16 @@ function BillingLitePage() {
                         {issuingSubmissionId === submission.id ? "Issuing…" : "Issue unpaid invoice"}
                       </button>
                     ) : null}
+                    {user?.role === "doctor" && !submission.offline && submission.status === "needs_doctor" ? (
+                      <button type="button" disabled={isCatalogLoading} onClick={() => void reviewClarification(submission)} className="mt-3 min-h-11 rounded-full bg-[#17666a] px-4 text-sm font-bold text-white disabled:opacity-50">
+                        {isCatalogLoading ? "Opening…" : "Review clarification"}
+                      </button>
+                    ) : null}
                   </article>
                 ))}
               </div>
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white/90 px-4 py-3 text-sm font-bold text-slate-600">
-                <span>{submissionTotal} server submission{submissionTotal === 1 ? "" : "s"}</span>
+                <span>{submissionTotal} billing submission{submissionTotal === 1 ? "" : "s"}</span>
                 <div className="flex gap-2">
                   <button type="button" disabled={submissionPage === 0} onClick={() => setSubmissionPage((current) => Math.max(0, current - 1))} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 disabled:opacity-40">Previous</button>
                   <button type="button" disabled={(submissionPage + 1) * SUBMISSION_PAGE_SIZE >= submissionTotal} onClick={() => setSubmissionPage((current) => current + 1)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 disabled:opacity-40">Next</button>

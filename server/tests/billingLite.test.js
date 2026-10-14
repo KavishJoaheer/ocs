@@ -204,6 +204,52 @@ test("Billing Lite offers a patient-first picker scoped to the signed-in doctor'
   assert.ok(operatorDoctor.data.patients.some((row) => row.patient_identifier === patientIdentifier));
 });
 
+test("profile billing retains one patient across consultation doctors without widening doctor access", async () => {
+  const patientId = Number(db.prepare(`
+    INSERT INTO patients (full_name, patient_identifier, assigned_doctor_id, age, contact_number, patient_contact_number, address)
+    VALUES ('Profile Billing Patient', ?, ?, 42, '57000000', '57000000', 'Test address')
+  `).run(`OCS-PROFILE-${randomUUID()}`, otherDoctorId).lastInsertRowid);
+  try {
+    const ownVisit = createBillableVisit(patientId, "Profile billing own consultation");
+    const today = getTodayLocal();
+    const appointmentId = Number(db.prepare(`
+      INSERT INTO appointments (patient_id, doctor_id, appointment_date, appointment_time, status)
+      VALUES (?, ?, ?, '16:00', 'completed')
+    `).run(patientId, otherDoctorId, today).lastInsertRowid);
+    const otherVisit = Number(db.prepare(`
+      INSERT INTO consultations (appointment_id, patient_id, doctor_id, consultation_date, doctor_notes)
+      VALUES (?, ?, ?, ?, 'Profile billing other consultation')
+    `).run(appointmentId, patientId, otherDoctorId, today).lastInsertRowid);
+    ensureBillingForConsultation(otherVisit, patientId, null, "Day Consultation");
+
+    const profile = await api("GET", `/billing/quick/picker-options?patientId=${patientId}`, operatorToken);
+    assert.equal(profile.status, 200, JSON.stringify(profile.data));
+    assert.equal(profile.data.patients.length, 1);
+    assert.equal(profile.data.patients[0].patient_id, patientId);
+    assert.deepEqual(new Set(profile.data.patients[0].visits.map((visit) => visit.doctor_id)), new Set([doctorId, otherDoctorId]));
+
+    const own = await api("GET", `/billing/quick/picker-options?patientId=${patientId}&doctorId=${otherDoctorId}`, doctorToken);
+    assert.equal(own.status, 200);
+    assert.deepEqual(own.data.patients[0].visits.map((visit) => visit.consultation_id), [ownVisit]);
+    const filtered = await api("GET", `/billing/quick/picker-options?patientId=${patientId}&doctorId=${otherDoctorId}`, operatorToken);
+    assert.deepEqual(filtered.data.patients[0].visits.map((visit) => visit.consultation_id), [otherVisit]);
+    const denied = await api("GET", `/billing/quick/picker-options?patientId=${patientId}`, accountantToken);
+    assert.equal(denied.status, 403);
+    const invalid = await api("GET", "/billing/quick/picker-options?patientId=invalid", operatorToken);
+    assert.deepEqual(invalid.data.patients, []);
+    const missing = await api("GET", "/billing/quick/picker-options?patientId=999999999", operatorToken);
+    assert.deepEqual(missing.data.patients, []);
+    db.prepare("UPDATE billing SET status = 'paid' WHERE consultation_id = ?").run(otherVisit);
+    const unpaid = await api("GET", `/billing/quick/picker-options?patientId=${patientId}`, operatorToken);
+    assert.deepEqual(unpaid.data.patients[0].visits.map((visit) => visit.consultation_id), [ownVisit]);
+    db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(patientId);
+    const deleted = await api("GET", `/billing/quick/picker-options?patientId=${patientId}`, operatorToken);
+    assert.deepEqual(deleted.data.patients, []);
+  } finally {
+    db.prepare("UPDATE patients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?").run(patientId);
+  }
+});
+
 test("finance roles cannot issue quick billing or deduct doctor stock", async () => {
   const beforeQuantity = db.prepare("SELECT quantity FROM inventory WHERE id = ?").get(itemId).quantity;
   const denied = await api("POST", `/billing/quick/visits/${consultationId}/capture`, accountantToken, {
@@ -346,6 +392,9 @@ test("operator quick billing requires the matching consultation doctor and payme
   assert.equal(issued.data.submission.workflow_status, "completed");
   assert.equal(issued.data.submission.payment.state, "paid");
   assert.equal(issued.data.submission.amount_added, 45);
+  const updates = await api("GET", `/billing/quick/submissions?search=${`V-${String(operatorConsultationId).padStart(6, "0")}`}`, operatorToken);
+  assert.equal(updates.status, 200, JSON.stringify(updates.data));
+  assert.equal(updates.data.submissions.find((submission) => submission.consultation_id === operatorConsultationId)?.invoice_total, 2045);
   const operatorBill = JSON.parse(db.prepare("SELECT items FROM billing WHERE consultation_id = ?").get(operatorConsultationId).items);
   const adjustedOperatorLine = operatorBill.find((item) => Number(item.inventory_item_id) === operatorItemId);
   assert.equal(adjustedOperatorLine.unit_price, 45);

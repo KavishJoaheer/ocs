@@ -1,0 +1,216 @@
+.billing-progress,
+.billing-visit-identity,
+.billing-desktop-summary { display: none; }
+
+/* Desktop billing shares the mint surfaces and pill controls of care workspaces.
+   Mobile retains its existing picker and protected bottom action bar. */
+@media (min-width: 768px) {
+  .billing-workspace {
+    background: transparent;
+    box-shadow: none;
+  }
+  .billing-workspace > main { max-width: none; padding: 0 0 32px; }
+  .billing-backdrop {
+    height: 102px;
+    border-radius: 28px;
+    background: linear-gradient(110deg, #e0f5f0, #eefaf7 65%, #fff8e9);
+    border: 1px solid #d7eae5;
+  }
+  .billing-workspace section > .text-white,
+  .billing-workspace section > .text-white h1,
+  .billing-workspace .billing-page-heading { color: #173f47; }
+  .billing-workspace section > .text-white p,
+  .billing-page-heading p { color: #587a7e; }
+  .billing-page-heading {
+    min-height: 102px;
+    align-items: center;
+    padding: 18px 24px;
+    margin-bottom: 18px;
+  }
+  .billing-page-heading h1 { font-size: 27px; }
+  .billing-catalog > .billing-page-heading p { display: none; }
+  .billing-workspace button { cursor: pointer; }
+  .billing-workspace button:disabled { cursor: not-allowed; }
+  .billing-workspace button:focus-visible,
+  .billing-workspace input:focus-visible,
+  .billing-workspace select:focus-visible {
+    outline: 2px solid #147e81;
+    outline-offset: 3px;
+  }
+  .billing-workspace button,
+  .billing-workspace select,
+  .billing-workspace input:not([type="number"]),
+  .billing-workspace .billing-item-details > div > div:last-child {
+    border-radius: 999px;
+  }
+  .billing-page-heading button,
+  .billing-workspace section > button {
+    color: #315e64;
+    background: #ffffffd9;
+    border: 1px solid #d3e5e3;
+    min-height: 42px;
+    box-shadow: none;
+  }
+  .billing-catalog-header-action { display: none; }
+  .billing-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 18px;
+  }
+  .billing-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px 7px 8px;
+    border: 1px solid #dce9e7;
+    border-radius: 999px;
+    background: #ffffffc9;
+    color: #56777b;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .billing-step > span {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #edf5f3;
+    font-size: 11px;
+  }
+  .billing-step.is-current { background: #17666a; border-color: #17666a; color: white; }
+  .billing-step.is-current > span { background: #ffffff24; }
+  .billing-step.is-complete { color: #17666a; background: #e4f4ef; }
+  .billing-visit-identity {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-bottom: 14px;
+    color: #58767b;
+    font-size: 13px;
+  }
+  .billing-visit-identity strong { font-size: 17px; color: #173f47; }
+  .billing-care-pill { border: 1px solid #e8bb56; background: #fff1cf; color: #795519; padding: 5px 12px; border-radius: 999px; font-weight: 700; }
+  .billing-entry-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 18px;
+  }
+  .billing-doctor-filter { grid-column: 1 / -1; }
+  .billing-doctor-filter > label { display: grid; grid-template-columns: auto minmax(220px, 380px) 1fr; align-items: center; gap: 16px; }
+  .billing-doctor-filter select,
+  .billing-doctor-filter label > span:last-child { margin: 0; }
+  .billing-doctor-filter,
+  .billing-visit-queue,
+  .billing-selection { border: 1px solid #dce9e6; border-radius: 26px; padding: 20px; margin: 0; box-shadow: 0 5px 20px #234f5010; }
+  .billing-visit-queue > .grid { grid-template-columns: minmax(0, 1fr); }
+  .billing-visit-queue article { border-radius: 20px; box-shadow: none; }
+  .billing-visit-queue article button { min-height: 84px; border-radius: 0; }
+  .billing-selection > div:first-child { flex-direction: column; align-items: start; }
+  .billing-selection h2 { font-size: 18px; }
+  .billing-selection > .grid { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+  .billing-selection > .grid > button { min-height: 46px; box-shadow: none; background: #17666a; color: white; }
+  .billing-selection select,
+  .billing-selection [aria-haspopup="listbox"] { min-height: 52px; font-size: 14px; border-width: 1px; }
+  .billing-catalog-layout,
+  .billing-review-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+  .billing-catalog-main { min-width: 0; }
+  .billing-catalog-main > div { border-color: #dce9e6; box-shadow: 0 4px 18px #234f500a; }
+  .billing-catalog-filters { top: 16px; border-radius: 24px; }
+  .billing-catalog-filters .ocs-h-scroll { flex-wrap: wrap; overflow: visible; }
+  .billing-catalog-filters button { font-size: 12px; min-height: 34px; padding: 6px 12px; }
+  .billing-catalog-list { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .billing-catalog-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(200px, .85fr);
+    align-items: center;
+    gap: 14px;
+    min-height: 106px;
+    padding: 14px 18px;
+    border-radius: 22px;
+    box-shadow: none;
+  }
+  .billing-catalog-item:hover { transform: none; }
+  .billing-catalog-item > button { position: static; grid-column: 1; grid-row: 1; width: 30px; height: 30px; align-self: start; margin-top: 1px; }
+  .billing-item-name { padding: 0 0 0 40px; grid-column: 1; grid-row: 1; }
+  .billing-item-name > p:first-child { display: block; overflow: visible; font-size: 14px; line-height: 1.45; }
+  .billing-item-name > p:last-child { margin-top: 6px; padding: 3px 9px; font-size: 11px; }
+  .billing-item-details { padding-top: 0; margin-top: 0; min-width: 0; }
+  .billing-item-details > div { align-items: center; gap: 10px; }
+  .billing-item-details p:first-child { font-size: 14px; }
+  .billing-item-details p:last-child { font-size: 11px; line-height: 1.4; }
+  .billing-item-details button { min-height: 36px; font-size: 13px; padding: 0 10px; }
+  .billing-item-details button.size-10 { width: 30px; height: 30px; min-height: 30px; padding: 0; }
+  .billing-item-details span.min-w-9 { min-width: 26px; font-size: 14px; }
+  .billing-desktop-summary {
+    display: block;
+    position: sticky;
+    top: 16px;
+    min-width: 0;
+    border: 1px solid #d5e7e1;
+    border-radius: 26px;
+    background: #fff;
+    padding: 20px;
+    box-shadow: 0 6px 24px #234f5010;
+  }
+  .billing-summary-title { display: flex; align-items: center; gap: 9px; color: #17666a; }
+  .billing-summary-title h2 { font-size: 16px; font-weight: 750; }
+  .billing-summary-patient { margin-top: 18px; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+  .billing-summary-reference { font-size: 12px; color: #668087; margin-top: 4px; }
+  .billing-summary-lines { margin-top: 18px; max-height: 240px; overflow-y: auto; font-size: 12px; }
+  .billing-summary-lines > div { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 10px 0; border-top: 1px solid #eaf0ed; }
+  .billing-summary-lines strong { white-space: nowrap; }
+  .billing-summary-lines small { color: #678386; white-space: nowrap; }
+  .billing-summary-consumables { background: #edf8f5; border-radius: 14px; padding: 10px 12px; font-size: 12px; color: #34676a; margin: 12px 0; }
+  .billing-summary-total { margin-top: 16px; border: 1px solid #f0d793; border-radius: 18px; background: #fff4d5; padding: 15px; }
+  .billing-summary-total span { display: block; font-size: 12px; color: #7c642e; }
+  .billing-summary-total strong { display: block; font-size: 26px; margin-top: 3px; }
+  .billing-summary-notice { font-size: 12px; line-height: 1.5; color: #607a7d; margin-top: 12px; }
+  .billing-summary-action { display: flex; justify-content: center; align-items: center; gap: 8px; width: 100%; background: #17666a; color: white; padding: 13px 16px; margin-top: 18px; font-size: 13px; font-weight: 700; }
+  .billing-summary-action:hover { background: #12575b; }
+  .billing-summary-action:disabled { opacity: .55; }
+  .billing-summary-footnote { margin-top: 10px; font-size: 11px; text-align: center; color: #6b8586; }
+  .billing-review { max-width: none; }
+  .billing-review-form { border: 1px solid #dce9e6; border-radius: 26px; box-shadow: 0 5px 20px #234f5010; }
+  .billing-review-heading { background: #edf8f5; color: #173f47; padding: 18px 22px; }
+  .billing-review-heading h1 { font-size: 23px; }
+  .billing-review-heading p { display: none; }
+  .billing-review-heading button { background: white; color: #17666a; border: 1px solid #d2e6df; }
+  .billing-review-form > div:last-child { padding: 22px; }
+  .billing-mobile-total { display: none; }
+  .billing-updates-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; }
+  .billing-updates-heading > button { grid-column: 2; grid-row: 1; margin: 0; }
+  .billing-updates-heading > div { display: contents; color: inherit; }
+  .billing-updates-heading > div > div { grid-column: 1; grid-row: 1; }
+  .billing-updates-heading > div > button { grid-column: 3; grid-row: 1; }
+  .billing-updates h1 { font-size: 27px; }
+  .billing-updates > div { box-shadow: none; }
+  .billing-update-list { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .billing-update-row { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(170px, .8fr) 100px; gap: 12px 24px; border-radius: 22px; padding: 18px 20px; box-shadow: none; }
+  .billing-update-row > div:first-child { align-items: center; }
+  .billing-update-row > div:first-child p:first-child { font-size: 15px; }
+  .billing-update-row > div:first-child p:last-child { font-size: 12px; }
+  .billing-update-row > div:nth-child(2) { margin-top: 0; padding: 0; background: none; align-items: center; }
+  .billing-update-row > div:nth-child(2) p { font-size: 12px; }
+  .billing-update-row > p,
+  .billing-update-row > button,
+  .billing-update-row > div:nth-child(n+3) { margin-top: 0; }
+  .billing-update-row > p { font-size: 12px; grid-column: 1 / -1; }
+  .billing-update-row .billing-update-amount { text-align: right; }
+  .billing-update-row > button { grid-column: 2 / -1; min-height: 40px; width: auto; justify-self: end; font-size: 12px; }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .billing-doctor-filter > label { grid-template-columns: auto minmax(0, 1fr); }
+  .billing-doctor-filter label > span:last-child { grid-column: 1 / -1; }
+  .billing-catalog-layout,
+  .billing-review-layout { grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; }
+  .billing-catalog-item { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .billing-item-details { padding-left: 40px; }
+  .billing-entry-grid { grid-template-columns: minmax(0, 1fr); }
+  .billing-update-row { grid-template-columns: minmax(0, 1fr); }
+  .billing-update-row > button { grid-column: 1; }
+}
