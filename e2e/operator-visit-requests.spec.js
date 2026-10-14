@@ -51,7 +51,7 @@ for (const width of [360, 430, 820, 1440]) {
     const { headers, doctor, visits } = await prepare(page, request);
     await page.setViewportSize({ width, height: 932 });
     await page.goto(`${STAFF}/visit-requests`);
-    await expect(page.getByRole("heading", { name: "Visit requests", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home Visit Request", exact: true })).toBeVisible();
     const queue = list(page);
     await expect(queue.getByRole("listitem")).toHaveCount(4);
     await expect(queue.getByRole("listitem").first()).toContainText("Sarah Noel");

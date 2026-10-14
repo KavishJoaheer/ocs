@@ -45,7 +45,7 @@ function BottomNav() {
               {({ isActive }) => (
                 <>
                   <Icon className="size-[22px] transition" strokeWidth={isActive ? 2.25 : 1.8} />
-                  <span className="max-w-full truncate">{item.label}</span>
+                  <span className={cx("max-w-full", user.role === "doctor" && item.to === "/visit-requests" ? "text-center leading-tight" : "truncate")}>{item.label}</span>
                 </>
               )}
             </NavLink>

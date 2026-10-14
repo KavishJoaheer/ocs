@@ -113,7 +113,7 @@ test(`operator dashboard accepts and follows teleconsultations at ${width}px`, a
     visitIds.push(ongoingVisitId);
   } finally { db.close(); }
   await page.goto(`${STAFF}/`);
-  const visits = page.getByRole("region", { name: width < 768 ? "Home visit requests" : "Home visits", exact: true });
+  const visits = page.getByRole("region", { name: "Home Visit Request", exact: true });
   await expect(visits.getByText(first.name, { exact: true })).toBeVisible();
   await expect(visits.getByText(second.name, { exact: true })).toBeVisible();
   const workspace = page.getByRole("region", { name: "Live requests", exact: true });
@@ -184,7 +184,7 @@ test(`teleconsultation queue supports error recovery at ${width}px`, async ({ pa
     await queue.getByRole("link", { name: "Manage teleconsultations", exact: true }).click();
     await expect(page).toHaveURL(/\/teleconsultations$/);
     await page.goto(`${STAFF}/`);
-    await page.getByRole("link", { name: "View visits", exact: true }).click();
+    await page.getByRole("link", { name: "View requests", exact: true }).click();
     await expect(page).toHaveURL(/\/visit-requests$/);
   }
 });

@@ -23,8 +23,8 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
       <div className={`grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] ${!mobile ? "lg:grid-cols-2 lg:divide-x lg:divide-y-0" : ""}`}>
         <section aria-label="Assigned home visits" className={`min-w-0 pb-4 ${!mobile ? "lg:pb-0 lg:pr-5" : ""}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 ${mobile ? "" : "min-h-11"}`}>
-            <h3 className={titleClass}>Home visits{!loading && !errors.visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
-            {!mobile ? <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View visits<ChevronRight className="size-3.5" aria-hidden="true" /></Link> : null}
+            <h3 className={titleClass}>Home Visit Request{!loading && !errors.visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
+            {!mobile ? <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View requests<ChevronRight className="size-3.5" aria-hidden="true" /></Link> : null}
           </div>
           {errors.visits ? errorMessage(errors.visits) : null}
           {loading ? <p role="status" className="py-3 text-sm text-[#485e65]">Loading home visits…</p> : !errors.visits && !visits.length ? <p className="py-3 text-sm text-[#485e65]">No assigned home visits</p> : null}

@@ -73,12 +73,12 @@ for (const width of [360, 430, 1440]) {
     await page.screenshot({ path: `/tmp/ocs-doctor-dashboard-${width}.png`, fullPage: true });
     if (width < 768) {
       const bottom = page.locator("#ocs-bottom-nav");
-      await expect(bottom.getByRole("link")).toHaveText(["Home", "Patients", "Home visits", "Inventory"]);
+      await expect(bottom.getByRole("link")).toHaveText(["Home", "Patients", "Home Visit Request", "Inventory"]);
       await doctor.getByRole("combobox", { name: "Availability", exact: true }).selectOption("offline");
       await expect(doctor.getByRole("combobox", { name: "Availability", exact: true })).toHaveValue("offline");
       await doctor.getByRole("combobox", { name: "Availability", exact: true }).selectOption("available");
       await expect(doctor.getByRole("combobox", { name: "Availability", exact: true })).toHaveValue("available");
-      await bottom.getByRole("link", { name: "Home visits", exact: true }).click();
+      await bottom.getByRole("link", { name: "Home Visit Request", exact: true }).click();
       await expect(page).toHaveURL(/\/visit-requests$/);
       await bottom.getByRole("link", { name: "Home", exact: true }).click();
     } else {

@@ -22,12 +22,12 @@ export default function OperatorDesktopLiveRequests({ visits, readOnly = false }
       </div>
 
       <div className="grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-        <section aria-label="Home visits" className="min-w-0 pb-4 lg:pb-0 lg:pr-5">
+        <section aria-label="Home Visit Request" className="min-w-0 pb-4 lg:pb-0 lg:pr-5">
           <div className="flex min-h-11 flex-wrap items-center justify-between gap-2">
-            <h3 className="inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Home visits{visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{visitCount}</span> : null}</h3>
-            <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">View visits <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
+            <h3 className="inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-sm font-semibold text-[#173f4a]">Home Visit Request{visits ? <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs tabular-nums">{visitCount}</span> : null}</h3>
+            <Link to="/visit-requests" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]">View requests <ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
-          {!visits ? <p role="alert" className="py-3 text-sm text-red-800">Could not load home visits. Open View visits to retry.</p> : !homeVisits.length ? <p className="py-3 text-sm text-[#485e65]">No active home visits</p> : (
+          {!visits ? <p role="alert" className="py-3 text-sm text-red-800">Could not load home visits. Open View requests to retry.</p> : !homeVisits.length ? <p className="py-3 text-sm text-[#485e65]">No active home visits</p> : (
             <ul className="max-h-80 divide-y divide-[#d6e9e6] overflow-y-auto overscroll-contain">
               {homeVisits.map(request => {
                 const unassigned = !request.assigned_doctor_id;

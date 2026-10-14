@@ -17,9 +17,9 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
         <OperatorLiveHeading count={!loading && !error && visits ? total : null} />
       </div>
 
-      <section aria-label="Home visit requests" className="px-4 pb-4 pt-3">
-        <h3 className="inline-flex rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Home visit</h3>
-        {!visits ? <p role="alert" className="mt-3 text-xs text-red-800">Could not load home visits. Open View visits to retry.</p> : homeVisits.length ? (
+      <section aria-label="Home Visit Request" className="px-4 pb-4 pt-3">
+        <h3 className="inline-flex rounded-full bg-[#d9f0ed] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#376168]">Home Visit Request</h3>
+        {!visits ? <p role="alert" className="mt-3 text-xs text-red-800">Could not load home visit requests. Open View requests to retry.</p> : homeVisits.length ? (
           <ul className="mt-1 divide-y divide-[#d0e7e4]">
             {homeVisits.map(request => (
               <li key={request.id}>
@@ -41,7 +41,7 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
               </li>
             ))}
           </ul>
-        ) : <p className="mt-3 text-[13px] text-[#485e65]">{visitCount ? "Open View visits for active requests." : "No active home visits"}</p>}
+        ) : <p className="mt-3 text-[13px] text-[#485e65]">{visitCount ? "Open View requests for active requests." : "No active home visits"}</p>}
       </section>
 
       <section aria-labelledby="operator-mobile-calls-heading" className="mx-4 border-t border-[#cce4e0] py-4">
@@ -67,7 +67,7 @@ export default function OperatorMobileLiveRequests({ visits, readOnly = false })
       </section>
 
       <div className="mx-4 grid grid-cols-2 border-t border-[#cce4e0] py-2">
-        <Link to="/visit-requests" className="inline-flex min-h-11 items-center justify-center gap-2 border-r border-[#cce4e0] text-xs font-semibold text-[#137b80]">View visits <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
+        <Link to="/visit-requests" className="inline-flex min-h-11 items-center justify-center gap-2 border-r border-[#cce4e0] text-xs font-semibold text-[#137b80]">View requests <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
         <Link to="/teleconsultations" aria-label="Manage teleconsultations" className="inline-flex min-h-11 items-center justify-center gap-2 text-xs font-semibold text-[#137b80]">Manage calls <ArrowRight className="size-3.5" aria-hidden="true" /></Link>
       </div>
     </section>

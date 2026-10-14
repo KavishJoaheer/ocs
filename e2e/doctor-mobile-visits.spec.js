@@ -54,10 +54,10 @@ for (const width of [360, 430]) {
     const { visitId, session } = await prepareVisits(page, request);
     await page.setViewportSize({ width, height: 932 });
     await page.goto(`${STAFF_BASE}/visit-requests`);
-    await expect(page.getByRole("heading", { name: "Home visits", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home Visit Request", exact: true })).toBeVisible();
     const bottom = page.locator("#ocs-bottom-nav");
     await expect(bottom.getByRole("link")).toHaveCount(4);
-    await expect(bottom.getByRole("link", { name: "Home visits", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(bottom.getByRole("link", { name: "Home Visit Request", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("button", { name: "Live board" })).toHaveCount(0);
     await expect(page.getByLabel("From", { exact: true })).toBeHidden();
     const card = page.getByRole("region", { name: "Active visits", exact: true }).getByRole("article")
@@ -125,7 +125,7 @@ test("doctor desktop visits default to a readable list with an optional stage bo
   await prepareVisits(page, request);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${STAFF_BASE}/visit-requests`);
-  await expect(page.getByRole("heading", { name: "Home visits", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Home Visit Request", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
   const card = page.getByRole("article").filter({ hasText: "Fever and persistent cough since yesterday" });
   await expect(card.getByText("Amelia Marie Ramgoolam", { exact: true })).toBeVisible();

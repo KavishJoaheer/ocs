@@ -73,7 +73,7 @@ for (const width of [360, 430]) {
     await expect(page.getByRole("heading", { name: "Teleconsultations", exact: true })).toBeVisible();
     await bottom.getByRole("link", { name: "Home", exact: true }).click();
     await expect(live).toBeVisible();
-    await live.getByRole("link", { name: "View visits", exact: true }).click();
+    await live.getByRole("link", { name: "View requests", exact: true }).click();
     await expect(page).toHaveURL(/\/visit-requests$/);
     await bottom.getByRole("link", { name: "Home", exact: true }).click();
     await expect(live.getByText("Request received", { exact: true })).toBeVisible();
@@ -136,5 +136,5 @@ test("operator Home has a live-request empty state", async ({ page, request }) =
   await page.goto(`${STAFF}/`);
   const live = page.getByRole("region", { name: "Live requests", exact: true });
   await expect(live.getByText("No active home visits", { exact: true })).toBeVisible();
-  await expect(live.getByRole("link", { name: "View visits", exact: true })).toBeVisible();
+  await expect(live.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
 });

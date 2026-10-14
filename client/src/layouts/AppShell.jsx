@@ -228,7 +228,9 @@ function AppShell() {
       }
     : isDashboard
       ? dashboardMetaByRole[userRole] || pageMeta["/"]
-      : pageMeta[location.pathname] || pageMeta["/"];
+      : location.pathname === "/visit-requests" && ["doctor", "operator"].includes(userRole)
+        ? { ...pageMeta["/visit-requests"], label: "Home Visit Request" }
+        : pageMeta[location.pathname] || pageMeta["/"];
 
   useEffect(() => {
     if (!user?.role || user.is_read_only) {

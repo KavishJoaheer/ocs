@@ -245,7 +245,7 @@ function Sidebar() {
 
   const visibleNavItems = useMemo(
     () => {
-      const items = navItems.filter((item) => item.roles.includes(user.role)).map(item => user.role === "doctor" && item.to === "/visit-requests" ? { ...item, label: "Home visits" } : item);
+      const items = navItems.filter((item) => item.roles.includes(user.role)).map(item => ["doctor", "operator"].includes(user.role) && item.to === "/visit-requests" ? { ...item, label: "Home Visit Request" } : item);
       if (!["operator", "doctor"].includes(user.role)) return items;
       const primaryPaths = ["/", "/patients", "/visit-requests", "/teleconsultations"];
       return [

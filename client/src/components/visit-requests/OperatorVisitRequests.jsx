@@ -164,14 +164,14 @@ export default function OperatorVisitRequests({ requests, doctors, doctorError, 
 
   return <section aria-label="Operator visit requests" className="operator-visit-requests mx-auto w-full min-w-0 max-w-7xl space-y-5 pb-4 text-[#173f4a]">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Visit requests</h1>{!isMobile ? liveBadge : null}</div>
+      <div className="flex flex-wrap items-center gap-3"><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Home Visit Request</h1>{!isMobile ? liveBadge : null}</div>
       <div className="flex items-center gap-2">
         {!readOnly ? <PushNotificationBanner role="operator" compact /> : null}<AppUpdateBanner compact />
         <button type="button" aria-label="Refresh visit requests" className={`${pill} px-3`} disabled={loading || refreshing} onClick={onRefresh}><RefreshCw className={cx("size-4", refreshing && "animate-spin")} aria-hidden="true" /></button>
       </div>
     </header>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <nav aria-label="Visit request views" className={isMobile ? "flex flex-wrap gap-2" : "flex flex-wrap gap-1 rounded-[26px] border border-[#d8ebe7] bg-white/70 p-1"}>
+      <nav aria-label="Home visit request views" className={isMobile ? "flex flex-wrap gap-2" : "flex flex-wrap gap-1 rounded-[26px] border border-[#d8ebe7] bg-white/70 p-1"}>
         {[{ value: "attention", label: "Needs attention", count: needsAttention.length }, { value: "progress", label: "In progress", count: inProgress.length }, { value: "history", label: "History" }].map(tab => <button key={tab.value} type="button" aria-pressed={!changes && view === tab.value} onClick={() => changeView(tab.value)} className={cx("inline-flex min-h-11 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition sm:px-4 sm:text-sm", !changes && view === tab.value ? "bg-[#137b80] text-white shadow-sm" : "text-[#376168] hover:bg-[#edf9f7]", isMobile && (view === tab.value && !changes ? "border border-[#137b80]" : "border border-[#d8ebe7] bg-white/70"))}>{tab.label}{tab.count != null ? <span className={cx("rounded-full px-2 py-0.5 text-xs tabular-nums", !changes && view === tab.value ? "bg-white/20" : "bg-[#eaf3f1]")}>{loading ? "…" : tab.count}</span> : null}</button>)}
       </nav>
       <div className="flex flex-wrap items-center gap-2">
