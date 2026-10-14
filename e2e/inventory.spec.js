@@ -208,7 +208,7 @@ test.describe("Inventory workflow", () => {
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/inventory?tab=queues&queue=awaiting_collection`);
-    await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Supply requests" })).toBeVisible({
       timeout: 25_000,
     });
     await expect(page.getByRole("button", { name: "Mark collected" }).first()).toBeVisible({ timeout: 25_000 });
@@ -250,8 +250,8 @@ test.describe("Inventory workflow", () => {
     expect(receiptBody.items[0].batch_id || receiptBody.items[0].batch_number).toBeTruthy();
 
     await injectStaffSession(page, operator.token);
-    await page.goto(`${STAFF_BASE}/inventory`);
-    await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+    await page.goto(`${STAFF_BASE}/supply-requests`);
+    await expect(page.getByRole("heading", { level: 1, name: "Supply requests" })).toBeVisible();
     await page.getByRole("button", { name: /^History/ }).click();
     await expect(page.locator("span").filter({ hasText: /^Supply Dispatched$/ })).toBeVisible();
   });
@@ -1129,7 +1129,7 @@ test.describe("Inventory workflow", () => {
 
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory`);
+    await page.goto(`${STAFF_BASE}/supply-requests`);
     await page.getByRole("button", { name: /^History/ }).click();
     await expect(page.getByLabel("Request #")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel("Operator")).toBeVisible();
@@ -1619,8 +1619,7 @@ test.describe("Inventory workflow", () => {
     db.close();
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Tasks" }).click();
+    await page.goto(`${STAFF_BASE}/supply-requests`);
     await page.getByRole("button", { name: /Needs review/i }).click();
     const detailsButton = page.getByRole("button", { name: `Open request ${requestId} details` });
     await expect(detailsButton).toBeVisible({ timeout: 20_000 });
@@ -1733,8 +1732,7 @@ test.describe("Inventory workflow", () => {
     });
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Tasks" }).click();
+    await page.goto(`${STAFF_BASE}/supply-requests`);
     await page.getByRole("button", { name: /Awaiting collection/i }).click();
     await expect(page.getByRole("button", { name: `Open request ${requestId} details` })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: "Claim" })).toHaveCount(0);
@@ -1774,17 +1772,14 @@ test.describe("Inventory workflow", () => {
     expect(body.counts.unique_requests).toBe(new Set(requestIds).size);
     await injectStaffSession(page, operator.token);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${STAFF_BASE}/inventory`);
-    await page.getByRole("tab", { name: "Tasks" }).click();
+    await page.goto(`${STAFF_BASE}/supply-requests`);
     const priority = [
       "Changes",
       "Needs review",
       "Shortages",
       "New requests",
-      "Pick today",
+      "Preparation",
       "Awaiting collection",
-      "Bulk deliveries",
-      "Stock count variances",
     ];
     const counts = body.counts;
     const keys = [
@@ -1794,8 +1789,6 @@ test.describe("Inventory workflow", () => {
       "new_requests",
       "pick_today",
       "awaiting_collection",
-      "incoming_shipments",
-      "count_variances",
     ];
     const firstNonEmpty = keys.findIndex((key) => Number(counts[key] || 0) > 0);
     if (firstNonEmpty < 0) {

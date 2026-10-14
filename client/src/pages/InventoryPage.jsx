@@ -23,7 +23,7 @@ import {
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import toast from "react-hot-toast";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -57,6 +57,7 @@ import {
 } from "../lib/inventoryAccess.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { SUPPLY_QUEUE_IDS } from "../lib/operatorQueues.js";
 import { api, ApiError } from "../lib/api.js";
 import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
 import {
@@ -2892,6 +2893,18 @@ function inventoryContentKey(query) {
 
 export default function InventoryPage() {
   const { user } = useAuth();
+  const compact = useIsMobile(1024);
+  const [params] = useSearchParams();
+  if (user?.role === "operator" && !compact && (!params.get("tab") || params.get("tab") === "queues") && SUPPLY_QUEUE_IDS.includes(params.get("queue"))) {
+    const next = new URLSearchParams(params);
+    next.delete("tab");
+    return <Navigate to={`/supply-requests?${next}`} replace />;
+  }
+  return <InventoryContent />;
+}
+
+function InventoryContent() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
@@ -4820,6 +4833,8 @@ export default function InventoryPage() {
       {canManageOcs && logisticsTab === "queues" ? (
         <Suspense fallback={<LoadingState label="Loading inventory tasks" />}>
           <OperatorWorkQueuesPanel
+            key={isOperator && desktopWorkspace ? "warehouse" : "all"}
+            workspace={isOperator && desktopWorkspace ? "inventory" : "all"}
             onOpenShipments={() => setLogisticsTab("shipments")}
             onOpenCount={(sessionId) => {
               setLogisticsTab("count");

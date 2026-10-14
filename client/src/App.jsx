@@ -112,6 +112,9 @@ function App() {
               element={<DoctorAssignedPatientsRedirect />}
             />
             <Route path="/doctor/long-term-review" element={<LongTermReviewQueuePage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute roles={["doctor", "operator"]} />}>
             <Route path="/supply-requests" element={<SupplyRequestsPage />} />
           </Route>
 

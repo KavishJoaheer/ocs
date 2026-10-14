@@ -8,7 +8,7 @@ import OperatorFulfilmentPanel from "./OperatorFulfilmentPanel.jsx";
 import OperatorAmendmentReviewPanel from "./OperatorAmendmentReviewPanel.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { api } from "../lib/api.js";
-import { SUPPLY_REQUESTS_EVENT } from "../lib/inventorySync.js";
+import { SUPPLY_REQUESTS_EVENT, notifySupplyRequestsUpdated } from "../lib/inventorySync.js";
 import {
   formatSupplyRequestCollectionDay,
   getSupplyRequestActions,
@@ -19,6 +19,7 @@ import Modal from "./Modal.jsx";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
 import { useIsMobile } from "../hooks/useIsMobile.js";
+import { SUPPLY_QUEUE_IDS, WAREHOUSE_QUEUE_IDS } from "../lib/operatorQueues.js";
 import "./supply-requests/supplyWorkspace.css";
 
 const QUEUE_DEFS = [
@@ -46,12 +47,15 @@ const QUEUE_PRIORITY = [
   "needs_expiry",
 ];
 
-function validQueueId(value) {
-  return QUEUE_DEFS.some((queue) => queue.id === value) ? value : null;
+function queuesForWorkspace(workspace) {
+  if (workspace === "inventory") return QUEUE_DEFS.filter(queue => WAREHOUSE_QUEUE_IDS.includes(queue.id));
+  if (workspace === "supply") return QUEUE_DEFS.filter(queue => SUPPLY_QUEUE_IDS.includes(queue.id)).map(queue => queue.id === "pick_today" ? { ...queue, label: "Preparation" } : queue);
+  return QUEUE_DEFS;
 }
 
-function highestPriorityNonEmpty(counts = {}) {
-  return QUEUE_PRIORITY.find((id) => Number(counts[id] || 0) > 0) || "new_requests";
+function highestPriorityNonEmpty(counts, workspace) {
+  const allowed = workspace === "inventory" ? WAREHOUSE_QUEUE_IDS : workspace === "supply" ? SUPPLY_QUEUE_IDS : QUEUE_PRIORITY;
+  return QUEUE_PRIORITY.find(id => allowed.includes(id) && Number(counts[id] || 0) > 0) || (workspace === "inventory" ? "incoming_shipments" : "new_requests");
 }
 
 function waitingLabel(value) {
@@ -62,6 +66,7 @@ function waitingLabel(value) {
 }
 
 export default function OperatorWorkQueuesPanel({
+  workspace = "all",
   onOpenShipments,
   onOpenCount,
   onOpenNeedsExpiry,
@@ -72,9 +77,11 @@ export default function OperatorWorkQueuesPanel({
   const desktopWorkspace = !useIsMobile(1024);
   const [queueSearch, setQueueSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
-  const urlQueue = validQueueId(searchParams.get("queue"));
+  const queueDefs = queuesForWorkspace(workspace);
+  const requestedQueue = searchParams.get("queue");
+  const urlQueue = queueDefs.some(queue => queue.id === requestedQueue) ? requestedQueue : null;
   const [queues, setQueues] = useState(null);
-  const [active, setActive] = useState(urlQueue || "new_requests");
+  const [active, setActive] = useState(urlQueue || (workspace === "inventory" ? "incoming_shipments" : "new_requests"));
   const queueTouchedRef = useRef(Boolean(urlQueue));
   const [loading, setLoading] = useState(false);
   const [fulfilmentRequest, setFulfilmentRequest] = useState(null);
@@ -95,7 +102,7 @@ export default function OperatorWorkQueuesPanel({
       const payload = await api.get("/restock-requests/queues");
       setQueues(payload);
       if (!queueTouchedRef.current) {
-        setActive(highestPriorityNonEmpty(payload?.counts || {}));
+        setActive(highestPriorityNonEmpty({ ...payload?.counts, needs_expiry: needsExpiryCount }, workspace));
         queueTouchedRef.current = true;
       }
       if (active === "history") {
@@ -130,7 +137,14 @@ export default function OperatorWorkQueuesPanel({
     } finally {
       setLoading(false);
     }
-  }, [active, historyOffset, historyFilters]);
+  }, [active, historyOffset, historyFilters, workspace, needsExpiryCount]);
+
+  useEffect(() => {
+    if (urlQueue) {
+      queueTouchedRef.current = true;
+      setActive(urlQueue);
+    }
+  }, [urlQueue]);
 
   useEffect(() => {
     void load();
@@ -169,31 +183,35 @@ export default function OperatorWorkQueuesPanel({
     ...(queues?.counts || {}),
     needs_expiry: Number(needsExpiryCount || 0),
   };
-  const waitingTotal = Number(counts.unique_requests ?? 0);
-  const queueEntries = Number(counts.queue_entries ?? 0);
+  const waitingTotal = workspace === "inventory"
+    ? WAREHOUSE_QUEUE_IDS.reduce((total, id) => total + Number(counts[id] || 0), 0)
+    : Number(counts.unique_requests ?? 0);
+  const queueEntries = workspace === "supply"
+    ? SUPPLY_QUEUE_IDS.filter(id => id !== "history").reduce((total, id) => total + Number(counts[id] || 0), 0)
+    : Number(counts.queue_entries ?? 0);
   const rows = useMemo(() => {
     if (active === "history") return history.requests;
     if (active === "needs_expiry") return Array.isArray(needsExpiryItems) ? needsExpiryItems : [];
     if (!queues) return [];
     return queues[active] || [];
   }, [queues, active, history.requests, needsExpiryItems]);
-  const searchQueue = desktopWorkspace && QUEUE_DEFS.find(queue => queue.id === active)?.kind == null;
+  const searchQueue = desktopWorkspace && queueDefs.find(queue => queue.id === active)?.kind == null;
   const visibleRows = searchQueue && queueSearch.trim() ? rows.filter(row => {
     const needle = queueSearch.trim().replace(/^#/, "").toLowerCase();
     if (/^#?\d+$/.test(queueSearch.trim())) return Number(row.id) === Number(needle);
     return String(row.id).includes(needle) || String(row.doctor_name || "").toLowerCase().includes(needle) || String(row.item_search_text || "").toLowerCase().includes(needle);
   }) : rows;
-  const coreQueues = ["new_requests", "pick_today", "awaiting_collection", "history"];
+  const coreQueues = workspace === "inventory" ? WAREHOUSE_QUEUE_IDS : ["new_requests", "pick_today", "awaiting_collection", "history"];
   const displayedQueues = desktopWorkspace
-    ? [...coreQueues.map(id => QUEUE_DEFS.find(queue => queue.id === id)), ...QUEUE_DEFS.filter(queue => !coreQueues.includes(queue.id) && (Number(counts[queue.key] || 0) > 0 || active === queue.id))]
-    : QUEUE_DEFS.filter(queue => queue.kind === "history" || Number(counts[queue.key] || 0) > 0 || active === queue.id);
+    ? [...coreQueues.map(id => queueDefs.find(queue => queue.id === id)), ...queueDefs.filter(queue => !coreQueues.includes(queue.id) && (Number(counts[queue.key] || 0) > 0 || active === queue.id))]
+    : queueDefs.filter(queue => queue.kind === "history" || Number(counts[queue.key] || 0) > 0 || active === queue.id);
 
   async function markCollected(request) {
     try {
       await api.patch(`/restock-requests/${request.id}`, { status: "completed" });
       toast.success("Supply collected. The request is now in History.");
       setCollectTarget(null);
-      await load();
+      notifySupplyRequestsUpdated();
     } catch (error) {
       toast.error(error.message || "Could not mark this supply collected.");
     }
@@ -203,7 +221,7 @@ export default function OperatorWorkQueuesPanel({
     try {
       await api.patch(`/restock-requests/${request.id}`, { status: "accepted" });
       toast.success("Request accepted and reserved.");
-      await load();
+      notifySupplyRequestsUpdated();
     } catch (error) {
       toast.error(error.message || "Could not accept this request.");
     }
@@ -213,7 +231,7 @@ export default function OperatorWorkQueuesPanel({
     try {
       await api.post(`/restock-requests/${request.id}/assign`, { user_id: user.id });
       toast.success("You claimed this request.");
-      await load();
+      notifySupplyRequestsUpdated();
     } catch (error) {
       toast.error(error.message || "Could not assign this request.");
     }
@@ -249,12 +267,12 @@ export default function OperatorWorkQueuesPanel({
   return (
     <>
       <SectionCard
-        title="Work queues"
-        subtitle="Accept, pick and dispatch supply requests without browsing the full catalogue."
+        title={workspace === "inventory" ? "Warehouse tasks" : "Work queues"}
+        subtitle={workspace === "inventory" ? "Receive deliveries, review stock counts and add missing expiry dates." : workspace === "all" ? "Accept, pick and dispatch supply requests without browsing the full catalogue." : undefined}
         actions={
           <span className="inline-flex min-h-11 items-center gap-1.5 rounded-2xl bg-[#2d8f98]/10 px-3 py-1.5 text-xs font-bold text-[#2d8f98]">
             {waitingTotal} waiting
-            {queueEntries > waitingTotal ? (
+            {workspace === "all" && queueEntries > waitingTotal ? (
               <span className="font-semibold text-[#2d8f98]/80">· {queueEntries} queue entries</span>
             ) : null}
           </span>
@@ -293,7 +311,7 @@ export default function OperatorWorkQueuesPanel({
 
         {searchQueue ? <div className="mb-4 flex items-center justify-between gap-3"><label className="flex-1"><span className="sr-only">Search current supply queue</span><input aria-label="Search current supply queue" placeholder="Find doctor, request number or item" value={queueSearch} onChange={event => setQueueSearch(event.target.value)} className="min-h-11 w-full max-w-md rounded-full border border-[#d5e4e1] bg-white px-4 text-sm text-[#173f4a]" /></label><span className="text-xs text-[#5b7379]">{visibleRows.length} of {rows.length} requests</span>{queueSearch ? <button type="button" onClick={() => setQueueSearch("")} className="min-h-11 rounded-full border border-[#d5e4e1] px-4 text-sm text-[#376168]">Clear search</button> : null}</div> : null}
 
-        {Number(counts.reconciliation_required || counts.fulfilment_linkage_required || 0) > 0 ? (
+        {workspace !== "inventory" && Number(counts.reconciliation_required || counts.fulfilment_linkage_required || 0) > 0 ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {counts.reconciliation_required || counts.fulfilment_linkage_required} request
             {(counts.reconciliation_required || counts.fulfilment_linkage_required) === 1 ? "" : "s"} need
@@ -590,13 +608,13 @@ export default function OperatorWorkQueuesPanel({
         open={Boolean(fulfilmentRequest)}
         request={fulfilmentRequest}
         onClose={() => setFulfilmentRequest(null)}
-        onUpdated={load}
+        onUpdated={notifySupplyRequestsUpdated}
       />
       <OperatorAmendmentReviewPanel
         open={Boolean(amendmentRequest)}
         request={amendmentRequest}
         onClose={() => setAmendmentRequest(null)}
-        onReviewed={load}
+        onReviewed={notifySupplyRequestsUpdated}
       />
       <Modal
         open={Boolean(collectTarget)}

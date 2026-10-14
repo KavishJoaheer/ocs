@@ -60,12 +60,12 @@ for (const width of [1280,1440,1920]) {
   });
 
   test(`operator queue shows identifiable previews and stable tabs at ${width}px`, async ({ page, request }) => {
-    const fixture=await prepare(request); await open(page,fixture.operator,"/inventory?tab=queues&queue=new_requests",width);
+    const fixture=await prepare(request); await open(page,fixture.operator,"/supply-requests?queue=new_requests",width);
     const row=page.getByRole("article",{name:`Supply request ${fixture.pending.id}`,exact:true}); await expect(row).toBeVisible();
     await expect(row).toContainText(`Request #${fixture.pending.id}`); await expect(row).toContainText(fixture.items[0].item_name); await expect(row).toContainText("+1 more");
     await expect(row.getByText("Accept and reserve",{exact:true})).toHaveCount(0);
     await page.evaluate(()=>document.fonts.ready);
-    const tabs=[/^New requests/,/^Pick today/,/^Awaiting collection/,/^History/]; const before=[]; for(const name of tabs) before.push((await page.getByRole("button",{name}).boundingBox()).x);
+    const tabs=[/^New requests/,/^Preparation/,/^Awaiting collection/,/^History/]; const before=[]; for(const name of tabs) before.push((await page.getByRole("button",{name}).boundingBox()).x);
     await page.screenshot({path:`/tmp/ocs-supply-updated-operator-${width}.png`});
     const search=page.getByLabel("Search current supply queue"); await search.fill(fixture.items[3].item_name); await expect(row).toBeVisible(); await expect(page.getByRole("article")).toHaveCount(1);
     await search.fill(`#${fixture.pending.id}`); await expect(row).toBeVisible();
@@ -95,7 +95,7 @@ test("doctor desktop creation supports keyboard selection and history stays comp
 });
 
 test("operator preparation retries a failed load and preserves picking and collection",async({page,request})=>{
-  const fixture=await prepare(request); await open(page,fixture.operator,"/inventory?tab=queues&queue=pick_today");
+  const fixture=await prepare(request); await open(page,fixture.operator,"/supply-requests?queue=pick_today");
   let attempted=0; await page.route(`**/api/restock-requests/${fixture.accepted.id}/fulfilment`,async route=>{if(route.request().method()==="GET"&&attempted++===0)await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:"Pack unavailable. Please retry."})});else await route.continue();});
   await page.getByLabel("Search current supply queue").fill(`#${fixture.accepted.id}`); await page.getByRole("button",{name:"Open fulfilment",exact:true}).click();
   const modal=page.getByRole("dialog",{name:`Fulfil request #${fixture.accepted.id}`,exact:true}); await expect(modal.getByRole("alert")).toContainText("Pack unavailable"); await expect(modal.getByRole("button",{name:"Mark supply ready",exact:true})).toHaveCount(0);
@@ -130,3 +130,45 @@ test("doctor history search ignores delayed results and refresh remains usable w
     await expect(page.getByText("No requests match your filters.",{exact:true})).toBeVisible(); await expect(page.getByRole("article")).toHaveCount(0);
   } finally { release(); }
 });
+
+test("operator desktop navigation separates supply requests from warehouse tasks and keeps legacy links", async ({ page, request }) => {
+  const fixture = await prepare(request);
+  await open(page, fixture.operator, "/inventory");
+  await expect(page.getByRole("heading", { name: "Warehouse tasks", exact: true })).toBeVisible();
+  for (const name of [/^New requests/, /^Preparation/, /^Awaiting collection/, /^History/]) {
+    await expect(page.getByRole("button", { name })).toHaveCount(0);
+  }
+  const inventory = page.getByRole("link", { name: "Inventory", exact: true });
+  const supply = page.getByRole("link", { name: /^Supply requests/ });
+  await expect(supply).toBeVisible();
+  const labels = await inventory.locator("..").getByRole("link").allTextContents();
+  expect(labels[labels.indexOf("Inventory") + 1]).toMatch(/^Supply requests/);
+  const payload = await json(await request.get(`${API}/restock-requests/queues`, { headers: fixture.oh }));
+  const count = payload.counts.unique_requests;
+  await expect(supply).toContainText(count > 9 ? "9+" : String(count));
+  await supply.click();
+  await expect(page.getByRole("heading", { level: 1, name: "Supply requests", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Refresh supply requests")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Bulk deliveries/ })).toHaveCount(0);
+  await page.goto(`${STAFF}/inventory?tab=queues&queue=new_requests`);
+  await expect(page).toHaveURL(`${STAFF}/supply-requests?queue=new_requests`);
+  await expect(page.getByRole("article", { name: `Supply request ${fixture.pending.id}`, exact: true })).toBeVisible();
+});
+
+for (const width of [390, 820, 1023]) {
+  test(`operator supply links use existing inventory queues below desktop at ${width}px`, async ({ page, request }) => {
+    const fixture = await prepare(request);
+    await open(page, fixture.operator, "/supply-requests?queue=new_requests", width);
+    await expect(page).toHaveURL(`${STAFF}/inventory?queue=new_requests&tab=queues`);
+    await expect(page.getByRole("heading", { level: 1, name: "Tasks", exact: true })).toBeVisible();
+    await expect(page.getByRole("article", { name: `Supply request ${fixture.pending.id}`, exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Supply requests/ })).toBeHidden();
+    await expect(page.getByRole("button", { name: /^Preparation/ })).toHaveCount(0);
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect(page).toHaveURL(`${STAFF}/supply-requests?queue=new_requests`);
+    await expect(page.getByRole("button", { name: /^Preparation/ })).toBeVisible();
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page).toHaveURL(`${STAFF}/inventory?queue=new_requests&tab=queues`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBeFalsy();
+  });
+}

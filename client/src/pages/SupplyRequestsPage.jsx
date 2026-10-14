@@ -27,6 +27,7 @@ import {
 import { cx } from "../lib/utils.js";
 
 import { DOCTOR_BAG_INVENTORY_EVENT, OCS_INVENTORY_EVENT } from "../lib/inventorySync.js";
+import OperatorSupplyRequestsPage from "./OperatorSupplyRequestsPage.jsx";
 
 const HISTORY_PAGE_SIZE = 20;
 
@@ -89,6 +90,13 @@ function AmendmentHistory({ amendments = [] }) {
 }
 
 export default function SupplyRequestsPage() {
+  const { user } = useAuth();
+  if (user?.role === "operator") return <OperatorSupplyRequestsPage />;
+  if (user?.role === "doctor") return <DoctorSupplyRequestsPage />;
+  return <Navigate to="/" replace />;
+}
+
+function DoctorSupplyRequestsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();

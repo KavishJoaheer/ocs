@@ -26,6 +26,8 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
+import { useOperatorSupplyCount } from "../hooks/useOperatorSupplyCount.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import DesktopWorkspaceIdentity from "./operator-dashboard/DesktopWorkspaceIdentity.jsx";
 import { getOperatorInitials, isOperatorLive } from "./operator-dashboard/operatorDashboardCopy.js";
 
@@ -140,6 +142,13 @@ const navItems = [
     roles: ["admin", "doctor", "operator"],
   },
   {
+    to: "/supply-requests",
+    label: "Supply requests",
+    icon: Truck,
+    roles: ["operator"],
+    hideInMobileDrawer: true,
+  },
+  {
     to: "/stock-history",
     label: "Stock history",
     icon: RotateCw,
@@ -230,6 +239,8 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
 function Sidebar() {
   const { logout, user, hcmUnreadCount } = useAuth();
   const appointmentChangeCount = useAppointmentChangeCount();
+  const compact = useIsMobile(1024);
+  const supplyCount = useOperatorSupplyCount(user.role === "operator" && !compact);
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -267,6 +278,7 @@ function Sidebar() {
   function navBadgeCount(item) {
     if (item.to === "/hcm-news") return hcmUnreadCount;
     if (item.to === "/visit-requests") return appointmentChangeCount;
+    if (item.to === "/supply-requests" && user.role === "operator") return supplyCount;
     return 0;
   }
 
