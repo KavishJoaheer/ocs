@@ -21,7 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
 import LinkhamSidebar from "./LinkhamSidebar.jsx";
 import PushNotificationToggle from "./PushNotificationToggle.jsx";
-import { bottomNavItems, linkhamBottomNavItems } from "./BottomNav.jsx";
+import { bottomNavItems, linkhamBottomNavItems } from "../lib/bottomNavItems.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";

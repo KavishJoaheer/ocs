@@ -1,0 +1,60 @@
+.insurance-workspace { --insurance-ink: #173f4a; --insurance-primary: #137b80; --insurance-muted: #526d75; color: var(--insurance-ink); }
+.insurance-workspace :is(main,section,article,form,header) { min-width: 0; }
+.insurance-workspace :is(button,select,input,a):focus-visible { outline: 2px solid var(--insurance-primary); outline-offset: 3px; }
+.insurance-workspace :is(button,select,input) { min-height: 44px; }
+.insurance-workspace :is(button,select) { border-radius: 999px; font-size: 14px; font-weight: 600; }
+.insurance-workspace :is([class~="text-[9px]"],[class~="text-[10px]"],[class~="text-[11px]"]) { font-size: 12px; line-height: 1.5; }
+.insurance-workspace :is(.text-gray-400,.text-slate-400) { color: var(--insurance-muted); }
+.insurance-workspace nav a { border-radius: 999px; min-height: 44px; font-size: 14px; }
+.insurance-workspace :is(section,article)[class*="rounded"] { border-radius: 26px; }
+.insurance-page-header { padding: 18px 22px; border-radius: 28px; border: 1px solid #d5e4e1; background: linear-gradient(100deg,#e3f5f0,#f3faf7 65%,#fff9ed); }
+.insurance-page-header h1 { color: #173f4a; font-size: 28px; }
+.insurance-page-header p { color: #376168; }
+.insurance-priority-layout > section { min-width: 0; }
+.insurance-policy-lookup { box-shadow: none; }
+.insurance-policy-lookup input { min-width: 0; }
+.insured-patient-card { min-width: 0; border-color: #d5e4e1; }
+.insured-patient-card h3 { font-size: 16px; }
+.insured-patient-identity > span { max-width: 100%; overflow-wrap: anywhere; border-radius: 999px; }
+.insurance-claims-table { font-size: 14px; }
+.insurance-claims-table :is(th,td) { padding-right: 12px; }
+.insurance-claims-table td { overflow-wrap: anywhere; font-size: 14px; }
+.insurance-claims-table button { min-height: 44px; }
+.insurance-disclosure { min-width: 0; flex: 1 1 240px; }
+.insurance-disclosure > summary { display: inline-flex; align-items: center; min-height: 44px; border: 1px solid #d5e4e1; border-radius: 999px; background: white; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.insurance-disclosure[open] { flex-basis: 100%; }
+.insurance-bottom-nav { margin: 0 12px 12px; border: 1px solid #d5e4e1; border-radius: 999px; box-shadow: 0 4px 18px rgb(23 63 74 / .08); }
+.insurance-workspace .insurance-bottom-nav a { min-height: 56px; font-size: 12px; }
+.insurance-workspace .insurance-bottom-nav a[aria-current="page"] { background: #137b80; color: white; }
+@media (max-width: 767px) {
+  .insurance-workspace :is(input,select,textarea) { font-size: 16px; }
+  .insurance-page-header { padding: 16px; }
+  .insurance-page-header h1 { font-size: 24px; }
+  .insurance-policy-lookup > div { gap: 12px; padding: 16px; }
+  .insurance-policy-lookup h2 { margin-top: 0; font-size: 18px; }
+  .insurance-policy-lookup > div > div:first-child > p { display: none; }
+  .insurance-policy-lookup form button { flex-shrink: 0; padding-inline: 14px; }
+  .insurance-policy-lookup input { font-size: 16px; padding-right: 8px; }
+  .insurance-priority-layout { grid-template-columns: minmax(0,1fr); }
+  .insurance-priority-layout > section { padding: 16px; }
+  .insured-patient-card { flex-direction: column; align-items: stretch; padding: 16px; gap: 12px; }
+  .insured-patient-card > div { width: 100%; }
+  .insured-patient-identity h3 { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .insured-patient-card > button { align-self: flex-start; }
+  .insurance-chart { height: 200px !important; min-height: 200px !important; }
+  .insurance-claims-table, .insurance-claims-table tbody { display: block; width: 100%; }
+  .insurance-claims-table thead { display: none; }
+  .insurance-claims-table tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 16px 0; }
+  .insurance-claims-table td { min-width: 0; padding: 0; display: block; text-align: left; }
+  .insurance-claims-table td::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 12px; color: #526d75; font-weight: 500; }
+  .insurance-claims-table td:nth-child(2) { grid-column: 1 / -1; grid-row: 1; font-size: 16px; }
+  .insurance-claims-table td:nth-child(3), .insurance-claims-table td:last-child { grid-column: 1 / -1; }
+  .insurance-claims-table td:last-child > div { justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 767px) { .insurance-workspace input[type="search"] { width: 100%; min-width: 0; } }
+.insurance-workspace .opacity-55 { opacity: 1; color: #526d75; }
+.insurance-workspace [aria-label="Actionable overview"] p:first-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .insurance-workspace [aria-label="Actionable overview"] > a > span,
+  .insurance-workspace [aria-label="Actionable overview"] > a > svg { display: none; }
+}

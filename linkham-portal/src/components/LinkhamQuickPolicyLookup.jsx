@@ -60,7 +60,7 @@ export default function LinkhamQuickPolicyLookup() {
   }
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-[#0d5c63]/10 bg-[#0d5c63] text-white shadow-[0_18px_45px_rgba(6,90,96,0.16)]">
+    <section className="insurance-policy-lookup overflow-hidden rounded-3xl border border-[#0d5c63]/10 bg-[#0d5c63] text-white shadow-[0_18px_45px_rgba(6,90,96,0.16)]">
       <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)] lg:items-center lg:p-6">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#9fe1dc]">Live registry</p>
@@ -86,7 +86,7 @@ export default function LinkhamQuickPolicyLookup() {
               </button>
             ))}
           </div>
-          <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submit}>
+          <form className="flex min-w-0 gap-2" onSubmit={submit}>
             <label className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#0d5c63]/45" />
               <span className="sr-only">{mode === "policy" ? "Policy number" : "Mauritius ID"}</span>

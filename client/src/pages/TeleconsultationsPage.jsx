@@ -4,6 +4,7 @@ import { CheckCircle2, ClipboardList, Phone, Plus, RefreshCw, Search, Stethoscop
 import { api } from "../lib/api.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import RequestCard from "../components/teleconsultations/ClinicalRequestCard.jsx";
 import DoctorTeleconsultations from "../components/teleconsultations/DoctorTeleconsultations.jsx";
 import OperatorTeleconsultations from "../components/teleconsultations/OperatorTeleconsultations.jsx";
@@ -18,7 +19,6 @@ const statuses = {
   referred: { label: "In-person assessment", color: "border-orange-200 bg-orange-50 text-orange-800" },
 };
 const input = "w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-ocs-teal focus:ring-2 focus:ring-ocs-teal/15 disabled:cursor-not-allowed disabled:bg-slate-50";
-const primary = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-ocs-slate px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-ocs-slate/90 disabled:cursor-not-allowed disabled:opacity-50";
 const secondary = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-ocs-slate transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50";
 
 function matchesStatus(request, filter) {
@@ -99,11 +99,9 @@ function ClinicalTeleconsultationsPage({ user }) {
     try { await load(); } finally { setRefreshing(false); }
   }
 
-  return <div className="ocs-page mx-auto max-w-6xl space-y-5 p-4 md:p-6">
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-ocs-teal">OCS remote care</p><h1 className="mt-1 text-2xl font-bold text-ocs-slate sm:text-3xl">Manage teleconsultations</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">{isDispatch ? "Assign doctors, track requests and keep each consultation moving." : "Review your assigned patients, begin the call and complete the consultation record."}</p></div>
-      <div className="flex flex-wrap gap-2"><button type="button" onClick={refresh} disabled={refreshing || loading} className={secondary}><RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />Refresh</button>{isDispatch && <Link to="/patients/add" className={primary}><Plus className="size-4" />Add patient</Link>}</div>
-    </div>
+  return <div className="legacy-workspace mx-auto max-w-6xl space-y-5">
+    <PatientWorkspaceHeader title="Manage teleconsultations" subtitle="Assign doctors and follow active consultations." role={user.role} onRefresh={refresh} refreshing={refreshing || loading}
+      actions={isDispatch ? <Link to="/patients/add" className="patient-control patient-control-primary"><Plus className="size-4" />Add patient</Link> : null} />
 
     <div className="grid grid-cols-3 gap-2 sm:gap-4">
       {metrics.map(({ label, value, icon: Icon, color }) => <div key={label} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-2xl font-bold text-ocs-slate">{loading || (error && !requests.length) ? "—" : value}</p><span className={`hidden rounded-xl p-2 sm:inline-flex ${color}`}><Icon className="size-4" /></span></div><p className="mt-1 text-xs leading-relaxed text-slate-500 sm:text-sm">{label}</p></div>)}

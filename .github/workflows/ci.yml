@@ -74,10 +74,27 @@ jobs:
         working-directory: patient-portal
         run: npm test
 
+  insurance-portal-build:
+    name: Insurance portal build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: linkham-portal/package-lock.json
+      - name: Install dependencies
+        working-directory: linkham-portal
+        run: npm ci
+      - name: Build
+        working-directory: linkham-portal
+        run: npm run build
+
   e2e-smoke:
     name: Playwright inventory and smoke tests
     runs-on: ubuntu-latest
-    needs: [server-tests, client-build, patient-portal-build]
+    needs: [server-tests, client-build, patient-portal-build, insurance-portal-build]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,6 +106,7 @@ jobs:
             server/package-lock.json
             client/package-lock.json
             patient-portal/package-lock.json
+            linkham-portal/package-lock.json
       - name: Install root dependencies
         run: npm ci
       - name: Install workspace dependencies
@@ -96,6 +114,7 @@ jobs:
           npm ci --prefix server
           npm ci --prefix client
           npm ci --prefix patient-portal
+          npm ci --prefix linkham-portal
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
       - name: Build frontends for preview
@@ -110,7 +129,7 @@ jobs:
   quality-gate:
     name: Quality gate
     runs-on: ubuntu-latest
-    needs: [server-tests, client-build, patient-portal-build, e2e-smoke]
+    needs: [server-tests, client-build, patient-portal-build, insurance-portal-build, e2e-smoke]
     if: always()
     steps:
       - name: Require every quality job
@@ -122,4 +141,5 @@ jobs:
           test "${{ needs.server-tests.result }}" = "success"
           test "${{ needs.client-build.result }}" = "success"
           test "${{ needs.patient-portal-build.result }}" = "success"
+          test "${{ needs.insurance-portal-build.result }}" = "success"
           test "${{ needs.e2e-smoke.result }}" = "success"

@@ -305,7 +305,7 @@ function PatientsPage() {
   const [statusFilter, setStatusFilter] = useState(() =>
     searchParams.get("tab") === "under_review" || searchParams.get("filter") === "under_review"
       ? "under_review"
-      : directoryContext?.statusFilter || (myAssignedFilterActive ? "active" : "all"),
+      : searchParams.get("tab") === "pending_approval" && user.role === "admin" ? "pending_approval" : directoryContext?.statusFilter || (myAssignedFilterActive ? "active" : "all"),
   );
   const isUnderReviewView =
     statusFilter === "under_review" ||
@@ -785,7 +785,7 @@ function PatientsPage() {
     ];
 
     if (isMobile) {
-      return baseTabs;
+      return user.role === "admin" ? [...baseTabs, { id: "pending_approval", label: "Approvals" }] : baseTabs;
     }
 
     const desktopTabs = [...baseTabs, { id: "pending_approval", label: "Pending Approval" }];
@@ -795,7 +795,7 @@ function PatientsPage() {
     }
 
     return desktopTabs;
-  }, [canManageDeletedPatients, isMobile]);
+  }, [canManageDeletedPatients, isMobile, user.role]);
 
   useEffect(() => {
     if (isMobile && statusFilter === "recently_deleted") {

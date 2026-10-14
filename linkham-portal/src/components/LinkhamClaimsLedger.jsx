@@ -82,11 +82,11 @@ export default function LinkhamClaimsLedger({
         <div>
           <h3 className="text-sm font-extrabold text-gray-800">Linkham 80% corporate claims</h3>
           <p className="mt-0.5 text-xs text-gray-400">
-            Flag with a reason without blocking a clean batch. Record the bank remittance when approved claims are transferred to OCS.
+            Review claims, flag questions, and record the remittance after payment.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <details className="insurance-disclosure"><summary>Export</summary><div className="mt-2 flex flex-wrap gap-2">          <button
             type="button"
             onClick={onExportCsv}
             className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700"
@@ -100,6 +100,7 @@ export default function LinkhamClaimsLedger({
           >
             Download PDF
           </button>
+</div></details>
           {statusFilter === "pending" ? (
             <button
               type="button"
@@ -161,12 +162,13 @@ export default function LinkhamClaimsLedger({
             placeholder="Search patient or policy"
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs"
           />
-          <input
+          <label className="grid gap-1 text-xs font-semibold text-[#526d75]">Month (optional)<input
+            aria-label="Claim month"
             type="month"
             value={month}
             onChange={(event) => onMonthChange?.(event.target.value)}
             className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs"
-          />
+          /></label>
           {month ? (
             <button
               type="button"
@@ -181,7 +183,7 @@ export default function LinkhamClaimsLedger({
 
       {claims.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="insurance-claims-table w-full text-left">
             <thead>
               <tr className="border-b border-gray-100/70 text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
                 <th className="pb-3">Visit date</th>
@@ -206,21 +208,21 @@ export default function LinkhamClaimsLedger({
                       isFlagged ? "border-l-4 border-l-amber-400 bg-amber-50/40" : "hover:bg-slate-50/50",
                     )}
                   >
-                    <td className="py-4 text-xs font-semibold text-gray-500">
+                    <td data-label="Visit date" className="py-4 text-xs font-semibold text-gray-500">
                       {formatDate(claim.visit_date)}
                     </td>
-                    <td className="py-4 text-xs font-extrabold text-gray-800">
+                    <td data-label="Patient" className="py-4 text-xs font-extrabold text-gray-800">
                       {claim.patient_name}
                       <span className="mt-0.5 block font-mono text-[10px] font-bold text-gray-400">
                         {claim.id_short}
                       </span>
                     </td>
-                    <td className="py-4 text-xs font-semibold text-gray-600">
+                    <td data-label="Policy" className="py-4 text-xs font-semibold text-gray-600">
                       {claim.policy_number || (
                         <span className="font-bold text-amber-700">Missing</span>
                       )}
                     </td>
-                    <td className="py-4 text-xs font-semibold text-gray-600">
+                    <td data-label="Patient share · 20%" className="py-4 text-xs font-semibold text-gray-600">
                       {formatRupees(claim.patient_copay_amount)}
                       {claim.copay_paid ? (
                         <span className="ml-1 text-[10px] font-normal text-gray-400">(collected)</span>
@@ -228,10 +230,10 @@ export default function LinkhamClaimsLedger({
                         <span className="ml-1 text-[10px] font-normal text-amber-700">(unpaid)</span>
                       )}
                     </td>
-                    <td className="py-4 text-xs font-black text-gray-900">
+                    <td data-label="Insurer share · 80%" className="py-4 text-xs font-black text-gray-900">
                       {formatRupees(claim.linkham_share_amount)}
                     </td>
-                    <td className="py-4 text-right">
+                    <td data-label="Actions" className="py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"

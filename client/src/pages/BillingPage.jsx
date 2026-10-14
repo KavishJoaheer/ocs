@@ -26,7 +26,7 @@ import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PageHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -3375,17 +3375,18 @@ function BillingPage() {
       className={cx(
         pageContainerClass,
         "space-y-6",
+        isFinanceWorkspace && "admin-finance-workspace legacy-workspace",
         isMobile && "mx-auto max-w-md",
       )}
     >
-      <PageHeader
+      <PageHeader inlineActions
         eyebrow={user?.role === "operator" ? "Work queue" : user?.role === "accountant" ? "Finance" : "Revenue"}
         title={isFinanceWorkspace ? "Finance" : user?.role === "operator" ? "Billing work queue" : "Billing"}
         description={isFinanceWorkspace ? "Choose one report, apply filters, and focus only on the figures you need." : undefined}
       />
 
       {isFinanceWorkspace ? (
-        <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="finance-controls rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <label className="grid gap-1.5 text-sm font-bold text-slate-700">
               Report
@@ -3404,6 +3405,7 @@ function BillingPage() {
                 <option value="controls">Controls</option>
               </select>
             </label>
+            <details className="workspace-filter-panel md:contents" open={!isMobile}><summary>Filters · {financeDateFrom} to {financeDateTo}</summary><div className="grid gap-4 md:contents">
             {financeSection !== "controls" ? (
               <>
                 {["overview", "expenses", "suppliers", "statements"].includes(financeSection) ? (
@@ -3456,6 +3458,7 @@ function BillingPage() {
                 Monthly sign-off, reconciliation, and unresolved exceptions stay here without crowding daily reports.
               </p>
             )}
+            </div></details>
           </div>
           {!financeDateRangeValid && financeSection !== "controls" ? (
             <p className="mt-3 text-sm font-bold text-rose-700">The start date must be on or before the end date.</p>
@@ -3806,7 +3809,7 @@ function BillingPage() {
           >
             {(financeSummary?.by_doctor || []).length ? (
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[860px] w-full bg-white text-left">
+                <table className="responsive-record-table min-w-[860px] w-full bg-white text-left">
                   <thead className="bg-slate-50 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Doctor</th>
@@ -3821,13 +3824,13 @@ function BillingPage() {
                   <tbody>
                     {financeSummary.by_doctor.map((doctor) => (
                       <tr key={doctor.doctor_id} className="border-t border-slate-100 text-sm font-semibold text-slate-700">
-                        <td className="px-4 py-3 font-bold text-slate-950">{doctor.doctor_name}</td>
-                        <td className="px-4 py-3 text-right">{doctor.invoice_count}</td>
-                        <td className="px-4 py-3 text-right">{formatRupees(doctor.consultation_amount)}</td>
-                        <td className="px-4 py-3 text-right">{formatRupees(doctor.supply_sold_amount)}</td>
-                        <td className="px-4 py-3 text-right">{formatRupees(doctor.supply_cost_sold_amount)}</td>
-                        <td className="px-4 py-3 text-right">{formatRupees(doctor.service_non_stock_amount)}</td>
-                        <td className="px-4 py-3 text-right font-black text-slate-950">{formatRupees(doctor.total_sales_amount)}</td>
+                        <td data-label="Doctor" className="px-4 py-3 font-bold text-slate-950">{doctor.doctor_name}</td>
+                        <td data-label="Invoices" className="px-4 py-3 text-right">{doctor.invoice_count}</td>
+                        <td data-label="Consultations" className="px-4 py-3 text-right">{formatRupees(doctor.consultation_amount)}</td>
+                        <td data-label="Supply sales" className="px-4 py-3 text-right">{formatRupees(doctor.supply_sold_amount)}</td>
+                        <td data-label="Supply cost" className="px-4 py-3 text-right">{formatRupees(doctor.supply_cost_sold_amount)}</td>
+                        <td data-label="Other charges" className="px-4 py-3 text-right">{formatRupees(doctor.service_non_stock_amount)}</td>
+                        <td data-label="Total sales" className="px-4 py-3 text-right font-black text-slate-950">{formatRupees(doctor.total_sales_amount)}</td>
                       </tr>
                     ))}
                   </tbody>

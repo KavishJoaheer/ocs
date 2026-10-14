@@ -8,7 +8,7 @@ import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
 import StructuredConsultationFields from "../components/StructuredConsultationFields.jsx";
 import { consultationFormValues } from "../lib/consultationForm.js";
-import PageHeader from "../components/PageHeader.jsx";
+import PageHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -279,7 +279,7 @@ function ConsultationsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PageHeader inlineActions
         eyebrow="Clinical notes"
         title="Consultations"
         description={

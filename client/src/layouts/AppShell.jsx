@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import dayjs from "dayjs";
 import { Outlet, useLocation } from "react-router-dom";
 import "../components/workspaceConsistency.css";
+import "../components/adminWorkspace.css";
 import BottomNav from "../components/BottomNav.jsx";
 import PushNotificationBanner from "../components/PushNotificationBanner.jsx";
 import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
@@ -27,6 +28,8 @@ const pageMeta = {
   },
   "/stock-history": { label: "Stock history", helper: "Stock movements and transfer records." },
   "/action-inbox": { label: "Pending actions", helper: "Requests, reviews and team tasks." },
+  "/admin/accounts": { label: "Accounting", helper: "Journals, statements and period controls." },
+  "/admin/finance": { label: "Finance", helper: "Reports, invoices and payments." },
   "/inventory": {
     label: "Inventory",
     helper: "",
@@ -175,8 +178,9 @@ function AppShell() {
     && (billingParams.has("billId") || ["paid", "unpaid"].includes(billingParams.get("status")) || billingParams.get("view") === "invoices");
   const isDesktopFinanceWorkspace = !isMobile && (["/stock-history", "/live-report", "/operator/pending-payment"].includes(location.pathname) || isIssuedBillingView);
   const isSharedWorkspace = ["/billing", "/stock-history", "/live-report", "/hcm-news", "/appointments", "/supply-requests"].includes(location.pathname) || /^\/consultations\/[^/]+$/.test(location.pathname) || (isInventory && userRole === "operator");
-  const hasOperatorWorkspaceHeader = isSharedWorkspace || (isDashboard && ["doctor", "operator"].includes(userRole)) || isDesktopFinanceWorkspace || isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
+  const hasOperatorWorkspaceHeader = userRole === "admin" || ["/admin/accounts", "/admin/finance", "/team-operations", "/lab", "/consultations", "/patient-care-content"].includes(location.pathname) || isSharedWorkspace || (isDashboard && ["doctor", "operator"].includes(userRole)) || isDesktopFinanceWorkspace || isPendingActionsWorkspace || isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
   const alwaysHideTopHeader =
+    userRole === "admin" ||
     isSharedWorkspace ||
     isDesktopFinanceWorkspace ||
     isPendingActionsWorkspace ||
@@ -285,7 +289,7 @@ function AppShell() {
       <div className={`mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} lg:flex-row`}>
         <Sidebar />
 
-        <main id="ocs-app-main" className={`${["doctor", "operator"].includes(userRole) ? "staff-workspace" : ""} min-h-0 min-w-0 w-full max-w-full flex-1 ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none`}>
+        <main id="ocs-app-main" className={`${["admin", "doctor", "operator"].includes(userRole) ? `staff-workspace ${userRole === "admin" ? "admin-workspace" : ""}` : ""} min-h-0 min-w-0 w-full max-w-full flex-1 ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none`}>
           {!alwaysHideTopHeader && !hideLinkhamTopHeader && !hideDesktopTopHeader ? (
             <div
               className="hidden border-b border-ocs-teal/15 bg-white/68 px-5 py-3 backdrop-blur-xl md:block lg:px-8"

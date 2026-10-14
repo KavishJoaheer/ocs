@@ -1,17 +1,18 @@
 import { LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BrandMark from "./BrandMark.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 
 const linkhamNavItems = [
   { id: "dashboard", to: "/linkham/dashboard", label: "Dashboard", end: true },
-  { id: "insured_patients", to: "/linkham/patients", label: "Insured Patient" },
-  { id: "policies", to: "/linkham/policies", label: "Policy Registry" },
-  { id: "claims_clearance", to: "/linkham/claims-clearance", label: "Claims Clearance" },
-  { id: "reports", to: "/linkham/reports", label: "Report" },
+  { id: "insured_patients", to: "/linkham/patients", label: "Patients" },
+  { id: "policies", to: "/linkham/policies", label: "Policies" },
+  { id: "claims_clearance", to: "/linkham/claims-clearance", label: "Claims" },
+  { id: "reports", to: "/linkham/reports", label: "Reports" },
 ];
 
 function LinkhamNavIcon({ id, active }) {
@@ -96,10 +97,10 @@ function LinkhamNavButton({ item, onNavigate }) {
   );
 }
 
-function LinkhamSidebarNav({ onNavigate, className }) {
+function LinkhamSidebarNav({ onNavigate, className, mobile = false }) {
   return (
     <nav className={cx("mt-4 flex w-full flex-col gap-1 px-3", className)}>
-      {linkhamNavItems.map((item) => (
+      {linkhamNavItems.filter(item => !mobile || ["policies", "reports"].includes(item.id)).map((item) => (
         <LinkhamNavButton key={item.id} item={item} onNavigate={onNavigate} />
       ))}
     </nav>
@@ -109,11 +110,14 @@ function LinkhamSidebarNav({ onNavigate, className }) {
 export default function LinkhamSidebar() {
   const { logout, user } = useAuth();
   const location = useLocation();
+  const isPhone = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef(null);
+  const menuRef = useRef(null);
 
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname]);
+  const locationKey = `${location.pathname}${location.search}`;
+  const [lastLocation, setLastLocation] = useState(locationKey);
+  if (lastLocation !== locationKey) { setLastLocation(locationKey); setDrawerOpen(false); }
 
   useEffect(() => {
     if (drawerOpen) {
@@ -124,6 +128,22 @@ export default function LinkhamSidebar() {
     return () => {
       document.body.style.overflow = "";
     };
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const menuButton = menuRef.current;
+    const nodes = () => [...(drawerRef.current?.querySelectorAll('button, a[href]') || [])];
+    nodes()[0]?.focus();
+    const onKey = (event) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key !== "Tab") return;
+      const items = nodes(); const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); menuButton?.focus(); };
   }, [drawerOpen]);
 
   return (
@@ -140,6 +160,9 @@ export default function LinkhamSidebar() {
           type="button"
           onClick={() => setDrawerOpen(true)}
           className="rounded-xl p-2 text-[#065a60] transition hover:bg-gray-50"
+          ref={menuRef}
+          aria-expanded={drawerOpen}
+          aria-controls="insurance-menu"
           aria-label="Open menu"
         >
           <Menu className="size-6" strokeWidth={2.25} />
@@ -148,7 +171,7 @@ export default function LinkhamSidebar() {
         <div className="size-10 shrink-0" aria-hidden="true" />
       </div>
 
-      <div className={cx("fixed inset-0 z-50 lg:hidden", drawerOpen ? "" : "pointer-events-none")}>
+      <div inert={!drawerOpen} aria-hidden={!drawerOpen} className={cx("fixed inset-0 z-50 lg:hidden", drawerOpen ? "" : "pointer-events-none")}>
         <div
           className={cx(
             "absolute inset-0 bg-black/40 transition-opacity duration-300",
@@ -158,6 +181,7 @@ export default function LinkhamSidebar() {
           aria-hidden="true"
         />
         <div
+          id="insurance-menu" ref={drawerRef} role="dialog" aria-modal="true" aria-label="Insurance navigation"
           className={cx(
             "fixed inset-y-0 left-0 z-50 flex h-full w-64 flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-4 shadow-[8px_0_30px_rgba(0,0,0,0.08)] transition-transform duration-300 ease-in-out",
             drawerOpen ? "translate-x-0" : "-translate-x-full",
@@ -175,7 +199,8 @@ export default function LinkhamSidebar() {
                 <X className="size-5" />
               </button>
             </div>
-            <LinkhamSidebarNav onNavigate={() => setDrawerOpen(false)} className="mt-0 px-0" />
+            <p className="mb-1 break-words text-base font-bold text-[#173f4a]">{user.full_name}</p><p className="mb-4 text-sm text-[#526d75]">Insurance account</p>
+            <LinkhamSidebarNav mobile={isPhone} onNavigate={() => setDrawerOpen(false)} className="mt-0 px-0" />
           </div>
           <button
             type="button"
@@ -220,5 +245,3 @@ export default function LinkhamSidebar() {
     </div>
   );
 }
-
-export { linkhamNavItems };

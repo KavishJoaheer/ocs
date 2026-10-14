@@ -5,7 +5,7 @@ import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PageHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import PushSubscriberStatusCard from "../components/PushSubscriberStatusCard.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -15,13 +15,13 @@ import { cx } from "../lib/utils.js";
 const roleTabs = [
   {
     role: "doctor",
-    label: "Doctor tab",
+    label: "Doctors",
     title: "Doctor accounts",
     description: "Create, edit, enable, disable, or remove doctor logins while keeping clinic history intact.",
   },
   {
     role: "operator",
-    label: "Operator tab",
+    label: "Operators",
     title: "Operator accounts",
     description: "Create, edit, enable, disable, or remove operator logins for patient intake and coordination.",
   },
@@ -34,13 +34,13 @@ const roleTabs = [
   },
   {
     role: "accountant",
-    label: "Accountant tab",
+    label: "Accountants",
     title: "Accountant accounts",
     description: "Create, edit, enable, disable, or remove accountant logins for billing and finance workflows.",
   },
   {
     role: "linkham_admin",
-    label: "Linkham Admin",
+    label: "Insurance",
     title: "Linkham Admin accounts",
     description:
       "Create, edit, enable, disable, or remove third-party insurer logins for Linkham patient coverage audits.",
@@ -205,6 +205,7 @@ function TeamOperationsPage() {
   const { user } = useAuth();
   const [activeRole, setActiveRole] = useState("doctor");
   const [members, setMembers] = useState([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState(null);
   const [memberAction, setMemberAction] = useState(null);
@@ -212,6 +213,7 @@ function TeamOperationsPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const activeTab = getRoleTab(activeRole);
+  const visibleMembers = members.filter(member => `${member.full_name} ${member.username}`.toLowerCase().includes(search.trim().toLowerCase()));
 
   useEffect(() => {
     let ignore = false;
@@ -309,11 +311,11 @@ function TeamOperationsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
+    <div className="team-workspace legacy-workspace space-y-5">
+      <PageHeader inlineActions
         eyebrow="Admin"
         title="Team operations"
-        description="Create, edit, enable, disable, and remove doctor, operator, tech operator, accountant, and Linkham Admin accounts from one admin workspace."
+        description="Manage team accounts, access and device alerts."
         actions={
           <button
             type="button"
@@ -326,7 +328,9 @@ function TeamOperationsPage() {
         }
       />
 
-      {user.role === "admin" ? <PushSubscriberStatusCard /> : null}
+      {user.role === "admin" ? <details className="admin-support-panel"><summary>Team notification status</summary><PushSubscriberStatusCard /></details> : null}
+
+      <label className="block"><span className="sr-only">Search team accounts</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search name or username" className="min-h-11 w-full rounded-full border border-[#d5e4e1] bg-white px-4 text-base" /></label>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1.5">
         {roleTabs.map((tab) => (
@@ -353,9 +357,9 @@ function TeamOperationsPage() {
             <p className="mt-0.5 text-xs text-gray-400">{activeTab.description}</p>
           </div>
 
-          {members.length ? (
+          {visibleMembers.length ? (
             <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-left text-xs font-semibold text-gray-600">
+              <table className="responsive-record-table w-full text-left text-sm font-semibold text-gray-600">
                 <thead>
                   <tr className="border-b border-gray-50 text-[10px] uppercase tracking-wider text-gray-400">
                     <th className="pb-3">Name</th>
@@ -365,9 +369,9 @@ function TeamOperationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((member) => (
+                  {visibleMembers.map((member) => (
                     <tr key={member.id} className="border-b border-gray-50 last:border-0">
-                      <td className="py-3.5 font-bold text-gray-800">
+                      <td data-label="Name" className="py-3.5 font-bold text-gray-800">
                         <div>{member.full_name}</div>
                         {member.is_active ? (
                           <span className="mt-1 inline-flex rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
@@ -379,11 +383,11 @@ function TeamOperationsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="py-3.5 text-gray-500">{member.username}</td>
-                      <td className="py-3.5 text-gray-400">
+                      <td data-label="Username" className="py-3.5 text-gray-500">{member.username}</td>
+                      <td data-label="Details" className="py-3.5 text-gray-400">
                         {member.is_active ? "Login enabled" : "Login disabled"}
                       </td>
-                      <td className="py-3.5 text-right">
+                      <td data-label="Actions" className="py-3.5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
@@ -420,17 +424,17 @@ function TeamOperationsPage() {
             </div>
           ) : (
             <EmptyState
-              title="No Linkham Admin accounts yet"
+              title={search ? "No matching accounts" : "No insurance accounts yet"}
               description="Add the first Linkham insurer login from the admin toolbar above."
             />
           )}
         </div>
       ) : (
         <SectionCard title={activeTab.title} subtitle={activeTab.description}>
-        {members.length ? (
+        {visibleMembers.length ? (
           <div className="overflow-hidden rounded-[24px] border border-slate-200/80">
             <div className="overflow-x-auto">
-              <table className="min-w-full bg-white text-left">
+              <table className="responsive-record-table min-w-full bg-white text-left">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   <tr>
                     <th className="px-5 py-4">Name</th>
@@ -440,16 +444,16 @@ function TeamOperationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((member) => (
+                  {visibleMembers.map((member) => (
                     <tr key={member.id} className="border-t border-slate-200/70">
-                      <td className="px-5 py-4">
+                      <td data-label="Name" className="px-5 py-4">
                         <p className="font-semibold text-slate-950">{member.full_name}</p>
                         <p className="mt-1 text-sm text-slate-500">
                           {member.is_active ? "Active account" : "Disabled account"}
                         </p>
                       </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">@{member.username}</td>
-                      <td className="px-5 py-4 text-sm text-slate-500">
+                      <td data-label="Username" className="px-5 py-4 text-sm text-slate-600">@{member.username}</td>
+                      <td data-label="Details" className="px-5 py-4 text-sm text-slate-500">
                         {member.role === "doctor" ? (
                           <div className="space-y-1">
                             <p>{member.specialization || "General practice"}</p>
@@ -463,7 +467,7 @@ function TeamOperationsPage() {
                           <p>{member.is_active ? "Login enabled" : "Login disabled"}</p>
                         )}
                       </td>
-                      <td className="px-5 py-4">
+                      <td data-label="Actions" className="px-5 py-4">
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"
@@ -518,7 +522,7 @@ function TeamOperationsPage() {
           </div>
         ) : (
           <EmptyState
-            title={`No ${activeTab.title.toLowerCase()} yet`}
+            title={search ? "No matching accounts" : `No ${activeTab.title.toLowerCase()} yet`}
             description="Add the first account from the admin toolbar above."
           />
         )}

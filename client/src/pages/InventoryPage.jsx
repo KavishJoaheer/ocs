@@ -3012,7 +3012,7 @@ function InventoryContent() {
   const folders = useMemo(() => data?.folders || [], [data?.folders]);
   const pendingStagingCount = Number(data?.tab_summaries?.shipments?.incoming_shipments || 0);
   const inventorySections = [
-    ...(isOperator ? [{ id: "queues", label: "Tasks" }] : []),
+    ...(isOperator ? [{ id: "queues", label: "Tasks" }] : isAdmin ? [{ id: "queues", label: "Supply requests" }] : []),
     { id: "stock", label: "Stock" },
     { id: "shipments", label: "Bulk Delivery", badge: pendingStagingCount },
     { id: "count", label: "Stock Count" },
@@ -3044,9 +3044,9 @@ function InventoryContent() {
   const doctorViewIsMy = isDoctor && doctorContext === "my";
   const isMobile = useIsMobile();
   const isCompactInventory = useIsMobile(1024);
-  const desktopWorkspace = !isCompactInventory && (isDoctor || isOperator);
+  const desktopWorkspace = !isCompactInventory && (isDoctor || isOperator || isAdmin);
   const [stockKind, setStockKind] = useState("stock");
-  const InventoryHeader = desktopWorkspace || isOperator ? InventoryWorkspaceHeader : PageHeader;
+  const InventoryHeader = desktopWorkspace || isOperator || isAdmin ? InventoryWorkspaceHeader : PageHeader;
   const showDeleteStockItem = isAdmin && contextIsOcs;
   const showMobileDoctorBag = isDoctor && isMobile;
   const adminPeriodRange = useMemo(
@@ -3066,7 +3066,7 @@ function InventoryContent() {
     selectedContextDoctorId,
     data?.selected_doctor_stock,
   ]);
-  const viewItems = useMemo(() => (desktopWorkspace || showMobileDoctorBag) ? items.filter(item => stockKind === "services" ? item.item_kind === "service" : item.item_kind !== "service") : items, [items, desktopWorkspace, showMobileDoctorBag, stockKind]);
+  const viewItems = useMemo(() => (desktopWorkspace || showMobileDoctorBag || isAdmin) ? items.filter(item => stockKind === "services" ? item.item_kind === "service" : item.item_kind !== "service") : items, [items, desktopWorkspace, showMobileDoctorBag, isAdmin, stockKind]);
   /** Always show all seven category pills; empty categories display an empty list. */
   const categoryFolders = folders;
   const inventoryListQuery = useMemo(
@@ -3132,8 +3132,8 @@ function InventoryContent() {
   const inventoryTableScrollClass = isOperator
     ? "max-h-[min(calc(100svh-16rem),960px)]"
     : "max-h-[560px]";
-  const doctorDesktopBagTable = isDoctor && doctorViewIsMy && !(desktopWorkspace && stockKind === "services");
-  const staffDoctorBagTable = canManageOcs && !contextIsOcs && !(desktopWorkspace && stockKind === "services");
+  const doctorDesktopBagTable = isDoctor && doctorViewIsMy && !((desktopWorkspace || isAdmin) && stockKind === "services");
+  const staffDoctorBagTable = canManageOcs && !contextIsOcs && !((desktopWorkspace || isAdmin) && stockKind === "services");
   const stickyInventoryActions = doctorDesktopBagTable || staffDoctorBagTable;
   const inventoryActionsColWidth = stickyInventoryActions ? "28%" : "9.75rem";
   const inventoryTableMinWidth = doctorDesktopBagTable ? "56rem" : stickyInventoryActions ? "48rem" : "42rem";
@@ -3699,7 +3699,7 @@ function InventoryContent() {
   }
 
   function applyChaseFilter(kind) {
-    if (desktopWorkspace || showMobileDoctorBag) setStockKind("stock");
+    if (desktopWorkspace || showMobileDoctorBag || isAdmin) setStockKind("stock");
     const next =
       (kind === "low" && showLowStockOnly) ||
       (kind === "out" && showOutOfStockOnly) ||
@@ -3723,7 +3723,7 @@ function InventoryContent() {
   }
 
   function applyUnpricedFilter() {
-    if (desktopWorkspace || showMobileDoctorBag) setStockKind("stock");
+    if (desktopWorkspace || showMobileDoctorBag || isAdmin) setStockKind("stock");
     setLogisticsTab("stock");
     setSelectedView("all");
     setActiveCategory("All");
@@ -4566,7 +4566,7 @@ function InventoryContent() {
     setUnpricedFromBags(false); setCurrentPage(1);
   }
   function selectStockFolder(value, folder) {
-    if ((desktopWorkspace || showMobileDoctorBag) && value !== "all") {
+    if ((desktopWorkspace || showMobileDoctorBag || isAdmin) && value !== "all") {
       const folderItems = items.filter(item => String(item.folder_id) === String(value));
       if (folderItems.length) {
         const nextKind = folderItems.every(item => item.item_kind === "service") ? "services" : folderItems.every(item => item.item_kind !== "service") ? "stock" : stockKind;
@@ -4656,7 +4656,7 @@ function InventoryContent() {
           />
         </>
       ) : (
-        <div className={cx(pageContainerClass, (desktopWorkspace || isOperator) && "inventory-workspace legacy-workspace", isOperator || desktopWorkspace ? "space-y-4 pb-1" : "space-y-6")}>
+        <div className={cx(pageContainerClass, (desktopWorkspace || isOperator || isAdmin) && "inventory-workspace legacy-workspace", isOperator || desktopWorkspace ? "space-y-4 pb-1" : "space-y-6")}>
       <InventoryHeader
         role={user.role} refreshing={listRefreshing} onRefresh={() => { void load(undefined, undefined, { silent: true }); if (logisticsTab === "queues") notifySupplyRequestsUpdated(); }}
         className={isOperator ? "mb-0" : undefined}
@@ -4856,7 +4856,7 @@ function InventoryContent() {
         </Suspense>
       ) : null}
 
-      {canManageOcs && logisticsTab === "stock" && isAdmin ? (
+      {canManageOcs && logisticsTab === "queues" && isAdmin ? (
         <Suspense fallback={<LoadingState label="Loading supply requests" />}>
           <OperatorSupplyRequestsPanel />
         </Suspense>
@@ -4913,9 +4913,9 @@ function InventoryContent() {
       {!canManageOcs || logisticsTab === "stock" ? (
       <SectionCard
         className={isOperator ? "pb-3" : undefined}
-        subtitle={desktopWorkspace && stockKind === "services" ? `${scopeLabel} · Billing services have no stock quantities or expiry` : undefined}
+        subtitle={(desktopWorkspace || isAdmin) && stockKind === "services" ? `${scopeLabel} · Billing services have no stock quantities or expiry` : undefined}
         title={
-          desktopWorkspace && stockKind === "services" ? "Services" : isDoctor
+          (desktopWorkspace || isAdmin) && stockKind === "services" ? "Services" : isDoctor
             ? doctorViewIsOcs
               ? "OCS depot"
               : "Bag items"
@@ -4928,7 +4928,7 @@ function InventoryContent() {
 
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          {desktopWorkspace ? <nav aria-label="Inventory item type" className="flex shrink-0 items-center gap-2">{[{ id: "stock", label: "Physical stock" }, { id: "services", label: "Services" }].map(kind => <button key={kind.id} type="button" aria-pressed={stockKind === kind.id} onClick={() => selectStockKind(kind.id)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d5e4e1] bg-white px-4 text-sm font-semibold text-[#376168]">{kind.label}<span className="rounded-full bg-[#e6f2ef] px-2 py-0.5 text-xs text-[#376168]">{items.filter(item => kind.id === "services" ? item.item_kind === "service" : item.item_kind !== "service").length}</span></button>)}</nav> : null}
+          {desktopWorkspace || isAdmin ? <nav aria-label="Inventory item type" className="flex shrink-0 items-center gap-2">{[{ id: "stock", label: "Physical stock" }, { id: "services", label: "Services" }].map(kind => <button key={kind.id} type="button" aria-pressed={stockKind === kind.id} onClick={() => selectStockKind(kind.id)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d5e4e1] bg-white px-4 text-sm font-semibold text-[#376168]">{kind.label}<span className="rounded-full bg-[#e6f2ef] px-2 py-0.5 text-xs text-[#376168]">{items.filter(item => kind.id === "services" ? item.item_kind === "service" : item.item_kind !== "service").length}</span></button>)}</nav> : null}
             {isDoctor ? (desktopWorkspace ? null :
               <div className="flex shrink-0 flex-wrap gap-2">
                 <button
@@ -5333,9 +5333,9 @@ function InventoryContent() {
           </>
         ) : (
           <EmptyState
-            title={desktopWorkspace && stockKind === "services" ? "No services found" : "No stock items found"}
+            title={(desktopWorkspace || isAdmin) && stockKind === "services" ? "No services found" : "No stock items found"}
             description={
-              desktopWorkspace && stockKind === "services"
+              (desktopWorkspace || isAdmin) && stockKind === "services"
                 ? "Try another category or search term to find a billing service."
                 : canManageOcs && contextIsOcs
                 ? "Add stock in Consumable or pick another category when adding a new item."

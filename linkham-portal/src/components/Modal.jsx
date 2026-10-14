@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cx } from "../lib/utils.js";
 
@@ -12,25 +12,33 @@ function Modal({
   /** When false, children manage their own scroll (e.g. sticky footer inside form). */
   innerScroll = true,
 }) {
+  const panelRef = useRef(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
     if (!open) return undefined;
 
+    const previousFocus = document.activeElement;
+    const focusable = () => [...(panelRef.current?.querySelectorAll('button, input, select, textarea, a[href]') || [])].filter(node => !node.disabled);
+    focusable()[0]?.focus();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        onClose();
+        closeRef.current();
       }
+      if (event.key === "Tab") { const nodes = focusable(); const first = nodes[0]; const last = nodes[nodes.length - 1]; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
     };
 
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -50,6 +58,7 @@ function Modal({
       />
 
       <div
+        ref={panelRef} role="dialog" aria-modal="true" aria-label={title}
         className={cx(
           "relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-2rem))] max-h-[min(90vh,100dvh-2rem)] flex-col overflow-x-hidden rounded-[34px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:p-6",
           sizeClass,

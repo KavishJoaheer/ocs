@@ -37,8 +37,8 @@ function prioritise(a, b) {
     || timestamp(a.created_at) - timestamp(b.created_at) || a.id - b.id;
 }
 
-function RequestDetails({ request, doctors, doctorError, onRetryDoctors, onUpdate, readOnly, onDirtyChange, UrgencyBadge, InsuranceCoverageBadge, SlaChip, now, formatRequestDate, visitForLabel }) {
-  const locked = CLOSED.includes(request.status) || readOnly;
+function RequestDetails({ request, doctors, doctorError, onRetryDoctors, onUpdate, readOnly, allowClosedEdits = false, onDirtyChange, UrgencyBadge, InsuranceCoverageBadge, SlaChip, now, formatRequestDate, visitForLabel }) {
+  const locked = (CLOSED.includes(request.status) && !allowClosedEdits) || readOnly;
   const coverageBlocked = request.insurance_coverage?.is_linkham && request.insurance_coverage.allowed !== true;
   const [draft, setDraft] = useState(() => ({ doctor: String(request.assigned_doctor_id || ""), eta: request.eta_minutes ?? "", notes: request.staff_notes || "", status: request.status }));
   const [dirty, setDirty] = useState(false);
@@ -139,7 +139,7 @@ function RequestDetails({ request, doctors, doctorError, onRetryDoctors, onUpdat
   </div>;
 }
 
-export default function OperatorVisitRequests({ requests, doctors, doctorError, onRetryDoctors, onUpdate, now, isMobile, loading, refreshing, loadError, lastUpdated, onRefresh, statusFilter, onStatusFilter, appointmentChangeCount, arrivalNotice, renderDateFilter, hasDateFilter, readOnly, UrgencyBadge, InsuranceCoverageBadge, SlaChip, formatRequestDate, visitForLabel }) {
+export default function OperatorVisitRequests({ requests, doctors, doctorError, onRetryDoctors, onUpdate, now, isMobile, loading, refreshing, loadError, lastUpdated, onRefresh, statusFilter, onStatusFilter, appointmentChangeCount, arrivalNotice, renderDateFilter, hasDateFilter, readOnly, allowClosedEdits = false, UrgencyBadge, InsuranceCoverageBadge, SlaChip, formatRequestDate, visitForLabel }) {
   const [view, setView] = useState("attention");
   const [historyStatus, setHistoryStatus] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
@@ -154,7 +154,7 @@ export default function OperatorVisitRequests({ requests, doctors, doctorError, 
   const visible = view === "attention" ? needsAttention : view === "progress" ? inProgress : history;
   const selected = visible.find(request => request.id === selectedId) || (!isMobile ? visible[0] : null);
   const changes = statusFilter === "changes";
-  const detailsProps = { doctors, doctorError, onRetryDoctors, onUpdate, readOnly, onDirtyChange: setDetailDirty, UrgencyBadge, InsuranceCoverageBadge, SlaChip, now, formatRequestDate, visitForLabel };
+  const detailsProps = { doctors, doctorError, onRetryDoctors, onUpdate, readOnly, allowClosedEdits, onDirtyChange: setDetailDirty, UrgencyBadge, InsuranceCoverageBadge, SlaChip, now, formatRequestDate, visitForLabel };
   function guard(action) { if (detailDirty) setConfirmAction(() => action); else action(); }
   function changeView(next) { guard(() => { setDetailDirty(false); setSelectedId(null); setMobileOpen(false); setView(next); onStatusFilter(next === "history" ? "all" : "active"); }); }
   function openRequest(id) { guard(() => { setDetailDirty(false); setSelectedId(id); setMobileOpen(true); }); }

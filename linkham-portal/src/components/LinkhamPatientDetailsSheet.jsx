@@ -176,12 +176,12 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
             <div className="space-y-6">
               <div className="flex flex-col gap-2 rounded-2xl border border-gray-100 bg-gray-50/50 p-4">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-                  Insured Eligibility Validation Anchor
+                  Policy coverage
                 </span>
                 <div className="flex w-full items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      Policy Number Code
+                      Policy number
                     </span>
                     <span className="mt-0.5 font-mono text-sm font-black tracking-wide text-[#065a60]">
                       {policyNumberLabel}
@@ -208,7 +208,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
 
               <div className="mt-6 border-t border-gray-100 pt-4">
                 <h4 className="mb-4 text-xs font-extrabold uppercase tracking-wider text-[#065a60]">
-                  Demographics Summary
+                  Patient details
                 </h4>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-5">
@@ -216,7 +216,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
                   <MetadataField label="National ID" value={patient.national_id} mono />
                   <MetadataField label="Case Number" value={patient.case_number} mono />
                   <MetadataField label="Date of Birth" value={dobLabel} />
-                  <MetadataField label="Computed Patient Age" value={ageLabel} />
+                  <MetadataField label="Age" value={ageLabel} />
                 </div>
               </div>
 
@@ -287,7 +287,7 @@ export default function LinkhamPatientDetailsSheet({ patientId, open, onClose })
 
               <div className="mt-8 flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-5">
                 <h4 className="border-b border-gray-200/60 pb-2 text-xs font-extrabold uppercase tracking-wider text-gray-500">
-                  80/20 Financing Matrix
+                  Coverage amounts
                 </h4>
 
                 <div className="grid grid-cols-2 gap-4">

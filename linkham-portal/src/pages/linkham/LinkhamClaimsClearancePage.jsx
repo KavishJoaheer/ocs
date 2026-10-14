@@ -36,6 +36,7 @@ export default function LinkhamClaimsClearancePage() {
   const [claims, setClaims] = useState([]);
   const [ledger, setLedger] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [approvingClaimId, setApprovingClaimId] = useState(null);
   const [settlingClaimId, setSettlingClaimId] = useState(null);
   const [flaggingClaimId, setFlaggingClaimId] = useState(null);
@@ -81,10 +82,14 @@ export default function LinkhamClaimsClearancePage() {
       const params = new URLSearchParams();
       params.set("status", statusFilter);
       if (month) params.set("month", month);
-      const data = await api.get(`/linkham/claims?${params.toString()}`);
-      applyClaimsPayload(data);
-      if (showSpinner) {
-        setLoading(false);
+      try {
+        const data = await api.get(`/linkham/claims?${params.toString()}`);
+        applyClaimsPayload(data);
+        setLoadError("");
+      } catch (error) {
+        setLoadError(error.message || "Could not load claims.");
+      } finally {
+        if (showSpinner) setLoading(false);
       }
     },
     [applyClaimsPayload, statusFilter, month],
@@ -227,7 +232,8 @@ export default function LinkhamClaimsClearancePage() {
         description="Pending, flagged, approved, and paid-to-OCS. Export the current filter as CSV or PDF."
       />
 
-      <LinkhamClaimsLedger
+      {loadError ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{loadError}<button type="button" className="ml-3 font-semibold underline" onClick={() => void reloadClaims({ showSpinner: true })}>Retry claims</button></div> : null}
+      {!loadError || claims.length ? <LinkhamClaimsLedger
         claims={visibleClaims}
         statusFilter={statusFilter}
         month={month}
@@ -253,7 +259,7 @@ export default function LinkhamClaimsClearancePage() {
         onViewSummary={(claim) => {
           updateParams({ open: claim.id });
         }}
-      />
+      /> : null}
 
       <LinkhamClaimSummarySheet
         open={Boolean(selectedClaimId)}

@@ -11,7 +11,7 @@
     "dev:linkham-portal": "npm run dev --prefix linkham-portal",
     "build": "npm run build --prefix client",
     "build:patient-portal": "npm run build --prefix patient-portal",
-    "build:e2e": "npm run build --prefix client && npm run build --prefix patient-portal",
+    "build:e2e": "npm run build --prefix client && npm run build --prefix patient-portal && npm run build --prefix linkham-portal",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:patient-install": "npm run build:patient-portal && playwright test --config playwright.patient-installation.config.js",

@@ -3,6 +3,7 @@ import { execSync } from "node:child_process";
 
 const API_PORT = process.env.E2E_API_PORT || "3001";
 const STAFF_PORT = process.env.E2E_STAFF_PORT || "4173";
+const INSURANCE_PORT = process.env.E2E_INSURANCE_PORT || "4175";
 const PATIENT_PORT = process.env.E2E_PATIENT_PORT || "4174";
 
 function resolveGitSha() {
@@ -54,7 +55,7 @@ export default defineConfig({
         APP_VERSION: GIT_SHA,
         DB_PATH: E2E_DB_PATH,
         PATIENT_PORTAL_ORIGIN: `http://127.0.0.1:${PATIENT_PORT}`,
-        CLIENT_ORIGINS: `http://127.0.0.1:${STAFF_PORT},http://127.0.0.1:${PATIENT_PORT},http://localhost:${STAFF_PORT},http://localhost:${PATIENT_PORT}`,
+        CLIENT_ORIGINS: `http://127.0.0.1:${STAFF_PORT},http://127.0.0.1:${PATIENT_PORT},http://localhost:${STAFF_PORT},http://localhost:${PATIENT_PORT},http://127.0.0.1:${INSURANCE_PORT}`,
       },
     },
     {
@@ -76,6 +77,13 @@ export default defineConfig({
         ...process.env,
         VITE_PREVIEW_API: `http://127.0.0.1:${API_PORT}`,
       },
+    },
+    {
+      command: `npm run preview -- --host 127.0.0.1 --port ${INSURANCE_PORT}`,
+      cwd: "linkham-portal",
+      url: `http://127.0.0.1:${INSURANCE_PORT}`,
+      reuseExistingServer: false,
+      env: { ...process.env, VITE_PREVIEW_API: `http://127.0.0.1:${API_PORT}` },
     },
   ],
 });

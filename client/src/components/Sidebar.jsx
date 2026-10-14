@@ -121,7 +121,7 @@ const navItems = [
   },
   {
     to: "/admin/accounts",
-    label: "Chart of accounts",
+    label: "Accounting",
     icon: BookOpen,
     roles: ["admin", "accountant"],
   },
@@ -218,7 +218,7 @@ function SidebarLink({ item, mobile = false, drawer = false, badgeCount = 0, onN
           "group flex items-center transition-all",
           drawer
             ? "gap-3.5 px-4 py-3 text-[15px] font-semibold text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate"
-            : cx("min-h-11 gap-3 px-4 py-2.5 text-sm font-semibold", ["operator", "doctor"].includes(user.role) ? "rounded-full" : "rounded-2xl"),
+            : cx("min-h-11 gap-3 px-4 py-2.5 text-sm font-semibold", ["admin", "operator", "doctor"].includes(user.role) ? "rounded-full" : "rounded-2xl"),
           mobile
             ? "min-w-fit border border-ocs-teal/20 bg-white/80 text-ocs-grey hover:bg-white"
             : !drawer && "text-ocs-grey hover:bg-ocs-teal/10 hover:text-ocs-slate",
@@ -327,7 +327,7 @@ function Sidebar() {
         (item) =>
           (user.role !== "operator" || ["/action-inbox", "/teleconsultations"].includes(item.to)) &&
           !bottomPaths.has(item.to) &&
-          !DESKTOP_ONLY_PATHS.has(item.to) &&
+          (user.role === "admin" || !DESKTOP_ONLY_PATHS.has(item.to)) &&
           !item.hideInMobileDrawer,
       ),
     [visibleNavItems, bottomPaths, user.role],
@@ -436,10 +436,10 @@ function Sidebar() {
           size={36}
           logoClassName="max-h-9 w-auto object-contain"
         />
-        {["operator", "doctor"].includes(user.role) ? (
-          <button type="button" onClick={() => setDrawerOpen(true)} aria-label={`Open profile menu for ${user.full_name || user.username}, ${user.role === "doctor" && user.operation_status === "available" ? "Available" : isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
+        {["admin", "operator", "doctor"].includes(user.role) ? (
+          <button type="button" onClick={() => setDrawerOpen(true)} aria-label={user.role === "admin" ? `Open profile menu for ${user.full_name || user.username}` : `Open profile menu for ${user.full_name || user.username}, ${user.role === "doctor" && user.operation_status === "available" ? "Available" : isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
             {getOperatorInitials(user.role === "doctor" ? { ...user, full_name: String(user.full_name || "").replace(/^dr\.?\s+/i, "") } : user)}
-            <span className={cx("absolute bottom-0 right-0 size-3 rounded-full border-2 border-white", isOperatorLive(user.operation_status) ? "bg-emerald-500" : "bg-slate-400")} aria-hidden="true" />
+            {user.role !== "admin" ? <span className={cx("absolute bottom-0 right-0 size-3 rounded-full border-2 border-white", isOperatorLive(user.operation_status) ? "bg-emerald-500" : "bg-slate-400")} aria-hidden="true" /> : null}
           </button>
         ) : <div className="h-11 w-11 shrink-0" aria-hidden="true" />}
       </div>

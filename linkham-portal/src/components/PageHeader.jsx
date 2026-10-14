@@ -1,7 +1,7 @@
 function PageHeader({ eyebrow, title, description, actions, className = "" }) {
   return (
     <div
-      className={`flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:items-end md:justify-between ${className}`.trim()}
+      className={`insurance-page-header flex w-full min-w-0 max-w-full flex-col gap-3 md:flex-row md:items-end md:justify-between ${className}`.trim()}
     >
       <div className="min-w-0">
         {eyebrow ? (

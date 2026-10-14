@@ -210,8 +210,9 @@ function AppointmentsPage() {
   const [appointments, setAppointments] = useState([]);
   const [refsLoading, setRefsLoading] = useState(true);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentsReady, setAppointmentsReady] = useState(false);
   const [filters, setFilters] = useState({ doctorId: user.role === "doctor" ? String(user.doctor_id || "") : "", status: user.role === "doctor" ? "scheduled" : "" });
-  const [viewMode, setViewMode] = useState(user.role === "doctor" ? "agenda" : "calendar");
+  const [viewMode, setViewMode] = useState("agenda");
   const [agendaRange, setAgendaRange] = useState("today");
   const [visibleMonth, setVisibleMonth] = useState(dayjs().startOf("month"));
   const [editor, setEditor] = useState(null);
@@ -243,6 +244,7 @@ function AppointmentsPage() {
 
       const data = await api.get(`/appointments?${query.toString()}`);
       setAppointments(data);
+      setAppointmentsReady(true);
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -316,7 +318,7 @@ function AppointmentsPage() {
     }
   }
 
-  if (refsLoading || appointmentsLoading) {
+  if (refsLoading || (appointmentsLoading && !appointmentsReady)) {
     return <LoadingState label="Loading appointments" />;
   }
 

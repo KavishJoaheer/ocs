@@ -16,7 +16,7 @@ import {
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PageHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import { api } from "../lib/api.js";
 
 const EMPTY_STORY = {
@@ -136,13 +136,14 @@ export default function PatientCareContentPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PageHeader inlineActions
         title="Patient stories"
         description="Turn clinic updates and health advice into stories patients will want to read."
         actions={<button type="button" onClick={() => setEditor({ ...EMPTY_STORY })} className="inline-flex items-center gap-2 rounded-2xl bg-[#2d8f98] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#26717c]"><Plus className="size-4" /> New story</button>}
       />
 
-      <section className="relative overflow-hidden rounded-[28px] bg-[#3b595c] px-6 py-7 text-white shadow-[0_20px_55px_rgba(59,89,92,0.18)] sm:px-8">
+      <details className="admin-editorial-help relative overflow-hidden rounded-[28px] bg-[#3b595c] px-6 py-7 text-white shadow-[0_20px_55px_rgba(59,89,92,0.18)] sm:px-8">
+        <summary className="relative min-h-11 cursor-pointer list-none font-semibold">Writing guidance · {counts.live} published · {counts.drafts} drafts</summary>
         <span className="absolute -right-20 -top-24 size-72 rounded-full bg-[#2bccc4]/25 blur-3xl" />
         <span className="absolute bottom-[-70%] left-[35%] size-72 rounded-full bg-[#f7ba24]/12 blur-3xl" />
         <div className="relative flex flex-col justify-between gap-6 sm:flex-row sm:items-center">
@@ -156,7 +157,7 @@ export default function PatientCareContentPage() {
             <div className="min-w-24 rounded-2xl border border-white/12 bg-white/8 p-4 backdrop-blur-sm"><p className="text-2xl font-bold">{counts.drafts}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-white/55">Drafts</p></div>
           </div>
         </div>
-      </section>
+      </details>
 
       {loading ? <div className="h-64 animate-pulse rounded-[24px] bg-white/70" /> : posts.length ? (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">

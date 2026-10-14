@@ -4,7 +4,7 @@ import { Download, FileUp, FlaskConical, Microscope, UserRound } from "lucide-re
 import toast from "react-hot-toast";
 import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PageHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
@@ -119,10 +119,10 @@ function LabWorkspacePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PageHeader inlineActions
         eyebrow="Lab workspace"
         title="Lab intake queue"
-        description="Review recent consultations and coordinate follow-up work that may require lab handling or specimen tracking."
+        description="Review uploaded reports and coordinate consultation work."
       />
 
       <div className="grid gap-4 md:grid-cols-3">

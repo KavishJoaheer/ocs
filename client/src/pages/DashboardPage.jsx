@@ -36,6 +36,8 @@ import { useOperatorDashboardMetrics } from "../hooks/useOperatorDashboardMetric
 import { resolveClinicalTwinCounts } from "../lib/clinicalTwinMetrics.js";
 import { formatReviewAppointmentTime } from "../lib/patientReview.js";
 import { api } from "../lib/api.js";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import { useOperationalTaskCount } from "../hooks/useOperationalTaskCount.js";
 import DoctorDashboard from "../components/doctor-dashboard/DoctorDashboard.jsx";
 import AppUpdateBanner from "../components/AppUpdateBanner.jsx";
 import OperatorCommandCentre from "../components/operator-dashboard/OperatorCommandCentre.jsx";
@@ -113,6 +115,8 @@ function MobileLauncher({
       <OperatorMobileLauncher user={user} dashboard={dashboard} />
     );
   }
+
+  if (user.role === "admin") return <AdminDashboardView dashboard={dashboard} user={user} mobile />;
 
   const showClinicalTwin = user.role === "admin";
   const clinicalCounts = showClinicalTwin
@@ -791,20 +795,20 @@ const adminMetricVariants = {
     anchorTheme: "doctor-primary",
   },
   unpaid: {
-    card: "border border-rose-100 bg-rose-50/70 hover:bg-rose-50",
-    label: "text-rose-500",
+    card: "border border-[#eedcad] bg-[#fff8e8] hover:bg-[#fff2d4]",
+    label: "text-[#795519]",
     value: "text-slate-900",
   },
   reviews: {
-    card: "border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] hover:bg-[#f7e6db]",
-    label: "text-[#ba5a32]",
-    value: "text-[#6e2f14]",
+    card: "border border-[#eedcad] bg-[#fff8e8] hover:bg-[#fff2d4]",
+    label: "text-[#795519]",
+    value: "text-[#795519]",
     anchorTheme: "doctor-terracotta",
   },
 };
 
 function AdminMetricCard({ to, label, value, variant }) {
-  const styles = adminMetricVariants[variant];
+  const styles = Number(value) > 0 ? adminMetricVariants[variant] : adminMetricVariants.visits;
 
   return (
     <Link
@@ -823,125 +827,35 @@ function AdminMetricCard({ to, label, value, variant }) {
   );
 }
 
-function AdminDashboardView({ dashboard }) {
+function AdminDashboardView({ dashboard, user, mobile = false }) {
   const counts = resolveClinicalTwinCounts("admin", { dashboard });
   const visitsToday = getAdminVisitsToday(dashboard);
-  const unpaidCount = Number(dashboard?.summary?.pendingBills ?? 0);
-  const totalPatients = Number(dashboard?.summary?.totalPatients ?? 0);
-  const visibleVisits = visitsToday.slice(0, 8);
-
+  const actionCount = useOperationalTaskCount(user);
+  const firstName = String(user?.full_name || "").replace(/^dr\.?\s+/i, "").trim().split(/\s+/)[0] || "there";
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ocs-slate md:text-[2.125rem]">
-            Today
-          </h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">{dayjs().format("dddd D MMMM")}</p>
-        </div>
-        <Link to="/patients" className="shrink-0 text-right transition hover:opacity-90">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Live Patients</p>
-          <p className="mt-1 text-3xl font-black tabular-nums tracking-tight text-ocs-teal">{totalPatients}</p>
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-gray-400">Clinic wide</p>
-        </Link>
-      </div>
-
+    <div className="admin-dashboard mx-auto w-full min-w-0 max-w-6xl space-y-5">
+      <PatientWorkspaceHeader title={`${getTimeOfDayGreeting()}, ${firstName}`} subtitle={`${dayjs().format("dddd D MMMM")} · Clinic overview`} role="admin"
+        actions={!mobile ? <Link to="/patients/add" className="patient-control patient-control-primary"><UserPlus className="size-4" />Add patient</Link> : null}>
+        <Link to="/patients?tab=pending_approval" className={cx("patient-control", Number(dashboard?.pendingPatientApprovalCount) > 0 && "border-amber-300 bg-amber-50 text-amber-900")}>Patient approvals{dashboard?.pendingPatientApprovalCount != null ? ` · ${dashboard.pendingPatientApprovalCount}` : ""}</Link>
+      </PatientWorkspaceHeader>
       <LowStockBanner alert={dashboard?.ocs_low_stock_alert} variant="ocs" />
-
-      <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-3">
-        <AdminMetricCard
-          to="/appointments"
-          label="Visits today"
-          value={visitsToday.length}
-          variant="visits"
-        />
-        <AdminMetricCard
-          to="/billing?status=unpaid"
-          label="Unpaid bills"
-          value={unpaidCount}
-          variant="unpaid"
-        />
-        <AdminMetricCard
-          to="/admin/long-term-review"
-          label="Reviews due"
-          value={counts.longTermReviewCount}
-          variant="reviews"
-        />
+      <div className="admin-dashboard-metrics grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <AdminMetricCard to="/appointments" label="Visits today" value={visitsToday.length} variant="visits" />
+        <AdminMetricCard to="/admin/finance?section=receivables&status=unpaid" label="Unpaid bills" value={Number(dashboard?.summary?.pendingBills || 0)} variant="unpaid" />
+        <AdminMetricCard to="/admin/long-term-review" label="Review appointments" value={counts.longTermReviewCount} variant="reviews" />
+        <AdminMetricCard to="/action-inbox" label="Pending actions" value={actionCount} variant="reviews" />
       </div>
-
-      <div className="grid w-full grid-cols-1 items-start gap-6 lg:grid-cols-5">
-        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-3">
-          <div className="flex items-center justify-between gap-3 border-b border-gray-50 pb-3">
-            <span className="text-sm font-semibold text-slate-800">Today’s visits</span>
-            <Link to="/appointments" className="text-xs font-semibold text-slate-500 transition hover:text-ocs-slate">
-              Appointments
-            </Link>
-          </div>
-          {visibleVisits.length ? (
-            <ul className="mt-3 divide-y divide-slate-100">
-              {visibleVisits.map((visit) => {
-                const timeLabel =
-                  formatReviewAppointmentTime(visit.appointment_time) ||
-                  String(visit.appointment_time || "").slice(0, 5);
-                const place = String(visit.location || "").trim();
-
-                return (
-                  <li key={visit.id}>
-                    <Link
-                      to={visit.patient_id ? `/patients/${visit.patient_id}` : "/appointments"}
-                      className="flex items-start justify-between gap-3 py-3 transition hover:bg-slate-50"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold tabular-nums text-slate-900">{timeLabel}</p>
-                        <p className="mt-0.5 text-sm font-semibold leading-snug text-slate-800">
-                          {visit.patient_name}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-slate-500">
-                          {visit.doctor_name}
-                          {place ? ` · ${place}` : ""}
-                        </p>
-                      </div>
-                      <span className="shrink-0 pt-0.5 text-xs font-semibold text-ocs-teal">Open</span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-sm text-slate-500">No visits booked today.</p>
-              <Link to="/appointments" className="text-xs font-semibold text-ocs-teal">
-                Appointments
-              </Link>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4 lg:col-span-2">
-          <Link
-            to="/billing?status=unpaid"
-            className="flex min-h-[160px] flex-col justify-between rounded-2xl border border-gray-100 border-l-4 border-l-ocs-teal bg-white p-6 shadow-sm transition-colors hover:shadow-md"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-600">Unpaid</span>
-              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                {unpaidCount} bill{unpaidCount === 1 ? "" : "s"}
-              </span>
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="min-w-0 text-xs font-semibold leading-normal text-slate-700">
-                Open billing to collect. Not counted in doctor net until paid.
-              </p>
-              <span className="shrink-0 text-xs font-semibold text-ocs-teal">Open billing</span>
-            </div>
-          </Link>
-
-        </div>
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-2">
+        <OperatorMobileLiveRequests visits={dashboard?.liveVisitRequests} readOnly />
+        <section className="min-w-0 rounded-[28px] border border-[#d5e4e1] bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold text-[#173f4a]">Today’s appointments</h2><Link to="/appointments" className="patient-control">View schedule</Link></div>
+          {visitsToday.length ? <ul className="mt-3 divide-y divide-[#e3eeeb]">{visitsToday.slice(0, 8).map(visit => <li key={visit.id}><Link to={visit.patient_id ? `/patients/${visit.patient_id}` : "/appointments"} className="flex min-h-16 items-start gap-3 py-3 text-sm"><span className="shrink-0 rounded-full bg-[#edf5f2] px-3 py-1 font-semibold text-[#137b80]">{formatReviewAppointmentTime(visit.appointment_time) || String(visit.appointment_time || "").slice(0, 5)}</span><span className="min-w-0"><strong className="block break-words text-[#173f4a]">{visit.patient_name}</strong><span className="mt-1 block break-words text-[#526d75]">{visit.doctor_name}{visit.location ? ` · ${visit.location}` : ""}</span></span></Link></li>)}</ul> : <p className="py-5 text-sm text-[#526d75]">No appointments today.</p>}
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#e3eeeb] pt-4"><Link to="/team-operations" className="patient-control">Team accounts</Link>{mobile ? <Link to="/patients/add" className="patient-control">Add patient</Link> : null}</div>
+        </section>
       </div>
     </div>
   );
 }
-
 
 function DashboardPage() {
   const { user, updateUser } = useAuth();
@@ -960,15 +874,16 @@ function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [data, doctorWorkspace, liveVisitRequests] = await Promise.all([
+        const [data, doctorWorkspace, liveVisitRequests, patientApprovals] = await Promise.all([
           api.get("/dashboard"),
           user.role === "doctor" ? api.get("/dashboard/doctor-workspace") : Promise.resolve(null),
-          user.role === "operator"
+          ["operator", "admin"].includes(user.role)
             ? api.get("/visit-requests?status=active").catch(() => null)
             : Promise.resolve(null),
+          user.role === "admin" ? api.get("/patients?pendingApproval=1&page=1&limit=1").catch(() => null) : Promise.resolve(null),
         ]);
 
-        let merged = data;
+        let merged = patientApprovals ? { ...data, pendingPatientApprovalCount: patientApprovals.pagination?.total ?? 0 } : data;
         if (doctorWorkspace) {
           merged = { ...merged, doctorWorkspace };
         }
@@ -1018,7 +933,7 @@ function DashboardPage() {
   }, [user.role, refreshKey, isMobile]);
 
   useEffect(() => {
-    if (!isOperator) return undefined;
+    if (!isOperator && user.role !== "admin") return undefined;
     let ignore = false;
     const timer = window.setInterval(async () => {
       try {
@@ -1032,7 +947,7 @@ function DashboardPage() {
       ignore = true;
       window.clearInterval(timer);
     };
-  }, [isOperator, isMobile]);
+  }, [isOperator, isMobile, user.role]);
 
   async function handleStatusChange(nextStatus) {
     if (isSavingStatus || user.operation_status === nextStatus) {
@@ -1125,7 +1040,7 @@ function DashboardPage() {
     );
   }
 
-  return <AdminDashboardView dashboard={dashboard} />;
+  return <AdminDashboardView dashboard={dashboard} user={user} />;
 }
 
 export default DashboardPage;

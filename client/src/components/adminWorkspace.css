@@ -1,0 +1,41 @@
+.admin-workspace { --workspace-primary: #137b80; color: #173f4a; }
+.admin-workspace .admin-support-panel { border: 1px solid #d5e4e1; border-radius: 24px; padding: 12px 18px; background: white; }
+.admin-support-panel > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.admin-workspace .team-workspace table { font-size: 14px; }
+.admin-workspace .team-workspace td { overflow-wrap: anywhere; }
+.admin-workspace .team-workspace :is(button,input,select) { min-height: 44px; }
+.admin-dashboard-metrics > a { padding: 16px; border-radius: 26px; box-shadow: none; }
+.admin-dashboard-metrics > a p { margin-top: 12px; font-size: 28px; }
+.admin-workspace .finance-controls { min-width: 0; }
+.admin-workspace .admin-editorial-help { padding: 14px 20px; box-shadow: none; }
+.admin-workspace .admin-editorial-help[open] { padding-bottom: 24px; }
+@media (max-width: 767px) {
+  .patient-header-main { display: grid; grid-template-columns: minmax(0,1fr); }
+  .patient-header-actions { flex-wrap: wrap; max-width: 100%; justify-self: start; }
+  .patient-header-actions > div { max-width: 100%; }
+  .admin-dashboard-metrics > a { padding: 12px; }
+  .admin-dashboard-metrics > a span { letter-spacing: 0; font-size: 12px; text-transform: none; }
+  .admin-dashboard-metrics > a p { font-size: 24px; }
+  .admin-workspace .accounting-metrics > div { padding: 12px; }
+  .admin-workspace .accounting-metrics p { font-size: 12px; letter-spacing: 0; }
+  .admin-workspace .accounting-metrics p:nth-child(2) { font-size: 18px; overflow-wrap: anywhere; }
+  .admin-workspace .responsive-record-table, .admin-workspace .responsive-record-table tbody { display: block; width: 100%; }
+  .admin-workspace .responsive-record-table thead { display: none; }
+  .admin-workspace .responsive-record-table tr { display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; padding: 16px; border-bottom: 1px solid #d5e4e1; }
+  .admin-workspace .responsive-record-table td { display: block; padding: 0; min-width: 0; border: 0; text-align: left; }
+  .admin-workspace .responsive-record-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; color: #526d75; font-size: 12px; font-weight: 500; }
+  .admin-workspace .responsive-record-table td[data-label="Actions"] > div { justify-content: flex-start; flex-wrap: wrap; }
+  .admin-workspace .finance-controls > div { gap: 12px; }
+  .admin-workspace .finance-controls > div + div { margin-top: 12px; padding-top: 12px; }
+  .admin-workspace .inventory-summary > div { max-width: 100%; overflow-x: auto; }
+}
+@media (max-width: 767px) {
+  .admin-workspace .responsive-record-table { min-width: 0; }
+  .admin-workspace .admin-finance-workspace > div[class*="grid-cols-1"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .admin-workspace .admin-finance-workspace > div[class*="grid-cols-1"] > div { min-width: 0; padding: 12px; }
+  .admin-workspace .admin-finance-workspace > div[class*="grid-cols-1"] p { overflow-wrap: anywhere; }
+}
+.admin-workspace .responsive-record-table button { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 767px) {
+  .admin-workspace .team-workspace td[data-label="Actions"] > div { flex-wrap: wrap; }
+}

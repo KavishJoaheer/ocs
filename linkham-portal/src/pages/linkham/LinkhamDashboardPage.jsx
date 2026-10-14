@@ -87,16 +87,19 @@ function formatActivityTime(value) {
 export default function LinkhamDashboardPage() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [retryVersion, setRetryVersion] = useState(0);
 
   useEffect(() => {
     let ignore = false;
     async function loadMetrics({ showSpinner = true } = {}) {
       if (showSpinner) setLoading(true);
       try {
+        setLoadError("");
         const data = await api.get("/linkham/dashboard");
         if (!ignore) setMetrics(data);
       } catch (error) {
-        if (!ignore) toast.error(error.message);
+        if (!ignore) { setLoadError(error.message); toast.error(error.message); }
       } finally {
         if (!ignore && showSpinner) setLoading(false);
       }
@@ -110,7 +113,7 @@ export default function LinkhamDashboardPage() {
       window.removeEventListener(LINKHAM_PATIENTS_EVENT, refresh);
       window.removeEventListener(LINKHAM_CLAIMS_EVENT, refresh);
     };
-  }, []);
+  }, [retryVersion]);
 
   const workItems = useMemo(() => {
     const items = [];
@@ -161,6 +164,8 @@ export default function LinkhamDashboardPage() {
 
   if (loading) return <LoadingState label="Loading Linkham work queue" />;
 
+  if (loadError) return <section className="insurance-page-header"><h1>Coverage overview unavailable</h1><p role="alert" className="mt-3 text-sm">{loadError}</p><button type="button" className="mt-3 border border-[#d5e4e1] bg-white px-4 py-2" onClick={() => setRetryVersion(value => value + 1)}>Retry</button></section>;
+
   const coverageIssues = Number(metrics?.missingPolicyCount || 0)
     + Number(metrics?.unregisteredPolicyCount || 0)
     + Number(metrics?.redPolicyCount || 0);
@@ -169,7 +174,7 @@ export default function LinkhamDashboardPage() {
 
   return (
     <div className="animate-fade-in space-y-5 pb-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header className="insurance-page-header flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#065a60]">Linkham command centre</p>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-[#14213d]">Today’s coverage work</h1>
@@ -228,8 +233,8 @@ export default function LinkhamDashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.45fr)]">
-        <section className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="insurance-priority-layout grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(17rem,0.45fr)]">
+        <section className="min-w-0 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h2 className="text-sm font-black text-slate-900">Priority work queue</h2>
@@ -246,7 +251,7 @@ export default function LinkhamDashboardPage() {
           </div>
         </section>
 
-        <section className="flex flex-col rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+        <section className="min-w-0 flex flex-col rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-black text-slate-900">Month-end settlement</h2>
@@ -255,13 +260,6 @@ export default function LinkhamDashboardPage() {
             <span className="grid size-9 place-items-center rounded-xl bg-[#065a60]/8 text-[#065a60]">
               <ShieldCheck className="size-4.5" />
             </span>
-          </div>
-          <div className="mt-5 rounded-2xl bg-[#065a60] p-4 text-white">
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-white/55">Ready for payment</p>
-            <p className="mt-1 text-2xl font-black tabular-nums tracking-tight">{formatRupees(metrics?.approvedAwaitingPaymentAmount || 0)}</p>
-            <p className="mt-1 text-[10px] font-semibold text-white/60">
-              {metrics?.approvedAwaitingPaymentCount || 0} approved claim{Number(metrics?.approvedAwaitingPaymentCount || 0) === 1 ? "" : "s"}
-            </p>
           </div>
           <div className="mt-4 flex items-center justify-between gap-3 text-[10px] font-bold text-slate-400">
             <span>{metrics?.pendingCleanCount || 0} awaiting review</span>

@@ -19,9 +19,9 @@ import { formatRupees } from "../../lib/format.js";
 import { linkhamChartStyles } from "../../lib/linkhamTheme.js";
 
 const AXIS_TICK = {
-  fontSize: 10,
+  fontSize: 12,
   fontWeight: 600,
-  fill: "#9ca3af",
+  fill: "#526d75",
 };
 
 const Y_AXIS_TICK = {
@@ -74,6 +74,8 @@ export default function LinkhamReportsPage() {
   const [claimsTimeFilter, setClaimsTimeFilter] = useState("month");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [retryVersion, setRetryVersion] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -81,6 +83,7 @@ export default function LinkhamReportsPage() {
     async function loadReport() {
       setLoading(true);
       try {
+        setLoadError("");
         const data = await api.get(
           `/linkham/reports?seenFilter=${encodeURIComponent(seenTimeFilter)}&claimsFilter=${encodeURIComponent(claimsTimeFilter)}`,
         );
@@ -89,7 +92,7 @@ export default function LinkhamReportsPage() {
         }
       } catch (error) {
         if (!ignore) {
-          toast.error(error.message);
+          setLoadError(error.message); toast.error(error.message);
         }
       } finally {
         if (!ignore) {
@@ -111,7 +114,7 @@ export default function LinkhamReportsPage() {
       window.removeEventListener(LINKHAM_CLAIMS_EVENT, handleRefresh);
       window.removeEventListener(LINKHAM_PATIENTS_EVENT, handleRefresh);
     };
-  }, [seenTimeFilter, claimsTimeFilter]);
+  }, [seenTimeFilter, claimsTimeFilter, retryVersion]);
 
   const patientsSeenRows = useMemo(
     () =>
@@ -145,9 +148,11 @@ export default function LinkhamReportsPage() {
     return <LoadingState label="Loading analytics ledger" />;
   }
 
+  if (loadError) return <section className="insurance-page-header"><h1>Reports unavailable</h1><p role="alert" className="mt-3 text-sm">{loadError}</p><button type="button" className="mt-3 border border-[#d5e4e1] bg-white px-4 py-2" onClick={() => setRetryVersion(value => value + 1)}>Retry</button></section>;
+
   async function handleExportMonthCsv() {
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const dateParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Indian/Mauritius", year: "numeric", month: "2-digit" }).formatToParts(new Date());
+    const month = `${dateParts.find(part => part.type === "year").value}-${dateParts.find(part => part.type === "month").value}`;
     const { blob, filename } = await api.getBlob(
       `/linkham/claims/statement.csv?status=all&month=${encodeURIComponent(month)}`,
     );
@@ -162,10 +167,10 @@ export default function LinkhamReportsPage() {
   }
 
   return (
-    <div className="animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
+    <div className="insurance-reports animate-fade-in flex min-h-[calc(100vh-3rem)] flex-col gap-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-xl font-extrabold text-[#14213d]">Data & Analytics Ledger</h1>
+          <h1 className="text-2xl font-extrabold text-[#14213d]">Reports</h1>
           <span className="text-xs font-medium text-gray-400">
             Visit volume, claims outlay, and a monthly 80% statement for finance.
           </span>
@@ -205,7 +210,7 @@ export default function LinkhamReportsPage() {
             </select>
           </div>
 
-          <div className="h-64 min-h-[16rem] w-full">
+          <div className="insurance-chart h-64 min-h-[16rem] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={patientsSeenRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid
@@ -249,15 +254,14 @@ export default function LinkhamReportsPage() {
         <div className="flex h-full flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">
-              Case Density Heatmap
+              Visits by district
             </span>
             <span className="rounded-md bg-[#065a60]/10 px-2 py-0.5 text-[10px] font-bold text-[#065a60]">
-              Geographic Intelligence
+              Last 14 days
             </span>
           </div>
           <LinkhamMauritiusHeatmap
             clusters={report?.geographicHeatmap?.clusters || []}
-            predictiveInsight={report?.predictiveInsight}
           />
         </div>
 

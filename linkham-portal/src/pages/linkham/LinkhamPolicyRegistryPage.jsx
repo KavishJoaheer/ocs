@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import EmptyState from "../../components/EmptyState.jsx";
 import LinkhamPolicyImportPanel from "../../components/LinkhamPolicyImportPanel.jsx";
 import LoadingState from "../../components/LoadingState.jsx";
+import Modal from "../../components/Modal.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import { api } from "../../lib/api.js";
 
@@ -28,6 +29,8 @@ export default function LinkhamPolicyRegistryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -68,6 +71,7 @@ export default function LinkhamPolicyRegistryPage() {
 
   function resetForm() {
     setEditingId(null);
+    setEditorOpen(false);
     setForm(EMPTY_FORM);
     if (searchParams.has("edit")) {
       const next = new URLSearchParams(searchParams);
@@ -85,7 +89,7 @@ export default function LinkhamPolicyRegistryPage() {
       coverage_status: policy.coverage_status || "green",
       status_reason: policy.status_reason || "",
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setEditorOpen(true);
   }
 
   async function handleSubmit(event) {
@@ -113,11 +117,102 @@ export default function LinkhamPolicyRegistryPage() {
       <PageHeader
         eyebrow="Linkham insurer portal"
         title="Policy registry"
-        description="Maintain the policy number, Mauritius ID and OCS eligibility flag used by operators during patient registration."
+        description="Find policies and manage OCS eligibility."
+        actions={<><button type="button" onClick={() => { resetForm(); setEditorOpen(true); }} className="rounded-full bg-[#137b80] px-4 py-2 text-sm font-semibold text-white">Add policy</button><button type="button" onClick={() => setImportOpen(true)} className="rounded-full border border-[#d5e4e1] bg-white px-4 py-2 text-sm font-semibold text-[#376168]">Import policies</button></>}
       />
 
-      <LinkhamPolicyImportPanel onImported={loadPolicies} />
 
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSearch(value);
+            const next = new URLSearchParams(searchParams);
+            if (value.trim()) next.set("search", value);
+            else next.delete("search");
+            setSearchParams(next, { replace: true });
+          }}
+          placeholder="Search policy, Mauritius ID, or holder"
+          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium md:max-w-md"
+        />
+        <div className="flex gap-2">
+          {["all", "green", "red"].map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setStatusFilter(status)}
+              className={`rounded-xl border px-3 py-2 text-xs font-extrabold capitalize ${
+                statusFilter === status
+                  ? status === "all"
+                    ? "border-[#065a60] bg-[#065a60]/5 text-[#065a60]"
+                    : statusClasses(status)
+                  : "border-gray-200 bg-white text-gray-500"
+              }`}
+            >
+              {status === "all" ? "All" : status === "green" ? "Eligible" : "Not eligible"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <LoadingState label="Loading policy registry" />
+      ) : visiblePolicies.length ? (
+        <div className="grid gap-3">
+          {visiblePolicies.map((policy) => {
+            const StatusIcon = policy.coverage_status === "green" ? CheckCircle2 : ShieldAlert;
+            return (
+              <article
+                key={policy.id}
+                className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between"
+              >
+                <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Policy number</p>
+                    <p className="mt-1 font-mono text-sm font-black text-gray-900">{policy.policy_number}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Mauritius ID</p>
+                    <p className="mt-1 font-mono text-sm font-bold text-gray-800">{policy.national_id}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Policy holder</p>
+                    <p className="mt-1 truncate text-sm font-bold text-gray-800">{policy.holder_name || "Not recorded"}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-3 md:justify-end">
+                  <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${statusClasses(policy.coverage_status)}`}>
+                    <StatusIcon className="size-4" />
+                    <div>
+                      <p className="text-xs font-extrabold capitalize">{policy.coverage_status === "green" ? "Eligible" : "Not eligible"}</p>
+                      {policy.status_reason ? <p className="max-w-52 text-[10px] font-medium">{policy.status_reason}</p> : null}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(policy)}
+                    className="rounded-xl border border-gray-200 p-2.5 text-gray-600 hover:border-[#065a60] hover:text-[#065a60]"
+                    aria-label={`Edit policy ${policy.policy_number}`}
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          title="No policies found"
+          description="Add the first policy or change the current search and status filters."
+        />
+      )}
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import policies" size="lg">      <LinkhamPolicyImportPanel onImported={loadPolicies} />
+      </Modal>
+
+      <Modal open={editorOpen} onClose={() => { if (!saving) resetForm(); }} title={editingId ? "Edit policy" : "Add policy"} size="xl">
       <form
         onSubmit={handleSubmit}
         className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
@@ -189,7 +284,7 @@ export default function LinkhamPolicyRegistryPage() {
                       : "border-gray-200 bg-white text-gray-500"
                   }`}
                 >
-                  {status}
+                  {status === "green" ? "Eligible" : "Not eligible"}
                 </button>
               ))}
             </div>
@@ -215,94 +310,8 @@ export default function LinkhamPolicyRegistryPage() {
           </button>
         </div>
       </form>
+      </Modal>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <input
-          type="search"
-          value={search}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSearch(value);
-            const next = new URLSearchParams(searchParams);
-            if (value.trim()) next.set("search", value);
-            else next.delete("search");
-            setSearchParams(next, { replace: true });
-          }}
-          placeholder="Search policy, Mauritius ID, or holder"
-          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium md:max-w-md"
-        />
-        <div className="flex gap-2">
-          {["all", "green", "red"].map((status) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() => setStatusFilter(status)}
-              className={`rounded-xl border px-3 py-2 text-xs font-extrabold capitalize ${
-                statusFilter === status
-                  ? status === "all"
-                    ? "border-[#065a60] bg-[#065a60]/5 text-[#065a60]"
-                    : statusClasses(status)
-                  : "border-gray-200 bg-white text-gray-500"
-              }`}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading ? (
-        <LoadingState label="Loading policy registry" />
-      ) : visiblePolicies.length ? (
-        <div className="grid gap-3">
-          {visiblePolicies.map((policy) => {
-            const StatusIcon = policy.coverage_status === "green" ? CheckCircle2 : ShieldAlert;
-            return (
-              <article
-                key={policy.id}
-                className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between"
-              >
-                <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Policy number</p>
-                    <p className="mt-1 font-mono text-sm font-black text-gray-900">{policy.policy_number}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Mauritius ID</p>
-                    <p className="mt-1 font-mono text-sm font-bold text-gray-800">{policy.national_id}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Policy holder</p>
-                    <p className="mt-1 truncate text-sm font-bold text-gray-800">{policy.holder_name || "Not recorded"}</p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 md:justify-end">
-                  <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${statusClasses(policy.coverage_status)}`}>
-                    <StatusIcon className="size-4" />
-                    <div>
-                      <p className="text-xs font-extrabold capitalize">{policy.coverage_status} flag</p>
-                      {policy.status_reason ? <p className="max-w-52 text-[10px] font-medium">{policy.status_reason}</p> : null}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => startEdit(policy)}
-                    className="rounded-xl border border-gray-200 p-2.5 text-gray-600 hover:border-[#065a60] hover:text-[#065a60]"
-                    aria-label={`Edit policy ${policy.policy_number}`}
-                  >
-                    <Pencil className="size-4" />
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptyState
-          title="No policies found"
-          description="Add the first policy or change the current search and status filters."
-        />
-      )}
     </div>
   );
 }

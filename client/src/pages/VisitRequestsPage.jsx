@@ -1003,8 +1003,8 @@ export default function VisitRequestsPage() {
       onStatusFilter={setStatusFilter} renderDateFilter={renderDateFilter} hasDateFilter={hasDateFilter}
       Card={DoctorVisitCard} onUpdate={handleUpdate} />;
   }
-  if (isOperator) {
-    return <OperatorVisitRequests
+  if (isOperator || isAdmin) {
+    return <OperatorVisitRequests allowClosedEdits={isAdmin}
       requests={requests} doctors={activeDoctors} doctorError={doctorError} onRetryDoctors={loadDoctors}
       onUpdate={handleUpdate} now={now} isMobile={isOperatorCompact} loading={loading} refreshing={refreshing}
       loadError={loadError} lastUpdated={lastUpdated} onRefresh={() => { loadRequests({ silent: true }); loadDoctors(); }}
