@@ -6,7 +6,7 @@ const { normalizeMobile } = require("../lib/patientMagicLinks");
 const { CONSENT_VERSION, CONSENT, SELECT, getTeleconsultation, serializeTeleconsultation } = require("../lib/teleconsultations");
 const { publishPatientDataChange } = require("../lib/inventoryRealtime");
 const { normalizeConsultationNotesPayload } = require("../lib/consultationNotes");
-const { sendPushToRole, sendPushToUser, sendPushToPatientUser } = require("../lib/push");
+const { sendPushToPatientUser } = require("../lib/push");
 const patientRouter = express.Router();
 const staffRouter = express.Router();
 function changed(row) { publishPatientDataChange(row.patient_id, { reason: "teleconsultation", notifyDoctorIds: [row.assigned_doctor_id] }); }
@@ -47,9 +47,6 @@ patientRouter.post("/", (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, req.patientAuth.id, reason, location, callback, code, CONSENT_VERSION, JSON.stringify(CONSENT));
   const row = getTeleconsultation(result.lastInsertRowid);
   changed(row);
-  for (const role of ["operator", "admin"]) {
-    void sendPushToRole(role, { title: "New teleconsultation request", body: "Open VP and accept the new patient request before assigning a doctor.", url: "/teleconsultations", tag: `teleconsultation-request-${row.id}`, requireInteraction: true }).catch(() => {});
-  }
   return res.status(201).json({ request: serializeTeleconsultation(row) });
 });
 patientRouter.post("/:id/cancel", (req, res) => {
@@ -108,7 +105,6 @@ staffRouter.post("/:id/assign", (req, res) => {
     status='assigned', code_attempts=0, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(doctorId, req.auth.id, row.id);
   notifyPatient(row, "Doctor assigned", "Your OCS teleconsultation has been assigned. Open Care to see your doctor and consultation code.");
   publishPatientDataChange(row.patient_id, { reason: "teleconsultation", notifyDoctorIds: [row.assigned_doctor_id, doctorId] });
-  void sendPushToUser(doctor.user_id, { title: "Teleconsultation assigned", body: "Open VP to review your assigned request and contact the patient.", url: "/teleconsultations" }).catch(() => {});
   return res.json({ request: serializeTeleconsultation(getTeleconsultation(row.id), { staff: true }) });
 });
 staffRouter.post("/:id/start", (req, res) => {

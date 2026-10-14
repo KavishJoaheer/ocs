@@ -122,8 +122,8 @@ function getPushDeliveryOptions(payload = {}) {
   // services a 24h retention window so devices that are temporarily offline
   // still receive low-stock/critical notifications when they reconnect.
   const options = {
-    TTL: 86400,
-    urgency: "high",
+    TTL: Number.isInteger(payload.delivery_ttl) && payload.delivery_ttl >= 0 && payload.delivery_ttl <= 86400 ? payload.delivery_ttl : 86400,
+    urgency: ["very-low", "low", "normal", "high"].includes(payload.delivery_urgency) ? payload.delivery_urgency : "high",
   };
 
   const topic = String(payload?.tag || "").trim();

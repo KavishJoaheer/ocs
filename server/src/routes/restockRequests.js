@@ -1256,20 +1256,6 @@ router.post("/", (req, res) => {
     return res.status(error.status || 400).json({ error: error.message || "Could not create supply request." });
   }
 
-  if (!replayed) notifyBestEffort(
-    () =>
-      sendPushToRole("operator", {
-        title: "📋 Restock Request",
-        body: `Dr. ${created.doctor_name} requested ${created.items.length} item${
-          created.items.length === 1 ? "" : "s"
-        } for ${created.collection_date}.`,
-        url: "/inventory",
-        icon: "/icon-192.png",
-        tag: `restock-request-${created.id}`,
-      }),
-    "restock request operator notify failed",
-  );
-
   if (!replayed) broadcastSupplyRequestChange(doctorId);
 
   if (replayed) res.setHeader("X-Idempotent-Replay", "true");

@@ -159,6 +159,14 @@ router.patch("/:id", (req, res) => {
 
   const updates = [];
   const params = [];
+  if (req.body.assigned_doctor_id !== undefined && Number(req.body.assigned_doctor_id || 0) !== Number(existing.assigned_doctor_id || 0)) {
+    updates.push("operational_assigned_at = ?");
+    params.push(new Date().toISOString());
+  }
+  if (req.body.status === "en_route" && existing.status !== "en_route") {
+    updates.push("en_route_at = ?");
+    params.push(new Date().toISOString());
+  }
 
   if (req.body.status !== undefined) {
     const status = String(req.body.status).trim().toLowerCase();
@@ -196,6 +204,8 @@ router.patch("/:id", (req, res) => {
   }
 
   if (req.body.eta_minutes !== undefined) {
+    updates.push("eta_updated_at = ?");
+    params.push(new Date().toISOString());
     const etaRaw = req.body.eta_minutes;
     if (etaRaw === null || etaRaw === "") {
       updates.push("eta_minutes = NULL");
@@ -216,6 +226,11 @@ router.patch("/:id", (req, res) => {
 
   if (updates.length === 0) {
     return res.status(400).json({ error: "No valid fields provided for update." });
+  }
+
+  if (isDispatchRole(role)) {
+    updates.push("dispatch_owner_user_id = COALESCE(dispatch_owner_user_id, ?)", "dispatch_accepted_at = COALESCE(dispatch_accepted_at, ?)");
+    params.push(req.auth.id, new Date().toISOString());
   }
 
   const completingNow = String(req.body.status || "").trim().toLowerCase() === "completed";

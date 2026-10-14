@@ -45,6 +45,8 @@ const {
 const { withClientSessionContext, handlePatientPortalStream } = require("./lib/inventoryRealtime");
 const { getBuildInfo } = require("./lib/buildInfo");
 const { syncOperationalLedger } = require("./lib/accountingLedger");
+const operationalTasksRouter = require("./routes/operationalTasks");
+const { ensureOperationalTaskSchema, reconcileAfterOperationalWrite } = require("./lib/operationalTasks");
 
 let initialized = false;
 
@@ -145,6 +147,7 @@ function createApp() {
     initialized = true;
   }
   warnAboutKnownDefaultPasswords();
+  ensureOperationalTaskSchema();
 
   const configuredOrigins = getAllowedOrigins();
   const productionMode = isProductionEnv();
@@ -285,6 +288,7 @@ function createApp() {
   // Apply the API throttle before any router so it covers public push +
   // auth endpoints too. Login attempts get an additional, stricter limiter.
   app.use("/api", apiLimiter);
+  app.use("/api", reconcileAfterOperationalWrite);
   app.use("/api/auth/login", loginLimiter);
   app.use("/api/patient-auth/login", loginLimiter);
   app.use("/api/patient-auth/register", loginLimiter);
@@ -292,6 +296,7 @@ function createApp() {
   app.use("/api/patient-auth/forgot-password", loginLimiter);
 
   app.use("/api/auth", authRouter);
+  app.use("/api/operational-tasks", requireAuth, authorizeRoles("admin", "operator", "doctor", "lab_tech"), operationalTasksRouter);
   app.use("/api/push", pushRouter);
   app.use(
     "/api/dashboard",

@@ -8,6 +8,7 @@ const { syncDoctorStockFromOcsSync } = require("./scripts/syncDoctorStockFromOcs
 const { isEnvTrue } = require("./lib/envFlags");
 const { alignInventoryCategories } = require("./lib/inventoryCategoryAlignment");
 const { ensureTreatmentCatalogue } = require("./lib/treatmentSupplies");
+const { startOperationalWorkflow } = require("./lib/operationalTasks");
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3001;
@@ -142,6 +143,7 @@ try {
 }
 
 app.listen(PORT, HOST, () => {
+  startOperationalWorkflow();
   const dbPath = process.env.DB_PATH || "server/data/clinic.db";
   console.log(`OCS API (SQLite, full billing + inventory) on http://${HOST}:${PORT}`);
   console.log(`[db] ${dbPath}`);

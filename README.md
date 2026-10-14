@@ -143,6 +143,16 @@ The backend exposes a JSON REST API under `/api`, including:
 - `/api/consultations`
 - `/api/billing`
 
+## Action inbox and notification workflow
+
+Staff can open **Action inbox** from the navigation menu. It tracks dispatch ownership, doctor acknowledgement, expected-arrival checks, due or unscheduled reviews, new or corrected report reviews, and supply acceptance/preparation. Tasks persist even when push notifications are unavailable. Acknowledgement accepts responsibility; it does not complete the source work. Complete, cancel or reschedule care in its existing workflow. Report reviews require an outcome note; doctor declines return assignments to dispatch. Handovers require an eligible owner and a reason, and retain the existing deadline.
+
+Administrators can adjust response targets and choose an escalation supervisor in the inbox. Initial targets are operational starting values: routine dispatch 15 minutes, urgent dispatch/review 5 minutes, doctor acknowledgement 10 minutes, consultation start 30 minutes, second escalation 30 minutes after the first, routine report review 24 hours, and supply acceptance 4 hours. Review appointments are due by 17:00 Mauritius time. Changes apply to new source stages; existing deadlines remain stable. If no supervisor is configured, an available administrator receives escalations. Clinical urgency is flagged by authorised staff with a note; report values are never classified automatically.
+
+The API server reconciles source work and retries notification deliveries every minute, including after restart. It records push-service acceptance separately from staff acknowledgement and task resolution. Notifications contain generic action text and open the relevant inbox task. Obsolete recipients and resolved/reassigned tasks are cancelled before sending; temporary failures retry with backoff. Existing active care/reviews/supplies are included on rollout; historical reports are enrolled only when edited, while new reports enter automatically. Patient-facing visit/appointment/care updates remain in their existing flows.
+
+API: `/api/operational-tasks`, `/summary`, `/policy`, `/:id/events`, and `PATCH /:id` with an action and the current task revision. Access is limited to admin, operator, doctor and lab roles; doctors see their clinical tasks, operators do not receive clinical report tasks, and training accounts cannot save changes. Administrators see a warning when scheduled checks have not completed recently. The inbox is the persistent fallback for failed or disabled push; urgent care still requires the team's direct-contact procedure.
+
 ## Verification
 
 The project was verified with:

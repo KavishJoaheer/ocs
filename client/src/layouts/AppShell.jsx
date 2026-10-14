@@ -24,6 +24,7 @@ const pageMeta = {
     label: "Dashboard",
     helper: "",
   },
+  "/action-inbox": { label: "Action inbox", helper: "Ownership, acknowledgement and overdue work." },
   "/inventory": {
     label: "Inventory",
     helper: "",

@@ -27,6 +27,7 @@ import { getRoleLabel } from "../lib/access.js";
 import { cx } from "../lib/utils.js";
 import { useAppointmentChangeCount } from "../hooks/useAppointmentChangeCount.js";
 import { useOperatorSupplyCount } from "../hooks/useOperatorSupplyCount.js";
+import { useOperationalTaskCount } from "../hooks/useOperationalTaskCount.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import DesktopWorkspaceIdentity from "./operator-dashboard/DesktopWorkspaceIdentity.jsx";
 import { getOperatorInitials, isOperatorLive } from "./operator-dashboard/operatorDashboardCopy.js";
@@ -39,6 +40,7 @@ function formatMobileDrawerDisplayName(user) {
 }
 
 const navItems = [
+  { to: "/action-inbox", label: "Action inbox", icon: BellRing, roles: ["admin", "doctor", "operator", "lab_tech"] },
   { to: "/teleconsultations", label: "Manage teleconsultations", icon: ClipboardList, roles: ["admin", "doctor", "operator"] },
   {
     to: "/",
@@ -235,6 +237,7 @@ function Sidebar() {
   const appointmentChangeCount = useAppointmentChangeCount();
   const compact = useIsMobile(1024);
   const supplyCount = useOperatorSupplyCount(user.role === "operator" && !compact);
+  const actionCount = useOperationalTaskCount(user);
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -270,6 +273,7 @@ function Sidebar() {
   }, [user.role]);
 
   function navBadgeCount(item) {
+    if (item.to === "/action-inbox") return actionCount;
     if (item.to === "/hcm-news") return hcmUnreadCount;
     if (item.to === "/visit-requests") return appointmentChangeCount;
     if (item.to === "/supply-requests" && user.role === "operator") return supplyCount;

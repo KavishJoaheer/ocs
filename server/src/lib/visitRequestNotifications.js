@@ -108,52 +108,9 @@ function resolvePatientUserId(visit) {
 }
 
 async function notifyStaffNewVisitRequest(visit) {
-  if (!visit?.id) {
-    return { ok: false, skipped: true, reason: "missing_visit" };
-  }
-
-  const patientName = String(visit.patient_name || "A patient").trim();
-  const urgency = String(visit.urgency || "routine").trim();
-  const urgencyLabel = urgency !== "routine" ? ` (${urgency})` : "";
-
-  const payload = {
-    title: "New home visit request",
-    body: `${patientName} requested a home visit${urgencyLabel}.`,
-    url: "/visit-requests",
-    icon: "/icon-192.png",
-    tag: `visit-request-new-${visit.id}`,
-    requireInteraction: urgency === "emergency" || urgency === "urgent",
-  };
-
-  const results = await Promise.all(
-    STAFF_DISPATCH_ROLES.map((role) => sendPushToRole(role, payload)),
-  );
-
-  if (!visit.assigned_doctor_id) {
-    const onCallDoctorIds = db
-      .prepare(
-        `
-          SELECT DISTINCT u.id
-          FROM users u
-          INNER JOIN user_push_subscriptions s ON s.user_id = u.id
-          WHERE u.role = 'doctor'
-            AND u.is_active = 1
-            AND u.deleted_at IS NULL
-            AND u.operation_status IN ('available', 'active')
-        `,
-      )
-      .all()
-      .map((row) => Number(row.id));
-
-    const doctorResults = await Promise.all(
-      onCallDoctorIds.map((userId) => sendPushToUser(userId, payload)),
-    );
-    results.push(...doctorResults);
-  }
-
-  const delivered = results.flat().filter((entry) => entry?.ok).length;
-
-  return { ok: delivered > 0, delivered, attempted: results.flat().length };
+  if (!visit?.id) return { ok: false, skipped: true, reason: "missing_visit" };
+  require("./operationalTasks").reconcileOperationalTasks();
+  return { ok: true, queued: true, workflow: "action_inbox" };
 }
 
 async function notifyStaffVisitCancelled(visit) {
@@ -188,29 +145,11 @@ async function notifyStaffVisitCancelled(visit) {
 }
 
 async function notifyAssignedDoctor(visit, { previousDoctorId } = {}) {
-  const doctorId = Number(visit?.assigned_doctor_id || 0);
-  const previous = Number(previousDoctorId || 0);
-
-  if (!doctorId || doctorId === previous) {
+  if (!visit?.assigned_doctor_id || Number(visit.assigned_doctor_id) === Number(previousDoctorId)) {
     return { ok: false, skipped: true, reason: "doctor_unchanged" };
   }
-
-  const userId = getDoctorUserId(doctorId);
-  if (!userId) {
-    return { ok: false, skipped: true, reason: "missing_doctor_user" };
-  }
-
-  const patientName = String(visit.patient_name || "A patient").trim();
-  const payload = {
-    title: "Home visit assigned",
-    body: `You have been assigned to ${patientName}'s home visit.`,
-    url: "/visit-requests",
-    icon: "/icon-192.png",
-    tag: `visit-request-doctor-${visit.id}`,
-    requireInteraction: true,
-  };
-
-  return sendPushToUser(userId, payload);
+  require("./operationalTasks").reconcileOperationalTasks();
+  return { ok: true, queued: true, workflow: "action_inbox" };
 }
 
 async function notifyPatientVisitUpdate(visit, { previousStatus, previousDoctorId } = {}) {

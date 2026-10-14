@@ -29,6 +29,7 @@ const PatientsPage = lazy(() => import("./pages/PatientsPage.jsx"));
 const StockActivityPage = lazy(() => import("./pages/StockActivityPage.jsx"));
 const TeleconsultationsPage = lazy(() => import("./pages/TeleconsultationsPage.jsx"));
 const VisitRequestsPage = lazy(() => import("./pages/VisitRequestsPage.jsx"));
+const ActionInboxPage = lazy(() => import("./pages/ActionInboxPage.jsx"));
 
 function RouteFallback() {
   return (
@@ -69,6 +70,7 @@ function App() {
           </Route>
 
           <Route element={<ProtectedRoute roles={["admin", "doctor", "operator", "lab_tech"]} />}>
+            <Route path="/action-inbox" element={<ActionInboxPage />} />
             <Route path="/patients" element={<PatientsPage />} />
             <Route path="/patients/:id" element={<PatientProfilePage />} />
           </Route>
