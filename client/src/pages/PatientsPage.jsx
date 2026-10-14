@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ChevronDown,
   CreditCard,
@@ -21,7 +21,7 @@ import EmptyState from "../components/EmptyState.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import { canLogLongTermReviewUpdate } from "../lib/longTermReviewAccess.js";
 import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
 import SectionCard from "../components/SectionCard.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
@@ -214,7 +214,7 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
   return (
     <div
       ref={rootRef}
-      className="overflow-hidden rounded-xl border border-ocs-yellow bg-ocs-yellow/10"
+      className="overflow-hidden rounded-[24px] border border-[#d5e4e1] bg-white"
     >
       <button
         type="button"
@@ -223,17 +223,17 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
         onClick={() => setOpen((current) => !current)}
         className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left"
       >
-        <span className="text-[11px] font-semibold text-ocs-yellow-dark">Doctor</span>
+        <span className="text-[11px] font-semibold text-[#376168]">Doctor</span>
         <span className="flex items-center gap-1.5">
           <span className="text-sm font-semibold text-ocs-slate">{shortLabel}</span>
           <ChevronDown
-            className={cx("size-4 text-ocs-yellow-dark transition", open && "rotate-180")}
+            className={cx("size-4 text-[#376168] transition", open && "rotate-180")}
             aria-hidden
           />
         </span>
       </button>
       {open ? (
-        <div className="border-t border-ocs-yellow/30" role="listbox">
+        <div className="border-t border-[#d5e4e1]" role="listbox">
           {options.map((doctor, index) => {
             const optionValue = doctor.id === "" ? "" : String(doctor.id);
             const active = String(value || "") === optionValue;
@@ -252,7 +252,7 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
                   "flex w-full px-3.5 py-2.5 text-left text-sm",
                   index > 0 && "border-t border-ocs-yellow/20",
                   active
-                    ? "bg-ocs-yellow font-semibold text-ocs-slate"
+                    ? "bg-[#eaf5f1] font-semibold text-[#137b80]"
                     : "font-medium text-slate-600",
                 )}
               >
@@ -269,6 +269,9 @@ function MobileDoctorFilter({ doctors, value, onChange }) {
 function PatientsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const directoryContext = location.state?.directoryContext;
+  const restoredScroll = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const myAssignedFilterActive = searchParams.get("filter") === "my_assigned";
   const isMobile = useIsMobile();
@@ -280,12 +283,12 @@ function PatientsPage() {
   const canEditPatientIdentifier = user.role === "admin";
   const canOpenBilling =
     user.role === "admin" || user.role === "doctor" || user.role === "operator" || user.role === "accountant";
-  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [search, setSearch] = useState(() => searchParams.get("search") || directoryContext?.search || "");
   const deferredSearch = useDeferredValue(search);
   const [statusFilter, setStatusFilter] = useState(() =>
     searchParams.get("tab") === "under_review" || searchParams.get("filter") === "under_review"
       ? "under_review"
-      : "all",
+      : directoryContext?.statusFilter || (myAssignedFilterActive ? "active" : "all"),
   );
   const isUnderReviewView =
     statusFilter === "under_review" ||
@@ -293,8 +296,8 @@ function PatientsPage() {
     searchParams.get("filter") === "under_review";
   const isRecentlyDeletedView =
     !isMobile && canManageDeletedPatients && statusFilter === "recently_deleted";
-  const [doctorIdFilter, setDoctorIdFilter] = useState("");
-  const [page, setPage] = useState(1);
+  const [doctorIdFilter, setDoctorIdFilter] = useState(() => myAssignedFilterActive ? String(user.doctor_id || "") : directoryContext?.doctorIdFilter || "");
+  const [page, setPage] = useState(() => directoryContext?.page || 1);
   const [patientsData, setPatientsData] = useState(null);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -314,6 +317,8 @@ function PatientsPage() {
   const isDoctorMobile = user.role === "doctor" && isMobile;
   const canLogLongTermReview = canLogLongTermReviewUpdate(user.role);
   const loadPatientsRef = useRef(null);
+  const directoryRequestId = useRef(0);
+  useEffect(() => () => { directoryRequestId.current += 1; }, []);
   const { openLogUpdate, dialogs: longTermReviewLogDialogs } = useLongTermReviewLogUpdate({
     onUpdated: async () => {
       await loadPatientsRef.current?.();
@@ -350,12 +355,13 @@ function PatientsPage() {
     }
   }
 
-  async function loadOfflinePatientDirectory() {
+  async function loadOfflinePatientDirectory(requestId = ++directoryRequestId.current) {
     const target = patientsData ? setRefreshing : setLoading;
     target(true);
 
     try {
       const cached = await getCachedPatientDirectory(user.id);
+      if (requestId !== directoryRequestId.current) return;
       const filtered = filterOfflineDirectoryItems(cached?.items || [], {
         search: deferredSearch,
         statusFilter,
@@ -364,6 +370,7 @@ function PatientsPage() {
       setPatientsData(pagePayload);
       setOfflineDirectoryActive(true);
     } catch (error) {
+      if (requestId !== directoryRequestId.current) return;
       toast.error(error.message || "Unable to load cached patient directory.");
       setPatientsData({
         items: [],
@@ -371,8 +378,10 @@ function PatientsPage() {
       });
       setOfflineDirectoryActive(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === directoryRequestId.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }
 
@@ -391,8 +400,9 @@ function PatientsPage() {
   }
 
   async function loadPatients() {
+    const requestId = ++directoryRequestId.current;
     if (isDoctorMobile && isBrowserOffline()) {
-      await loadOfflinePatientDirectory();
+      await loadOfflinePatientDirectory(requestId);
       return;
     }
 
@@ -402,6 +412,7 @@ function PatientsPage() {
     try {
       if (!isMobile && canManageDeletedPatients && statusFilter === "recently_deleted") {
         const deleted = await api.get("/patients/deleted/recent");
+        if (requestId !== directoryRequestId.current) return;
         const query = deferredSearch.trim().toLowerCase();
         const items = query
           ? deleted.filter((patient) => {
@@ -456,6 +467,7 @@ function PatientsPage() {
       }
 
       const data = await api.get(url);
+      if (requestId !== directoryRequestId.current) return;
       setPatientsData(data);
       setOfflineDirectoryActive(false);
 
@@ -467,15 +479,16 @@ function PatientsPage() {
         void prefetchPatientOfflineDirectory(user.id);
       }
     } catch (error) {
+      if (requestId !== directoryRequestId.current) return;
       if (isDoctorMobile && isNetworkFailure(error)) {
         console.warn("Online fetch failed, falling back to local storage cache.");
-        await loadOfflinePatientDirectory();
+        await loadOfflinePatientDirectory(requestId);
         return;
       }
       toast.error(error.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === directoryRequestId.current) setLoading(false);
+      if (requestId === directoryRequestId.current) setRefreshing(false);
     }
   }
 
@@ -511,7 +524,7 @@ function PatientsPage() {
       }
     }
 
-    const next = searchParams.get("search") || "";
+    const next = searchParams.get("search") || directoryContext?.search || "";
     setSearch((prev) => (prev === next ? prev : next));
 
     if (tab === "under_review" || filter === "under_review") {
@@ -523,8 +536,36 @@ function PatientsPage() {
       setStatusFilter("active");
     }
 
-    setPage(1);
-  }, [navigate, searchParams, user.doctor_id, user.role]);
+    setPage(directoryContext?.page || 1);
+  }, [navigate, searchParams, user.doctor_id, user.role, directoryContext]);
+
+  useEffect(() => {
+    if (loading || !patientsData || restoredScroll.current) return;
+    if (location.state?.patientsScrollY == null) {
+      restoredScroll.current = true;
+      return;
+    }
+    let cancelled = false;
+    let frame;
+    Promise.resolve(document.fonts?.ready).then(() => {
+      if (cancelled) return;
+      frame = window.requestAnimationFrame(() => {
+        restoredScroll.current = true;
+        window.scrollTo({ top: location.state?.patientsScrollY || 0, behavior: "instant" });
+      });
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [loading, patientsData, location.state]);
+
+  // Save the directory entry as well as the profile entry so browser Back restores the same context.
+  function openPatientProfile(patientId) {
+    const state = { patientsReturnTo: location.pathname + location.search, patientsScrollY: window.scrollY, directoryContext: { search, statusFilter, doctorIdFilter, page } };
+    navigate(location.pathname + location.search, { replace: true, state: { directoryContext: state.directoryContext, patientsScrollY: state.patientsScrollY } });
+    navigate(`/patients/${patientId}`, { state });
+  }
 
   const refreshKey = useLiveRefreshKey();
 
@@ -594,23 +635,13 @@ function PatientsPage() {
     return (
       <Link
         to="/patients/add"
-        className="inline-flex items-center gap-2 rounded-2xl bg-ocs-slate px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-slate/90 lg:bg-ocs-teal lg:px-5 lg:py-2.5 lg:font-bold lg:shadow-md lg:shadow-ocs-teal/20 lg:hover:bg-ocs-teal/90"
+        className="patient-control patient-control-primary"
       >
         <Plus className="size-4" />
         Add patient
       </Link>
     );
   }, [canCreatePatients]);
-
-  const mobileAddButton = canCreatePatients ? (
-    <Link
-      to="/patients/add"
-      className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-2xl bg-ocs-slate px-3.5 text-sm font-semibold text-white transition hover:bg-ocs-slate/90 active:scale-95"
-    >
-      <Plus className="size-4" />
-      Add
-    </Link>
-  ) : null;
 
   async function handleSave(payload) {
     setIsSaving(true);
@@ -683,7 +714,7 @@ function PatientsPage() {
   function clearMyAssignedFilter() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("filter");
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(nextParams, { replace: true, state: { directoryContext: { search, statusFilter: "all", doctorIdFilter: "", page: 1 } } });
     setDoctorIdFilter("");
     setStatusFilter("all");
     setPage(1);
@@ -703,13 +734,10 @@ function PatientsPage() {
           setSearch(event.target.value);
           setPage(1);
         }}
-        placeholder={
-          isMobile
-            ? "Name or OCS ID"
-            : "Search by OCS care number, patient ID, name, assigned doctor, location, or next of kin"
-        }
+        aria-label="Search patients"
+        placeholder={isMobile ? "Name or care number" : "Name, care number or contact"}
         className={cx(
-          "w-full rounded-2xl border bg-slate-50 pl-11 pr-4 text-sm outline-none transition focus:bg-white",
+          "w-full rounded-full border bg-white pl-11 pr-4 text-sm outline-none transition focus:bg-white",
           isMobile ? "h-12 border-slate-100 focus:border-ocs-teal" : "border-slate-200 py-3 focus:border-sky-400",
         )}
       />
@@ -734,8 +762,8 @@ function PatientsPage() {
     const baseTabs = [
       { id: "all", label: "All" },
       { id: "active", label: "Active" },
-      { id: "discharged", label: isMobile ? "Out" : "Discharged" },
-      { id: "under_review", label: isMobile ? "Review" : "Under Review" },
+      { id: "discharged", label: "Discharged" },
+      { id: "under_review", label: "Reviews" },
     ];
 
     if (isMobile) {
@@ -760,7 +788,7 @@ function PatientsPage() {
   const statusTabBar = !myAssignedFilterActive ? (
     <div
       className={cx(
-        "flex items-center gap-1 rounded-2xl border border-slate-100 bg-white p-1 shadow-sm",
+        "flex max-w-full items-center gap-2 overflow-x-auto pb-1",
         isMobile && "w-full",
       )}
     >
@@ -769,26 +797,15 @@ function PatientsPage() {
           key={status.id}
           type="button"
           onClick={() => {
+            if (status.id === "under_review" && ["doctor", "operator", "admin"].includes(user.role)) {
+              navigate(`/${user.role}/long-term-review`);
+              return;
+            }
             setStatusFilter(status.id);
             setPage(1);
           }}
-          className={cx(
-            "rounded-xl font-semibold transition",
-            isMobile ? "min-w-0 flex-1 whitespace-nowrap px-1.5 py-2 text-xs" : "px-4 py-2 text-sm",
-            statusFilter === status.id
-              ? status.id === "active"
-                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
-                : status.id === "discharged"
-                  ? "bg-slate-600 text-white shadow-md shadow-slate-600/20"
-                  : status.id === "under_review"
-                    ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
-                    : status.id === "pending_approval"
-                      ? "bg-red-600 text-white shadow-md shadow-red-600/20"
-                      : status.id === "recently_deleted"
-                        ? "bg-rose-700 text-white shadow-md shadow-rose-700/20"
-                        : "bg-sky-600 text-white shadow-md shadow-sky-600/20"
-              : "text-slate-600 hover:bg-slate-50",
-          )}
+          aria-pressed={statusFilter === status.id}
+          className={cx("patient-control shrink-0 whitespace-nowrap", statusFilter === status.id && "patient-control-primary")}
         >
           <span className="flex items-center justify-center gap-2">
             {status.label}
@@ -825,7 +842,8 @@ function PatientsPage() {
           setDoctorIdFilter(event.target.value);
           setPage(1);
         }}
-        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white"
+        aria-label="Assigned doctor filter"
+        className="patient-control max-w-full"
       >
         <option value="">All assigned doctors</option>
         {doctors.map((doctor) => (
@@ -846,49 +864,20 @@ function PatientsPage() {
     <div
       className={cx(
         pageContainerClass,
+        "patient-workspace patient-directory",
         isMobile
           ? "mx-auto flex min-h-[calc(100dvh-3.25rem)] w-full max-w-md flex-col space-y-3"
           : "space-y-4",
       )}
     >
-      {isMobile ? (
-        <header className="space-y-3">
-          <h1 className="sr-only">Patients</h1>
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">{searchField}</div>
-            {mobileAddButton}
-          </div>
-          {offlineDirectoryActive && isDoctorMobile ? (
-            <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-[#557373]/15 px-3.5 py-2.5 text-xs font-semibold text-gray-800">
-              <span>Offline — showing cached directory</span>
-              <button
-                type="button"
-                onClick={() => void handleMobileDirectoryRefresh()}
-                disabled={loading || refreshing}
-                className="shrink-0 rounded-lg px-2 py-1 font-bold text-[#557373] transition hover:bg-white/60 disabled:opacity-50"
-              >
-                Retry
-              </button>
-            </div>
-          ) : null}
-        </header>
-      ) : (
-        <PageHeader title="Patients" actions={headerActions} />
-      )}
+      <PatientWorkspaceHeader title="Patients" subtitle={`${pagination?.total || 0} ${isRecentlyDeletedView ? "recently deleted records" : "patient records"}`} role={user.role} onRefresh={() => void handleMobileDirectoryRefresh()} refreshing={refreshing} actions={headerActions}>
+        {user.role === "doctor" ? <Link className={cx("patient-control", myAssignedFilterActive && "patient-control-primary")} to="/patients?filter=my_assigned">My patients</Link> : null}
+      </PatientWorkspaceHeader>
+      {isMobile ? searchField : null}
+      {offlineDirectoryActive && isDoctorMobile ? <p className="rounded-full bg-amber-50 px-4 py-2 text-sm text-amber-800">Offline — showing cached directory</p> : null}
 
       <SectionCard
-        subtitle={
-          isMobile
-            ? null
-            : isRecentlyDeletedView
-              ? `${pagination?.total || 0} deleted in the last 30 days`
-              : `${pagination?.total || 0} total records`
-        }
-        className={
-          isMobile
-            ? "flex min-h-0 flex-1 flex-col rounded-[24px] border-slate-100 bg-white p-3 shadow-sm"
-            : undefined
-        }
+        className="patient-directory-list"
         actions={
           !isMobile && refreshing ? (
             <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
@@ -946,10 +935,10 @@ function PatientsPage() {
                       return (
                       <div
                         key={patient.id}
-                        className="mb-3 flex min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-100 border-l-[3px] border-l-ocs-yellow bg-white p-4 shadow-sm transition-all active:scale-[0.99]"
+                        className="mb-3 flex min-w-0 max-w-full overflow-hidden rounded-[26px] border border-[#d5e4e1] bg-white p-4 transition-all active:scale-[0.99]"
                       >
                         <div className="flex min-w-0 flex-1 items-start gap-2">
-                          <Link to={`/patients/${patient.id}`} className="min-w-0 flex-1">
+                          <Link to={`/patients/${patient.id}`} onClick={(event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); openPatientProfile(patient.id); } }} className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
                               <p className="min-w-0 flex flex-wrap items-center gap-y-1 break-words">
                                 <span className="text-base font-bold text-slate-700">
@@ -1179,11 +1168,11 @@ function PatientsPage() {
                             return (
                             <tr
                               key={patient.id}
-                              onClick={() => navigate(`/patients/${patient.id}`)}
+                              onClick={() => openPatientProfile(patient.id)}
                               onKeyDown={(event) => {
                                 if (event.key === "Enter" || event.key === " ") {
                                   event.preventDefault();
-                                  navigate(`/patients/${patient.id}`);
+                                  openPatientProfile(patient.id);
                                 }
                               }}
                               tabIndex={0}

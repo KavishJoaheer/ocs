@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, LockKeyhole } from "lucide-react";
 import toast from "react-hot-toast";
 import Modal from "./Modal.jsx";
+import PatientWorkspaceHeader from "./patient-workspace/PatientWorkspaceHeader.jsx";
+import AppUpdateBanner from "./AppUpdateBanner.jsx";
+import PushNotificationBanner from "./PushNotificationBanner.jsx";
+import { useAuth } from "../hooks/useAuth.jsx";
 import PatientDateOfBirthInput from "./PatientDateOfBirthInput.jsx";
 import PatientNationalIdInput from "./PatientNationalIdInput.jsx";
 import PatientLocationTags from "./PatientLocationTags.jsx";
@@ -33,7 +37,7 @@ const WIZARD_STEPS = [
 ];
 
 const MOBILE_FIELD_LABEL = "mb-1.5 block text-sm font-semibold text-slate-700";
-const MOBILE_STEP_STACK = "space-y-5.5";
+const MOBILE_STEP_STACK = "space-y-4";
 const MOBILE_INPUT =
   "h-12 w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-sm placeholder:text-gray-400 focus:border-ocs-teal focus:bg-white";
 const MOBILE_INPUT_DISABLED =
@@ -186,6 +190,7 @@ function PatientFormModal({
   isSaving,
 }) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const keyboardInset = useKeyboardOffset(isMobile && open);
   const [form, setForm] = useState(() => open
     ? (mode === "edit" ? toPatientFormState(patient) : { ...emptyPatient, ...readPatientDraft() })
@@ -290,7 +295,7 @@ function PatientFormModal({
   useEffect(() => {
     if (!open || !isMobile) return;
     const id = window.requestAnimationFrame(() => {
-      stepFirstInputRef.current?.focus();
+      stepFirstInputRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(id);
   }, [open, isMobile, wizardStep]);
@@ -363,9 +368,10 @@ function PatientFormModal({
     }
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event, skipOptional = false) {
+    if (isSaving) return;
     event.preventDefault();
-    if (!onFinalWizardStep) {
+    if (!onFinalWizardStep && !skipOptional) {
       return;
     }
     const identityError = validatePatientIdentity(form);
@@ -380,6 +386,7 @@ function PatientFormModal({
 
     if (!hasStructuredLocationTags(locationTags)) {
       toast.error("Select a town, village, neighbourhood, or clinic before saving.");
+      goToWizardStep(0);
       return;
     }
 
@@ -398,8 +405,7 @@ function PatientFormModal({
       return;
     }
 
-    clearDraft();
-    onSubmit({
+    const saved = await onSubmit({
       ...form,
       patient_id_type: form.patient_id_type || "national_id",
       manual_age: isNationalId ? null : form.manual_age,
@@ -410,7 +416,15 @@ function PatientFormModal({
       assigned_doctor_id: form.assigned_doctor_id ? Number(form.assigned_doctor_id) : null,
       ongoing_treatment: form.status === "active" ? form.ongoing_treatment : "",
     });
+    if (saved && !isEditing) clearDraft();
   }
+
+  const careBadgeLabel = form.patient_identifier?.trim()
+    ? form.patient_identifier.trim()
+    : isEditing
+      ? "—"
+      : "Assigned on save";
+
 
   /* ───────── Mobile: full-screen step wizard ───────── */
   if (isMobile && open) {
@@ -418,26 +432,16 @@ function PatientFormModal({
       <div
         className={
           isPageLayout
-            ? "flex min-h-svh flex-col bg-white"
-            : "fixed inset-0 z-50 flex flex-col bg-white"
+            ? "patient-intake-workspace intake-page flex flex-col bg-white"
+            : "patient-intake-workspace fixed inset-0 z-50 flex flex-col bg-white"
         }
         style={{ padding: "var(--sat) var(--sar) 0 var(--sal)" }}
       >
-        {isPageLayout ? (
-          <div className="flex shrink-0 items-center gap-1 border-b border-slate-100 px-2 py-1">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-xl text-ocs-teal transition active:bg-ocs-teal/10"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="size-6" />
-            </button>
-            <span className="min-w-0 truncate text-lg font-bold text-ocs-slate">{actionLabel}</span>
-          </div>
-        ) : null}
+        <PatientWorkspaceHeader title={actionLabel} subtitle="Patient details first; clinical history and next of kin are optional." role={user.role} actions={<button type="button" className="patient-icon-control" aria-label="Go back" onClick={handleCancel}><ArrowLeft className="size-4" /></button>}>
+          <span className="rounded-full bg-white/80 px-3 py-1 text-xs text-[#376168]">OCS care number · {careBadgeLabel}</span>
+        </PatientWorkspaceHeader>
         {/* Step progress indicator */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 pb-3 pt-4">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           {WIZARD_STEPS.map((step, i) => (
             <button
               key={step.label}
@@ -463,7 +467,7 @@ function PatientFormModal({
                   i === wizardStep ? "font-semibold text-ocs-teal" : "text-ocs-grey",
                 )}
               >
-                {i + 1}. {step.label}
+                {i + 1}. {step.label}{i > 0 ? <span className="block text-[10px] text-slate-500">Optional</span> : null}
               </span>
             </button>
           ))}
@@ -476,14 +480,15 @@ function PatientFormModal({
           onSubmit={handleSubmit}
           onKeyDown={handleFormKeyDown}
         >
-          <div className="flex-1 overflow-y-auto px-4 py-5">
+          <div className="intake-content flex-1 overflow-y-auto px-4 py-4">
             {wizardStep === 0 && (
               <div className={MOBILE_STEP_STACK}>
                 <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>First name</span>
+                  <span className={MOBILE_FIELD_LABEL}>First name *</span>
                   <input
                     ref={wizardStep === 0 ? stepFirstInputRef : undefined}
                     name="first_name"
+                    required
                     autoCapitalize="sentences"
                     onBlur={handleChange}
                     value={form.first_name}
@@ -493,9 +498,10 @@ function PatientFormModal({
                   />
                 </label>
                 <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Last name</span>
+                  <span className={MOBILE_FIELD_LABEL}>Last name *</span>
                   <input
                     name="last_name"
+                    required
                     autoCapitalize="sentences"
                     onBlur={handleChange}
                     value={form.last_name}
@@ -504,6 +510,7 @@ function PatientFormModal({
                     className={MOBILE_INPUT}
                   />
                 </label>
+                {canEditPatientIdentifier ? (
                 <label className="block">
                   <span className={MOBILE_FIELD_LABEL}>OCS care number</span>
                   <input
@@ -515,6 +522,7 @@ function PatientFormModal({
                     className={MOBILE_INPUT_DISABLED}
                   />
                 </label>
+                ) : null}
                 <PatientNationalIdInput
                   idType={form.patient_id_type || "national_id"}
                   onTypeChange={handleIdTypeChange}
@@ -539,7 +547,7 @@ function PatientFormModal({
                   }
                 />
                 <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Gender</span>
+                  <span className={MOBILE_FIELD_LABEL}>Gender *</span>
                   <select
                     required
                     name="gender"
@@ -568,7 +576,7 @@ function PatientFormModal({
 
                 {canSelectAssignedDoctor ? (
                   <label className="block">
-                    <span className={MOBILE_FIELD_LABEL}>Assigned doctor</span>
+                    <span className={MOBILE_FIELD_LABEL}>Assigned doctor (optional)</span>
                     <select
                       name="assigned_doctor_id"
                       value={form.assigned_doctor_id}
@@ -607,7 +615,7 @@ function PatientFormModal({
                 ) : null}
 
                 <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Patient contact number</span>
+                  <span className={MOBILE_FIELD_LABEL}>Patient contact number *</span>
                   <input
                     required
                     name="patient_contact_number"
@@ -619,7 +627,7 @@ function PatientFormModal({
                   />
                 </label>
                 <label className="block">
-                  <span className={MOBILE_FIELD_LABEL}>Address</span>
+                  <span className={MOBILE_FIELD_LABEL}>Address *</span>
                   <textarea
                     required
                     rows={2}
@@ -775,11 +783,12 @@ function PatientFormModal({
           </div>
 
           <div
-            className="mt-auto shrink-0 border-t border-slate-100 bg-white px-4 pt-6"
+            className="intake-footer mt-auto shrink-0 border-t border-slate-100 bg-white px-4 pt-3"
             style={{
               paddingBottom: `max(var(--sab), calc(12px + ${keyboardInset.bottom}px))`,
             }}
           >
+            {wizardStep === 1 && !isEditing ? <button type="button" disabled={isSaving} onClick={(event) => void handleSubmit(event, true)} className="mb-2 min-h-11 w-full text-sm text-[#137b80]">Skip for now — save patient</button> : null}
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -824,11 +833,6 @@ function PatientFormModal({
   }
 
   /* ───────── Desktop: tabbed modal with fixed footer ───────── */
-  const careBadgeLabel = form.patient_identifier?.trim()
-    ? form.patient_identifier.trim()
-    : isEditing
-      ? "—"
-      : "Auto-assigned on save";
 
   return (
     <Modal
@@ -836,17 +840,22 @@ function PatientFormModal({
       onClose={handleCancel}
       title={isEditing ? "Edit patient" : "Add patient"}
       size="xl"
+      className="patient-intake-workspace"
+      description="Required details first. Clinical history and next of kin are optional."
       innerScroll={false}
     >
       <form ref={formRef} className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
-        <div className="shrink-0 space-y-4">
+        <div className="shrink-0 space-y-3 rounded-[24px] bg-[#edf8f4] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               OCS care number
             </span>
-            <span className="inline-flex items-center rounded-lg bg-slate-100 px-3 py-1 font-mono text-sm font-medium text-slate-600">
+            <span className="inline-flex items-center rounded-full bg-white px-3 py-1 font-mono text-sm font-medium text-slate-600">
               {careBadgeLabel}
             </span>
+          </div>
+          <div className="flex items-center gap-1"><PushNotificationBanner compact role={user.role} /><AppUpdateBanner compact /></div>
           </div>
           {canEditPatientIdentifier ? (
             <label className="block max-w-md space-y-1.5">
@@ -872,25 +881,26 @@ function PatientFormModal({
                 className={cx(
                   "rounded-full px-3 py-1.5 text-sm font-semibold transition",
                   i === desktopWizardStep
-                    ? "bg-sky-600 text-white shadow-sm"
+                    ? "bg-[#137b80] text-white"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200",
                 )}
               >
-                {step.label}
+                {step.label}{i > 0 ? <span className="ml-1 font-normal">· Optional</span> : null}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-32 pt-4">
+        <div className="intake-content min-h-0 flex-1 overflow-y-auto px-1 pb-5 pt-4">
           {desktopWizardStep === 0 ? (
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">First name</span>
+                <span className="text-sm font-semibold text-slate-700">First name *</span>
                 <input
                   ref={firstNameRef}
                   data-modal-initial-focus
                   name="first_name"
+                    required
                   autoCapitalize="sentences"
                   onBlur={handleChange}
                   value={form.first_name}
@@ -901,9 +911,10 @@ function PatientFormModal({
               </label>
 
               <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Last name</span>
+                <span className="text-sm font-semibold text-slate-700">Last name *</span>
                 <input
                   name="last_name"
+                    required
                   autoCapitalize="sentences"
                   onBlur={handleChange}
                   value={form.last_name}
@@ -939,7 +950,7 @@ function PatientFormModal({
               />
 
               <label className="space-y-2">
-                <span className="text-sm font-semibold text-slate-700">Gender</span>
+                <span className="text-sm font-semibold text-slate-700">Gender *</span>
                 <select
                   required
                   name="gender"
@@ -968,7 +979,7 @@ function PatientFormModal({
 
               {canSelectAssignedDoctor ? (
                 <label className="space-y-2 md:col-span-2">
-                  <span className="text-sm font-semibold text-slate-700">Assigned doctor</span>
+                  <span className="text-sm font-semibold text-slate-700">Assigned doctor (optional)</span>
                   <select
                     name="assigned_doctor_id"
                     value={form.assigned_doctor_id}
@@ -1008,7 +1019,7 @@ function PatientFormModal({
 
               <label className="space-y-2 md:col-span-2">
                 <span className="text-sm font-semibold text-slate-700">
-                  Patient contact number
+                  Patient contact number *
                 </span>
                 <input
                   required
@@ -1021,7 +1032,7 @@ function PatientFormModal({
 
               <div className="grid gap-4 md:col-span-2 md:grid-cols-[1fr_0.46fr]">
                 <label className="space-y-2">
-                  <span className="text-sm font-semibold text-slate-700">Address</span>
+                  <span className="text-sm font-semibold text-slate-700">Address *</span>
                   <textarea
                     required
                     rows={2}
@@ -1187,7 +1198,8 @@ function PatientFormModal({
           ) : null}
         </div>
 
-        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-white p-4">
+        {desktopWizardStep === 1 && !isEditing ? <button type="button" disabled={isSaving} onClick={(event) => void handleSubmit(event, true)} className="min-h-11 shrink-0 text-sm text-[#137b80]">Skip for now — save patient</button> : null}
+        <div className="intake-footer flex w-full shrink-0 flex-wrap items-center justify-end gap-3 border-t border-gray-200 bg-white p-3">
           <button
             type="button"
             onClick={handleCancel}
@@ -1208,7 +1220,7 @@ function PatientFormModal({
             <button
               type="button"
               onClick={goToNextWizardStep}
-              className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700"
+              className="intake-next rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700"
             >
               {desktopWizardStep === 0 ? "Next: Clinical history" : "Next: Next of kin"}
             </button>
@@ -1216,7 +1228,7 @@ function PatientFormModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="intake-next rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? "Saving..." : isEditing ? "Update patient" : "Save patient"}
             </button>

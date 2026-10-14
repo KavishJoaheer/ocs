@@ -165,11 +165,13 @@ function AppShell() {
   const isInventoryWorkspace = isInventory && ((!isCompactInventory && ["doctor", "operator"].includes(userRole)) || inventoryDoctorMobile);
   const isDesktopSupplyWorkspace = isSupplyRequests && ["doctor", "operator"].includes(userRole) && !isCompactInventory;
   const isReviewWorkspace = /^\/(doctor|operator|admin)\/long-term-review$/.test(location.pathname);
-  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace;
+  const isPatientWorkspace = isPatientsDirectory || isPatientProfile || location.pathname === "/patients/add";
+  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDesktopSupplyWorkspace || isReviewWorkspace || isPatientWorkspace;
   const alwaysHideTopHeader =
     isDoctorCareWorkspace ||
     isDesktopSupplyWorkspace ||
     isReviewWorkspace ||
+    isPatientWorkspace ||
     (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
     (isMobile && isInventory && userRole === "doctor") ||

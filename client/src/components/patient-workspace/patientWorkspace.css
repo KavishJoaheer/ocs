@@ -1,0 +1,50 @@
+.patient-workspace button, .patient-workspace a, .patient-workspace select,
+.patient-intake-workspace button, .patient-intake-workspace select {
+  font-size: .875rem;
+  font-weight: 600;
+}
+.patient-control, .patient-icon-control {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  border: 1px solid #d5e4e1;
+  border-radius: 9999px;
+  background: white;
+  color: #376168;
+  padding: .5rem .85rem;
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 600;
+}
+.patient-icon-control { width: 44px; padding: 0; flex-shrink: 0; }
+.patient-control-primary { border-color: #137b80; background: #137b80; color: white; }
+.patient-control:focus-visible, .patient-icon-control:focus-visible {
+  outline: 2px solid #137b80; outline-offset: 2px;
+}
+.patient-control:disabled, .patient-icon-control:disabled { opacity: .5; cursor: default; }
+.patient-directory .patient-directory-list { border: 0; background: transparent; box-shadow: none; padding: 0; backdrop-filter: none; }
+.patient-profile .patient-summary-cards > section { border: 1px solid #d5e4e1; background: white; border-radius: 26px; box-shadow: 0 6px 20px rgb(59 89 92 / .03); }
+.patient-profile .patient-summary-cards { align-items: start; }
+.patient-profile .patient-profile-tabs { position: sticky; top: 0; z-index: 15; background: rgb(246 251 250 / .96); }
+.patient-profile .patient-more-actions { position: relative; }
+.patient-profile .patient-more-actions > summary { list-style: none; }
+.patient-profile .patient-more-actions > summary::-webkit-details-marker { display: none; }
+.patient-profile .patient-more-actions[open] > div { position: absolute; right: 0; top: calc(100% + .5rem); z-index: 40; width: min(280px, calc(100vw - 3rem)); display: flex; flex-direction: column; gap: .5rem; padding: .75rem; border: 1px solid #d5e4e1; border-radius: 24px; background: white; box-shadow: 0 12px 40px rgb(23 63 74 / .15); }
+.patient-intake-workspace { border: 1px solid #d5e4e1; }
+.patient-intake-workspace button:not([role="option"]) { border-radius: 9999px; }
+.patient-intake-workspace button[type="submit"], .patient-intake-workspace .intake-next { background: #137b80; color: white; }
+.patient-intake-workspace .intake-content { padding-top: 1rem; }
+@media (min-width: 768px) {
+  .patient-intake-workspace[role="dialog"] { max-width: 1000px; }
+}
+@media (max-width: 767px) {
+  .patient-intake-workspace.intake-page { border-radius: 28px; overflow: clip; min-height: 0; }
+  .patient-intake-workspace.intake-page .intake-content { overflow: visible; }
+  .patient-intake-workspace.intake-page .intake-footer { position: sticky; bottom: var(--ocs-mobile-nav-clearance, 5.5rem); z-index: 20; padding-top: .75rem; }
+}
+
+@media (max-width: 1023px) {
+  .patient-profile .patient-profile-tabs { top: calc(4rem + var(--sat, 0px)); }
+}

@@ -14,6 +14,7 @@ import {
   History,
   HeartPulse,
   LockKeyhole,
+  MoreHorizontal,
   Paperclip,
   Phone,
   Pill,
@@ -26,7 +27,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import EmptyState from "../components/EmptyState.jsx";
@@ -38,7 +39,8 @@ import {
 } from "../lib/longTermReviewAccess.js";
 import { useLongTermReviewLogUpdate } from "../hooks/useLongTermReviewLogUpdate.jsx";
 import Modal from "../components/Modal.jsx";
-import PageHeader from "../components/PageHeader.jsx";
+import PatientWorkspaceHeader from "../components/patient-workspace/PatientWorkspaceHeader.jsx";
+import { PATIENT_ID_TYPES } from "../lib/patientIdentity.js";
 import PatientLinkhamPolicyBadge from "../components/PatientLinkhamPolicyBadge.jsx";
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 import SectionCard from "../components/SectionCard.jsx";
@@ -83,53 +85,29 @@ import {
 import {
   defaultReviewDueDateInputValue,
   formatScheduledReviewDate,
+  formatReviewAppointmentTime,
+  getReviewDoctorName,
   isPatientUnderReview,
 } from "../lib/patientReview.js";
 import { cx } from "../lib/utils.js";
 import PatientCareInvitation from "../components/PatientCareInvitation.jsx";
 import PatientLocationTags from "../components/PatientLocationTags.jsx";
 
-function LongTermReviewAlertBanner({ note, dueDate, actions }) {
-  const trimmed = String(note || "").trim();
-  const scheduledLabel = formatScheduledReviewDate(dueDate);
-  if (!trimmed && !scheduledLabel && !actions) {
-    return null;
-  }
-
-  return (
-    <div
-      className="mb-4 rounded-xl border border-[#f5e3d7] border-l-4 border-l-[#d9744b] bg-[#fcf3ee] p-4 text-[#6e2f14] shadow-sm"
-      role="status"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#ba5a32]">
-            Review appointment — operator desk flag
-          </p>
-          {scheduledLabel ? (
-            <p className="mt-1 text-xs font-semibold text-[#6e2f14]">Target date: {scheduledLabel}</p>
-          ) : null}
-          {trimmed ? (
-            <p className="mt-1 text-sm font-medium leading-relaxed text-[#6e2f14]">{trimmed}</p>
-          ) : null}
-        </div>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
-      </div>
-    </div>
-  );
+function LongTermReviewAlertBanner({ patient, actions }) {
+  const date = patient.review_due_date ? formatScheduledReviewDate(patient.review_due_date) : "Date not scheduled";
+  const time = formatReviewAppointmentTime(patient.review_appointment_time);
+  const doctor = getReviewDoctorName(patient);
+  return <aside data-testid="patient-review-summary" className="rounded-[24px] border border-amber-200 bg-[#fff9ed] px-4 py-3 text-[#705822]">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div className="min-w-0"><p className="text-sm font-bold">Review appointment</p><p className="mt-1 break-words text-sm">{[date, time, doctor].filter(Boolean).join(" · ")}</p></div>{actions}</div>
+    {patient.review_reason_note ? <details className="mt-2 text-sm"><summary className="cursor-pointer font-semibold">Review reason</summary><p className="mt-2 whitespace-pre-wrap break-words">{patient.review_reason_note}</p></details> : null}
+  </aside>;
 }
 
-function ScheduledReviewIndicator({ dueDate }) {
-  const label = formatScheduledReviewDate(dueDate);
-  if (!label) {
-    return null;
-  }
-
-  return (
-    <span className="mt-1.5 inline-block rounded border border-amber-100 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-      Scheduled Review: {label}
-    </span>
-  );
+function PatientDetailsDisclosure({ title, hint, children }) {
+  return <details className="rounded-[26px] border border-[#d5e4e1] bg-white px-4 py-3">
+    <summary className="min-h-11 cursor-pointer content-center text-sm font-bold text-[#173f4a]">{title}{hint ? <span className="ml-2 font-normal text-slate-500">{hint}</span> : null}</summary>
+    <div className="mt-3 border-t border-slate-100 pt-3">{children}</div>
+  </details>;
 }
 
 function LongTermReviewReasonModal({ open, onClose, onSubmit, isSaving }) {
@@ -242,38 +220,8 @@ function LongTermReviewFlagButton({ patient, disabled, isSaving, onRequestFlag, 
   );
 }
 
-function HighlightStat({ icon: Icon, label, value, compact = false }) {
-  if (compact) {
-    return (
-      <div className="min-w-0 rounded-xl border border-white/80 bg-white/90 px-2 py-2 shadow-sm">
-        <div className="flex flex-col items-center gap-1 text-center">
-          <div className="rounded-lg bg-sky-50 p-1.5 text-sky-700">
-            <Icon className="size-4" />
-          </div>
-          <p className="w-full truncate text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-            {label}
-          </p>
-          <p className="text-lg font-bold leading-none text-slate-950 tabular-nums">{value}</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-full min-w-0 rounded-2xl border border-transparent bg-white px-3 py-2.5 shadow-md">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div className="shrink-0 rounded-lg bg-ocs-teal/10 p-2 text-ocs-teal">
-          <Icon className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ocs-grey">
-            {label}
-          </p>
-          <p className="mt-0.5 break-words text-lg font-bold text-slate-800">{value}</p>
-        </div>
-      </div>
-    </div>
-  );
+function HighlightStat({ icon: Icon, label, value }) {
+  return <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-[#eaf5f1] px-3 py-2 text-xs text-[#376168]"><Icon className="size-4 shrink-0" aria-hidden="true" /><span>{label}</span><strong className="break-words text-[#173f4a]">{value}</strong></span>;
 }
 
 function MobileBillingStatusBar({ status }) {
@@ -1452,7 +1400,7 @@ function OperatorAccessManager({ patientId, access = [], operatorOptions = [], o
 function PatientProfilePage() {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const [data, setData] = useState(null);
@@ -1470,8 +1418,7 @@ function PatientProfilePage() {
   const [consultationVoidReason, setConsultationVoidReason] = useState("");
   const [consultationFieldSaleDisposition, setConsultationFieldSaleDisposition] = useState("");
   const [consultationNoteViewer, setConsultationNoteViewer] = useState(null);
-  const [activeTab, setActiveTab] = useState("summary");
-  const [fabOpen, setFabOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("view") || "summary");
   const [patientEditorOpen, setPatientEditorOpen] = useState(false);
   const [careInvitationPatientId, setCareInvitationPatientId] = useState(null);
   const [isSavingPatient, setIsSavingPatient] = useState(false);
@@ -1514,13 +1461,6 @@ function PatientProfilePage() {
     [data, user, isMobile],
   );
 
-  const showMobileFab =
-    canEditPatientProfile ||
-    (canModifyClinicalData &&
-      (canManageConsultations || showPatientBillingUi || canManageLabReports)) ||
-    (user.role === "accountant" && showPatientBillingUi) ||
-    (user.role === "lab_tech" && canManageLabReports);
-
   const mobileProfileTabs = useMemo(
     () =>
       MOBILE_TABS.filter((tab) => {
@@ -1532,7 +1472,20 @@ function PatientProfilePage() {
     [showPatientBillingUi, canViewConsultations, canViewLabReports],
   );
 
+  function selectProfileTab(tab) {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set("view", tab);
+    setSearchParams(next, { replace: true });
+  }
+
   useEffect(() => {
+    const next = searchParams.get("view") || "summary";
+    setActiveTab(["summary", "notes", "reports", "billing"].includes(next) ? next : "summary");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!data) return;
     if (
       (activeTab === "billing" && !showPatientBillingUi) ||
       (activeTab === "notes" && !canViewConsultations) ||
@@ -1540,7 +1493,7 @@ function PatientProfilePage() {
     ) {
       setActiveTab("summary");
     }
-  }, [activeTab, showPatientBillingUi, canViewConsultations, canViewLabReports]);
+  }, [data, activeTab, showPatientBillingUi, canViewConsultations, canViewLabReports]);
 
   const refreshKey = useLiveRefreshKey();
 
@@ -1911,17 +1864,7 @@ function PatientProfilePage() {
     );
   }
 
-  const statusDetail =
-    data.patient.status === "active"
-      ? data.patient.ongoing_treatment || "Ongoing treatment not recorded"
-      : "Patient has been discharged from active treatment.";
-  const assignedDoctor = data.patient.assigned_doctor_name
-    ? (() => {
-        const baseName = String(data.patient.assigned_doctor_name).trim().split(" - ")[0].trim();
-        const nameWithoutPrefix = baseName.replace(/^dr\.?\s+/i, "").trim();
-        return nameWithoutPrefix ? `Dr ${nameWithoutPrefix}` : "Unassigned";
-      })()
-    : "Unassigned";
+  const assignedDoctor = data.patient.assigned_doctor_name || "Unassigned";
   const patientContactNumber =
     data.patient.patient_contact_number || data.patient.contact_number || "Not recorded";
   const consultations = data.consultations || [];
@@ -1944,19 +1887,6 @@ function PatientProfilePage() {
   const profileAddressLabel = hasMeaningfulPatientField(data.patient.address)
     ? data.patient.address
     : "Not recorded";
-
-  const mobileDemographicsPrimary = [
-    [data.patient.first_name, data.patient.last_name].filter(Boolean).join(" ").trim(),
-    data.patient.gender,
-  ]
-    .filter(Boolean)
-    .join(" - ");
-
-  const mobileAssignedDoctor = data.patient.assigned_doctor_name
-    ? /^dr\.?\s/i.test(String(data.patient.assigned_doctor_name).trim())
-      ? String(data.patient.assigned_doctor_name).trim()
-      : `Dr ${String(data.patient.assigned_doctor_name).trim()}`
-    : "Unassigned";
 
   const rawContactDigits = data.patient.patient_contact_number || data.patient.contact_number;
   const showMobileContact = hasMeaningfulPatientField(rawContactDigits);
@@ -2016,386 +1946,64 @@ function PatientProfilePage() {
           },
         ]
       : []),
-    ...(hasMeaningfulPatientField(data.patient.drug_allergy_history)
-      ? [
-          {
-            key: "allergy",
-            icon: ShieldAlert,
-            label: "Allergy history",
-            value: data.patient.drug_allergy_history,
-            iconBg: "bg-amber-50 text-amber-700",
-          },
-        ]
-      : []),
   ];
 
+  const identityType = PATIENT_ID_TYPES.find((type) => type.value === (data.patient.patient_id_type || "national_id"))?.label || "Identity document";
+  const identityValue = data.patient.patient_id_type === "old_age" && !data.patient.patient_id_number ? "No identifier required" : profileLine(data.patient.patient_id_number);
+  const patientSummary = <div className="patient-summary-cards space-y-3">
+    <div className="flex flex-wrap gap-2"><HighlightStat icon={CalendarClock} label="Appointments" value={data.appointments.length} />{canViewConsultations ? <HighlightStat icon={FileText} label="Notes" value={consultations.length} /> : null}{canViewLabReports ? <HighlightStat icon={FlaskConical} label="Reports" value={labReports.length} /> : null}{canViewConsultations ? <HighlightStat icon={History} label="Last visit" value={lastVisitDate} /> : null}</div>
+    <SectionCard title="Patient details" compact>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-3">
+        <ProfileDlItem label={identityType} value={identityValue} emphasize />
+        <ProfileDlItem label="Date of birth" value={data.patient.date_of_birth ? formatDate(data.patient.date_of_birth) : "Not recorded"} />
+        <ProfileDlItem label="Gender" value={data.patient.gender} />
+        <ProfileDlItem label="Assigned doctor" value={assignedDoctor} />
+        {showMobileContact ? <ProfileDlItem label="Contact" value={patientContactNumber} /> : null}
+        {showMobileAddress ? <ProfileDlItem label="Address" value={data.patient.address} /> : null}
+      </dl>
+      {showMobileLocations ? <div className="mt-4 border-t border-slate-100 pt-3"><p className="mb-2 text-xs font-semibold text-slate-500">Locations and affiliations</p><PatientLocationTags tags={sanitizeLocationTagsForDisplay(data.patient.location_tags || [])} onChange={() => {}} readOnly /></div> : null}
+    </SectionCard>
+    <div className="grid items-start gap-3 lg:grid-cols-2">
+      <PatientDetailsDisclosure title="Clinical history" hint={mobileClinicalBlocks.length ? `${mobileClinicalBlocks.length} recorded fields` : "Not provided"}>
+        {mobileClinicalBlocks.length ? <div className="space-y-4">{mobileClinicalBlocks.map((block) => <ClinicalGridItem key={block.key} label={block.label} value={block.value} />)}</div> : <p className="text-sm text-slate-500">No clinical history recorded.</p>}
+      </PatientDetailsDisclosure>
+      <PatientDetailsDisclosure title="Next of kin" hint={mobileNokHasAny ? data.patient.next_of_kin_name || "Details recorded" : "Not provided"}>
+        {mobileNokHasAny ? <dl className="grid grid-cols-2 gap-4"><ProfileDlItem label="Name" value={data.patient.next_of_kin_name} /><ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} /><ProfileDlItem label="Phone" value={data.patient.next_of_kin_contact_number} /><ProfileDlItem label="Email" value={data.patient.next_of_kin_email} /></dl> : <p className="text-sm text-slate-500">No next of kin details recorded.</p>}
+      </PatientDetailsDisclosure>
+      {hasMeaningfulPatientField(data.patient.particularity) ? <PatientDetailsDisclosure title="Particularity"><p className="whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.particularity}</p></PatientDetailsDisclosure> : null}
+    </div>
+  </div>;
+
   return (
-    <div className="ocs-page w-full min-w-0 max-w-full space-y-6 overflow-x-hidden md:space-y-4 md:bg-slate-50">
-      {isMobile && (
-        <div
-          className="sticky top-0 z-20 w-full min-w-0 max-w-full border-b border-slate-200/80 bg-white/80 px-4 pb-3 backdrop-blur-lg"
-          style={{ paddingTop: "var(--sat)" }}
-        >
-          <div className="flex min-w-0 items-start justify-between gap-3 pt-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex w-full flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate text-base font-extrabold leading-snug text-ocs-slate">
-                    {data.patient.full_name}
-                  </h1>
-                  {data.patient.patient_identifier ? (
-                    <span className="rounded-full bg-ocs-yellow px-3 py-1 text-sm font-bold text-slate-900 shadow-sm">
-                      #{String(data.patient.patient_identifier).replace(/^#/, "")}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500 shadow-sm">
-                      No OCS care number
-                    </span>
-                  )}
-                  <PatientLinkhamPolicyBadge patient={data.patient} />
-                </div>
-                <span className="text-xs text-ocs-grey">
-                  📍 {profileAddressLabel} • Age: {profileAgeLabel}
-                </span>
-              </div>
-            </div>
-            <a
-              href={`tel:${patientContactNumber}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-ocs-slate px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              <Phone className="size-4" />
-              Quick Call
-            </a>
-          </div>
-        </div>
-      )}
-
-      <div className="hidden md:block">
-        <PageHeader
-          align="center"
-          title={
-            <div className="flex w-full flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-montserrat text-3xl font-semibold text-ocs-slate">
-                  {data.patient.full_name}
-                </span>
-                {data.patient.patient_identifier ? (
-                  <span className="rounded-full bg-ocs-yellow px-3 py-1 text-sm font-bold text-slate-900 shadow-sm">
-                    #{String(data.patient.patient_identifier).replace(/^#/, "")}
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-500 shadow-sm">
-                    No OCS care number
-                  </span>
-                )}
-                <PatientLinkhamPolicyBadge patient={data.patient} />
-                <LinkStatusBadge status={data.patient.link_status} />
-                <span className="text-sm font-normal text-ocs-grey">
-                  📍 {profileAddressLabel} • Age: {profileAgeLabel}
-                </span>
-              </div>
-            </div>
-          }
-          actions={(
-            <div className="flex flex-row flex-wrap items-center justify-end gap-2">
-              {["admin", "operator"].includes(user.role) && (
-                <button type="button" onClick={() => setCareInvitationPatientId(data.patient.id)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal">
-                  Send OCS Care link
-                </button>
-              )}
-              {canFlagLongTermReviewAccess ? (
-                <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
-              ) : null}
-              {user.role === "admin" ? (
-                <OperatorAccessManager
-                  patientId={data.patient.id}
-                  access={data.operatorAccess || []}
-                  operatorOptions={data.operatorOptions || []}
-                  onChanged={reloadPatientProfile}
-                />
-              ) : null}
-              {canFlagLongTermReviewAccess ? (
-                <LongTermReviewFlagButton
-                  patient={data.patient}
-                  disabled={isSavingLongTermReview}
-                  isSaving={isSavingLongTermReview}
-                  onRequestFlag={() => setLongTermReviewModalOpen(true)}
-                  onUnflag={handleUnflagLongTermReview}
-                />
-              ) : null}
-              {canEditPatientProfile ? (
-                <button
-                  type="button"
-                  onClick={() => setPatientEditorOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
-                >
-                  <SquarePen className="size-4" />
-                  Edit patient
-                </button>
-              ) : null}
-              {canManageConsultations ? (
-                <button
-                  type="button"
-                  onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-ocs-teal/90"
-                >
-                  <Plus className="size-4" />
-                  New Consultation Note
-                </button>
-              ) : null}
-              <Link
-                to="/patients"
-                aria-label="Back to patients"
-                title="Back to patients"
-                className="inline-flex items-center justify-center rounded-full border border-slate-200 p-2 text-slate-500 shadow-sm transition-colors hover:bg-slate-50 hover:text-ocs-slate"
-              >
-                <ArrowLeft className="size-4" />
-              </Link>
-            </div>
-          )
-          }
-        />
-      </div>
-
+    <div className="patient-workspace patient-profile ocs-page w-full min-w-0 max-w-full space-y-3">
+      <PatientWorkspaceHeader title={data.patient.full_name} subtitle={`Age: ${profileAgeLabel} · ${profileAddressLabel}`} role={user.role} onRefresh={reloadPatientProfile} actions={<>
+        <Link className="patient-icon-control" to={location.state?.patientsReturnTo || "/patients"} state={{ directoryContext: location.state?.directoryContext, patientsScrollY: location.state?.patientsScrollY }} aria-label="Back to patients"><ArrowLeft className="size-4" /></Link>
+        {canManageConsultations ? <button className="patient-control patient-control-primary" aria-label="Add consultation note" onClick={() => setConsultationComposerOpen(true)}><Plus className="size-4" /><span>{isMobile ? "Add note" : "Add consultation note"}</span></button> : showPatientBillingUi ? <Link className="patient-control patient-control-primary" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
+        {showMobileContact ? <a className="patient-control" href={`tel:${rawContactDigits}`}><Phone className="size-4" />Call</a> : null}
+        <details className="patient-more-actions"><summary aria-label="More actions" title="More actions" className={isMobile ? "patient-icon-control" : "patient-control"}><MoreHorizontal className="size-4" /><span className={isMobile ? "sr-only" : ""}>More actions</span></summary><div>
+          {canEditPatientProfile ? <button type="button" className="patient-control" onClick={() => setPatientEditorOpen(true)}><SquarePen className="size-4" />Edit profile</button> : null}
+          {["admin", "operator"].includes(user.role) ? <button type="button" className="patient-control" onClick={() => setCareInvitationPatientId(data.patient.id)}>Send OCS Care link</button> : null}
+          {canFlagLongTermReviewAccess ? <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} /> : null}
+          {user.role === "admin" ? <OperatorAccessManager patientId={data.patient.id} access={data.operatorAccess || []} operatorOptions={data.operatorOptions || []} onChanged={reloadPatientProfile} /> : null}
+          {canFlagLongTermReviewAccess ? <LongTermReviewFlagButton patient={data.patient} disabled={isSavingLongTermReview} isSaving={isSavingLongTermReview} onRequestFlag={() => setLongTermReviewModalOpen(true)} onUnflag={handleUnflagLongTermReview} /> : null}
+          {canManageLabReports && (canModifyClinicalData || user.role === "lab_tech") ? <button type="button" className="patient-control" onClick={() => setReportEditor({ id: null })}><Paperclip className="size-4" />Attach report</button> : null}
+          {showPatientBillingUi && canManageConsultations ? <Link className="patient-control" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
+        </div></details>
+      </>}>
+        <span className="rounded-full bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#376168]">OCS care number · {data.patient.patient_identifier || "Not assigned"}</span><StatusBadge value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
+      </PatientWorkspaceHeader>
+      {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside className="rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
+      {isPatientUnderReview(data.patient) ? <LongTermReviewAlertBanner patient={data.patient} actions={longTermReviewLogAction} /> : null}
+      <nav aria-label="Patient profile sections" className="patient-profile-tabs flex max-w-full gap-2 overflow-x-auto rounded-full py-1">
+        {mobileProfileTabs.map((tab) => <button key={tab.key} type="button" aria-pressed={activeTab === tab.key} onClick={() => selectProfileTab(tab.key)} className={cx("patient-control shrink-0", activeTab === tab.key && "patient-control-primary")}>{tab.label}</button>)}
+      </nav>
       {isMobile ? (
         <>
-          <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch] pb-0.5">
-            <div className="flex w-max min-w-0 gap-2">
-              {mobileProfileTabs.map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cx(
-                    "whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition",
-                    activeTab === tab.key
-                      ? "bg-ocs-teal text-white"
-                      : "bg-slate-100 text-slate-600",
-                  )}
-                  style={{ minHeight: 48 }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {activeTab === "summary" ? (
-          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
-            {["admin", "operator"].includes(user.role) && (
-              <button type="button" onClick={() => setCareInvitationPatientId(data.patient.id)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-ocs-teal/40 hover:text-ocs-teal">
-                Send OCS Care link
-              </button>
-            )}
-            {canFlagLongTermReviewAccess ? (
-              <AccountLinkReview patient={data.patient} onChanged={reloadPatientProfile} />
-            ) : null}
-            {user.role === "admin" ? (
-              <OperatorAccessManager
-                patientId={data.patient.id}
-                access={data.operatorAccess || []}
-                operatorOptions={data.operatorOptions || []}
-                onChanged={reloadPatientProfile}
-              />
-            ) : null}
-            {canFlagLongTermReviewAccess ? (
-              <LongTermReviewFlagButton
-                patient={data.patient}
-                disabled={isSavingLongTermReview}
-                isSaving={isSavingLongTermReview}
-                onRequestFlag={() => setLongTermReviewModalOpen(true)}
-                onUnflag={handleUnflagLongTermReview}
-              />
-            ) : null}
-            {canEditPatientProfile ? (
-              <button
-                type="button"
-                onClick={() => setPatientEditorOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-ocs-teal/40 hover:text-ocs-teal"
-              >
-                <SquarePen className="size-4" />
-                Edit profile
-              </button>
-            ) : null}
-          </div>
-          ) : null}
-
-          {activeTab === "summary" && (
-            <div className="space-y-4 rounded-2xl border border-[#e6ebd9] bg-[#f4f6f0] p-4">
-              <div className={cx("grid min-w-0 gap-2", canViewConsultations || canViewLabReports ? "grid-cols-3" : "grid-cols-1")}>
-                <HighlightStat
-                  compact
-                  icon={CalendarClock}
-                  label="Appointments"
-                  value={data.appointments.length}
-                />
-                {canViewConsultations ? (
-                  <HighlightStat
-                    compact
-                    icon={FileText}
-                    label="Consultations"
-                    value={consultations.length}
-                  />
-                ) : null}
-                {canViewLabReports ? (
-                  <HighlightStat
-                    compact
-                    icon={FlaskConical}
-                    label="Lab Reports"
-                    value={labReports.length}
-                  />
-                ) : null}
-              </div>
-
-              <SectionCard title="Patient details" variant="demographic">
-                <div className="space-y-3">
-                  {mobileDemographicsPrimary ? (
-                    <p className="break-words text-sm font-semibold leading-snug text-slate-900">
-                      {mobileDemographicsPrimary}
-                    </p>
-                  ) : null}
-                  {hasMeaningfulPatientField(data.patient.patient_id_number) ? (
-                    <p className="text-sm text-slate-600">
-                      Patient ID: {data.patient.patient_id_number}
-                    </p>
-                  ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge value={data.patient.status} />
-                    {mobileAssignedDoctor !== "Unassigned" ? (
-                      <span className="min-w-0 text-xs text-slate-600">{mobileAssignedDoctor}</span>
-                    ) : null}
-                  </div>
-                  {isPatientUnderReview(data.patient) ? (
-                    <ScheduledReviewIndicator dueDate={data.patient.review_due_date} />
-                  ) : null}
-                  {data.patient.status === "active" &&
-                  hasMeaningfulPatientField(data.patient.ongoing_treatment) ? (
-                    <p className="text-xs leading-snug text-slate-600">
-                      {data.patient.ongoing_treatment}
-                    </p>
-                  ) : null}
-                  {showMobileContact ? (
-                    <p className="text-sm text-slate-700">
-                      <span className="font-medium text-slate-500">Contact </span>
-                      {rawContactDigits}
-                    </p>
-                  ) : null}
-                  {showMobileAddress ? (
-                    <p className="text-sm leading-snug text-slate-700">
-                      <span className="font-medium text-slate-500">Address </span>
-                      {data.patient.address}
-                    </p>
-                  ) : null}
-                  {showMobileLocations ? (
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                        Locations
-                      </p>
-                      <div className="mt-1">
-                        <PatientLocationTags
-                          tags={sanitizeLocationTagsForDisplay(data.patient.location_tags || [])}
-                          onChange={() => {}}
-                          readOnly
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </SectionCard>
-
-              {mobileNokHasAny ? (
-                <SectionCard title="Next of kin" variant="demographic">
-                  <dl className="space-y-2 text-sm">
-                    {hasMeaningfulPatientField(data.patient.next_of_kin_name) ? (
-                      <div>
-                        <dt className="text-xs font-semibold text-[#67755d]">
-                          Name
-                        </dt>
-                        <dd className="font-medium text-slate-900">{data.patient.next_of_kin_name}</dd>
-                      </div>
-                    ) : null}
-                    {hasMeaningfulPatientField(data.patient.next_of_kin_relationship) ? (
-                      <div>
-                        <dt className="text-xs font-semibold text-[#67755d]">
-                          Relationship
-                        </dt>
-                        <dd className="text-slate-700">{data.patient.next_of_kin_relationship}</dd>
-                      </div>
-                    ) : null}
-                    {hasMeaningfulPatientField(data.patient.next_of_kin_contact_number) ? (
-                      <div>
-                        <dt className="text-xs font-semibold text-[#67755d]">
-                          Contact
-                        </dt>
-                        <dd className="text-slate-700">{data.patient.next_of_kin_contact_number}</dd>
-                      </div>
-                    ) : null}
-                    {hasMeaningfulPatientField(data.patient.next_of_kin_email) ? (
-                      <div>
-                        <dt className="text-xs font-semibold text-[#67755d]">
-                          Email
-                        </dt>
-                        <dd className="text-slate-700">{data.patient.next_of_kin_email}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                </SectionCard>
-              ) : null}
-
-              {mobileClinicalBlocks.length || isPatientUnderReview(data.patient) ? (
-                <SectionCard title="Clinical history">
-                  <LongTermReviewAlertBanner
-                    note={data.patient.review_reason_note}
-                    dueDate={data.patient.review_due_date}
-                    actions={longTermReviewLogAction}
-                  />
-                  <div className="space-y-2">
-                    {mobileClinicalBlocks.map((block) => {
-                      const Icon = block.icon;
-                      return (
-                        <div key={block.key} className="border-b border-gray-100 pb-3">
-                          <div className="flex items-start gap-2.5">
-                            <div className={cx("shrink-0 rounded-lg p-2", block.iconBg)}>
-                              <Icon className="size-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                                {block.label}
-                              </p>
-                              <p className="mt-1 whitespace-pre-line break-words text-sm leading-snug text-slate-700">
-                                {block.value}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </SectionCard>
-              ) : null}
-
-              {hasMeaningfulPatientField(data.patient.particularity) ? (
-                <SectionCard title="Particularity">
-                  <p className="whitespace-pre-line break-words text-sm leading-snug text-slate-700">
-                    {data.patient.particularity}
-                  </p>
-                </SectionCard>
-              ) : null}
-            </div>
-          )}
+          {activeTab === "summary" ? patientSummary : null}
 
           {activeTab === "notes" && canViewConsultations && (
             <div className="space-y-4">
-              {canModifyClinicalData && (
-                <button
-                  type="button"
-                  onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ocs-teal px-4 py-3 text-sm font-semibold text-white"
-                  style={{ minHeight: 48 }}
-                >
-                  <Plus className="size-4" />
-                  Add consultation note
-                </button>
-              )}
+
 
               {consultations.length ? (
                 <div className="space-y-3">
@@ -2724,39 +2332,8 @@ function PatientProfilePage() {
                         </div>
                         <MobileBillingStatusBar status={patientBillStatus(bill)} />
                       </div>
-                      <div className="mt-3 space-y-3">
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Pay by
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
-                            {formatPaymentMethod(bill.payment_method)}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Payment date
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
-                            {bill.payment_date ? formatDate(bill.payment_date) : "Not recorded"}
-                          </p>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                            Consultation
-                          </p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">
-                            {formatDate(bill.consultation_date)}
-                          </p>
-                        </div>
-                      </div>
-                      <ul className="mt-3 space-y-1 text-sm text-slate-600">
-                        {bill.items.map((item, index) => (
-                          <li key={`${bill.id}-${index}`}>
-                            {item.description}: {formatCurrency(item.amount)}
-                          </li>
-                        ))}
-                      </ul>
+                      {bill.payment_method || bill.payment_date ? <p className="mt-3 text-sm text-slate-600">{[bill.payment_method ? formatPaymentMethod(bill.payment_method) : "", bill.payment_date ? formatDate(bill.payment_date) : ""].filter(Boolean).join(" · ")}</p> : null}
+                      <details className="mt-3 text-sm text-slate-600"><summary className="min-h-11 cursor-pointer content-center font-semibold">Bill items ({bill.items.length})</summary><ul className="mt-2 space-y-1">{bill.items.map((item, index) => <li key={`${bill.id}-${index}`}>{item.description}: {formatCurrency(item.amount)}</li>)}</ul></details>
                       {showPatientBillingUi ? (
                         <Link
                           to={patientBillOpenPath(bill, id, user.role)}
@@ -2779,117 +2356,16 @@ function PatientProfilePage() {
         </>
       ) : (
         <>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            <HighlightStat
-              icon={CalendarClock}
-              label="Appointments"
-              value={data.appointments.length}
-            />
-            {canViewLabReports ? (
-              <HighlightStat
-                icon={FlaskConical}
-                label="Medical & Lab Reports"
-                value={labReports.length}
-              />
-            ) : null}
-            {canViewConsultations ? (
-              <HighlightStat
-                icon={History}
-                label="Last visit date"
-                value={lastVisitDate}
-              />
-            ) : null}
-          </div>
+          {activeTab === "summary" ? patientSummary : null}
 
-          <div className="grid items-stretch gap-2 xl:grid-cols-12">
-            <SectionCard compact className="h-full xl:col-span-7" title="Patient details" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
-                <ProfileDlItem label="Patient ID" value={data.patient.patient_id_number} emphasize />
-                <ProfileDlItem label="First name" value={data.patient.first_name} emphasize />
-                <ProfileDlItem label="Last name" value={data.patient.last_name} emphasize />
-                <ProfileDlItem label="Gender" value={data.patient.gender} emphasize />
-                <ProfileDlItem label="Assigned doctor" value={assignedDoctor} emphasize />
-                <ProfileDlItem label="Contact" value={patientContactNumber} />
-                <ProfileDlItem label="Address" value={data.patient.address} />
-              </dl>
-              <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ocs-grey">
-                  Status
-                </span>
-                <StatusBadge value={data.patient.status} />
-                <span className="min-w-0 text-xs leading-snug text-ocs-grey">{statusDetail}</span>
-              </div>
-              {isPatientUnderReview(data.patient) ? (
-                <ScheduledReviewIndicator dueDate={data.patient.review_due_date} />
-              ) : null}
-              <div className="mt-2 border-t border-slate-100 pt-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                  Locations and affiliations
-                </p>
-                <div className="mt-1">
-                  <PatientLocationTags
-                    tags={sanitizeLocationTagsForDisplay(data.patient.location_tags || [])}
-                    onChange={() => {}}
-                    readOnly
-                  />
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard compact className="h-full xl:col-span-5" title="Next of kin" titleClassName={DESKTOP_SECTION_TITLE_CLASS} variant="demographic">
-              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-                <ProfileDlItem label="Name" value={data.patient.next_of_kin_name} emphasize />
-                <ProfileDlItem label="Relationship" value={data.patient.next_of_kin_relationship} />
-                <ProfileDlItem label="Phone" value={data.patient.next_of_kin_contact_number} />
-                <ProfileDlItem label="Email" value={data.patient.next_of_kin_email} />
-              </dl>
-            </SectionCard>
-
-            <SectionCard compact className="h-full xl:col-span-7" title="Clinical history" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
-              <LongTermReviewAlertBanner
-                note={data.patient.review_reason_note}
-                dueDate={data.patient.review_due_date}
-                actions={longTermReviewLogAction}
-              />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <ClinicalGridItem label="Past medical history" value={data.patient.past_medical_history} />
-                <ClinicalGridItem label="Past surgical history" value={data.patient.past_surgical_history} />
-                <ClinicalGridItem label="Drug history" value={data.patient.drug_history} />
-                <ClinicalGridItem label="Allergy history" value={data.patient.drug_allergy_history} />
-              </div>
-            </SectionCard>
-
-            <SectionCard compact className="h-full xl:col-span-5" title="Particularity" titleClassName={DESKTOP_SECTION_TITLE_CLASS}>
-              <p
-                className={cx(
-                  "whitespace-pre-wrap break-words text-xs leading-snug",
-                  data.patient.particularity ? "text-slate-800" : "text-ocs-grey",
-                )}
-              >
-                {data.patient.particularity || "No particularity recorded during intake."}
-              </p>
-            </SectionCard>
-          </div>
-
-          {canViewConsultations ? (
+          {canViewConsultations && activeTab === "notes" ? (
           <SectionCard
             compact
             id="consultation-notes"
             className="scroll-mt-28"
             title="Consultation notes"
             titleClassName={DESKTOP_SECTION_TITLE_CLASS}
-            actions={
-              canManageConsultations ? (
-                <button
-                  type="button"
-                  onClick={() => setConsultationComposerOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-ocs-teal px-3 py-2 text-sm font-semibold text-white transition hover:bg-ocs-teal/90"
-                >
-                  <Plus className="size-4" />
-                  Add consultation note
-                </button>
-              ) : null
-            }
+
           >
             {consultations.length ? (
               <div className="space-y-2">
@@ -3085,7 +2561,7 @@ function PatientProfilePage() {
           </SectionCard>
           ) : null}
 
-          {canViewLabReports ? (
+          {canViewLabReports && activeTab === "reports" ? (
           <SectionCard
             compact
             title="Medical & Lab Reports"
@@ -3193,7 +2669,7 @@ function PatientProfilePage() {
           </SectionCard>
           ) : null}
 
-          {showPatientBillingUi ? (
+          {showPatientBillingUi && activeTab === "billing" ? (
             <SectionCard
               compact
               title="Billing history"
@@ -3247,9 +2723,9 @@ function PatientProfilePage() {
                           <td className="px-3 py-1.5 align-middle text-right">
                             <Link
                               to={patientBillOpenPath(bill, id, user.role)}
-                              className="inline-flex rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-ocs-slate transition hover:border-ocs-teal hover:text-ocs-teal"
+                              className="patient-control whitespace-nowrap"
                             >
-                              Open
+                              Open bill
                             </Link>
                           </td>
                         </tr>
@@ -3266,104 +2742,6 @@ function PatientProfilePage() {
               )}
             </SectionCard>
           ) : null}
-        </>
-      )}
-
-      {isMobile && showMobileFab && (
-        <>
-          {fabOpen && (
-            <div
-              className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
-              onClick={() => setFabOpen(false)}
-            />
-          )}
-          <div className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3">
-            {fabOpen && (
-              <>
-                {canManageLabReports && (canModifyClinicalData || user.role === "lab_tech") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReportEditor({ id: null });
-                      setFabOpen(false);
-                    }}
-                    className="flex items-center gap-3"
-                  >
-                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
-                      Attach Report
-                    </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
-                      <Paperclip className="size-5" />
-                    </span>
-                  </button>
-                )}
-                {showPatientBillingUi &&
-                  (canModifyClinicalData || user.role === "operator" || user.role === "accountant") && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate(`/billing?patientId=${id}&create=1`);
-                      setFabOpen(false);
-                    }}
-                    className="flex items-center gap-3"
-                  >
-                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
-                      New Bill
-                    </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
-                      <CreditCard className="size-5" />
-                    </span>
-                  </button>
-                )}
-                {canModifyClinicalData && canManageConsultations && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConsultationComposerOpen(true);
-                      setFabOpen(false);
-                    }}
-                    className="flex items-center gap-3"
-                  >
-                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
-                      Add Note
-                    </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
-                      <FileText className="size-5" />
-                    </span>
-                  </button>
-                )}
-                {canEditPatientProfile && user.role === "operator" ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPatientEditorOpen(true);
-                      setFabOpen(false);
-                    }}
-                    className="flex items-center gap-3"
-                  >
-                    <span className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow">
-                      Edit profile
-                    </span>
-                    <span className="flex size-11 items-center justify-center rounded-full bg-ocs-teal text-white shadow-lg">
-                      <SquarePen className="size-5" />
-                    </span>
-                  </button>
-                ) : null}
-              </>
-            )}
-            <button
-              type="button"
-              onClick={() => setFabOpen((prev) => !prev)}
-              className="flex size-14 items-center justify-center rounded-full bg-ocs-yellow text-slate-900 shadow-lg"
-            >
-              <Plus
-                className={cx(
-                  "size-6 transition-transform duration-200",
-                  fabOpen && "rotate-45",
-                )}
-              />
-            </button>
-          </div>
         </>
       )}
 

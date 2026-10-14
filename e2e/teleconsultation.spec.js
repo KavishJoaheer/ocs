@@ -10,6 +10,11 @@ async function staffPage(context, actor) {
   await context.addInitScript(token => window.localStorage.setItem("ocs_medecins_auth_token", token), actor.token);
   return context.newPage();
 }
+async function openCareInvitation(page) {
+  const more = page.locator(".patient-more-actions");
+  if (!await more.evaluate(element => element.open)) await more.locator("summary").click();
+  await page.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
+}
 test("hotline invitation, patient consent, doctor verification and published care plan", async ({ browser, request }, testInfo) => {
   const operator = await login(request, "operator01");
   const doctor = await login(request, "arun.dharee");
@@ -25,7 +30,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.goto(`${STAFF}/patients/${patient.id}`);
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toHaveCount(0);
     await expect(opPage.getByLabel("Patient identity checked using the agreed OCS procedure.")).toHaveCount(0);
-    await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
+    await openCareInvitation(opPage);
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toBeVisible();
     await expect(opPage.getByRole("radio", { name: "Patient records", exact: true })).toBeChecked();
     await expect(opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.")).toHaveCount(0);
@@ -34,7 +39,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.setViewportSize({ width: 390, height: 844 });
     await opPage.reload();
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toHaveCount(0);
-    await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
+    await openCareInvitation(opPage);
     await opPage.getByLabel("Patient identity checked using the agreed OCS procedure.").check();
     await opPage.getByLabel("Patient personally controls this mobile; number read back and confirmed.").check();
     await expect(opPage.getByLabel("Hotline screening completed; potentially suitable for teleconsultation, subject to the doctor’s assessment.")).toHaveCount(0);
@@ -45,7 +50,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await expect(opPage.getByLabel("Personal sign-in link")).toHaveCount(0);
     await opPage.setViewportSize({ width: 1280, height: 900 });
     await opPage.reload();
-    await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
+    await openCareInvitation(opPage);
     await opPage.getByRole("radio", { name: "Teleconsultation", exact: true }).check();
     await expect(opPage.getByRole("dialog").getByRole("link", { name: "Manage teleconsultations" })).toHaveCount(0);
     await opPage.getByLabel("Patient identity checked using the agreed OCS procedure.").check();
@@ -81,7 +86,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.unroute("**/api/patients/*/care-invitation/*");
     await expect(opPage.getByRole("dialog", { name: "Send OCS Care link" })).toHaveCount(0);
     await expect(opPage.getByLabel("Personal sign-in link")).toHaveCount(0);
-    await opPage.getByRole("button", { name: "Send OCS Care link", exact: true }).click();
+    await openCareInvitation(opPage);
     await expect(opPage.getByLabel("Personal sign-in link")).toHaveCount(0);
     await expect(opPage.getByLabel("Patient identity checked using the agreed OCS procedure.")).not.toBeChecked();
     await expect(opPage.getByRole("radio", { name: "Patient records", exact: true })).toBeChecked();

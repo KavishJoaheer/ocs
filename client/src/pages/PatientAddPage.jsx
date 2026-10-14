@@ -47,14 +47,16 @@ function PatientAddPage() {
     try {
       if (user.is_read_only) {
         toast.success("Practice complete. The patient was not saved.");
-        return;
+        return true;
       }
 
       const created = await api.post("/patients", payload);
       toast.success("Patient added successfully.");
       navigate(`/patients/${created.id}`, { replace: true });
+      return true;
     } catch (error) {
       toast.error(error.message);
+      return false;
     } finally {
       setIsSaving(false);
     }

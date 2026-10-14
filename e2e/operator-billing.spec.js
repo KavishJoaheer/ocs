@@ -172,6 +172,7 @@ test("doctor billing remains available on desktop and closes when resized to mob
   await expect(page.getByRole("link", { name: "Billing", exact: true })).toBeVisible();
 
   await page.goto(`${STAFF_BASE}/patients/${patient.patient_id}`);
+  await page.getByRole("button", { name: "Billing", exact: true }).click();
   await expect(page.getByRole("link", { name: "Open billing workspace", exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 768, height: 1024 });
@@ -205,6 +206,7 @@ test.describe("operator billing", () => {
     await expect(page.getByRole("button", { name: "Issue and record payment", exact: true })).toBeVisible();
 
     await page.goto(`${STAFF_BASE}/patients/${patient.patient_id}`);
+    await page.getByRole("button", { name: "Notes", exact: true }).click();
     await page.getByRole("button", { name: "Open", exact: true }).first().click();
     await expect(page.getByRole("link", { name: "Attach manual invoice photo", exact: true })).toBeVisible();
 
