@@ -18,6 +18,8 @@ import { cx } from "../lib/utils.js";
 import Modal from "./Modal.jsx";
 import SupplyRequestDetailDrawer from "./SupplyRequestDetailDrawer.jsx";
 import SupplyRequestHistoryFilters, { EMPTY_HISTORY_FILTERS } from "./SupplyRequestHistoryFilters.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
+import "./supply-requests/supplyWorkspace.css";
 
 const QUEUE_DEFS = [
   { id: "changes", label: "Changes", key: "changes" },
@@ -67,6 +69,8 @@ export default function OperatorWorkQueuesPanel({
   needsExpiryItems = [],
 }) {
   const { user } = useAuth();
+  const desktopWorkspace = !useIsMobile(1024);
+  const [queueSearch, setQueueSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQueue = validQueueId(searchParams.get("queue"));
   const [queues, setQueues] = useState(null);
@@ -173,6 +177,16 @@ export default function OperatorWorkQueuesPanel({
     if (!queues) return [];
     return queues[active] || [];
   }, [queues, active, history.requests, needsExpiryItems]);
+  const searchQueue = desktopWorkspace && QUEUE_DEFS.find(queue => queue.id === active)?.kind == null;
+  const visibleRows = searchQueue && queueSearch.trim() ? rows.filter(row => {
+    const needle = queueSearch.trim().replace(/^#/, "").toLowerCase();
+    if (/^#?\d+$/.test(queueSearch.trim())) return Number(row.id) === Number(needle);
+    return String(row.id).includes(needle) || String(row.doctor_name || "").toLowerCase().includes(needle) || String(row.item_search_text || "").toLowerCase().includes(needle);
+  }) : rows;
+  const coreQueues = ["new_requests", "pick_today", "awaiting_collection", "history"];
+  const displayedQueues = desktopWorkspace
+    ? [...coreQueues.map(id => QUEUE_DEFS.find(queue => queue.id === id)), ...QUEUE_DEFS.filter(queue => !coreQueues.includes(queue.id) && (Number(counts[queue.key] || 0) > 0 || active === queue.id))]
+    : QUEUE_DEFS.filter(queue => queue.kind === "history" || Number(counts[queue.key] || 0) > 0 || active === queue.id);
 
   async function markCollected(request) {
     try {
@@ -247,11 +261,7 @@ export default function OperatorWorkQueuesPanel({
         }
       >
         <div className="mb-4 flex flex-wrap gap-2 pb-1">
-          {QUEUE_DEFS.filter((queue) => {
-            if (queue.kind === "history") return true;
-            const count = Number(counts[queue.key] || 0);
-            return count > 0 || active === queue.id;
-          }).map((queue) => {
+          {displayedQueues.map((queue) => {
             const count = queue.kind === "history" ? Number(history.total || 0) : Number(counts[queue.key] || 0);
             return (
               <button
@@ -267,18 +277,21 @@ export default function OperatorWorkQueuesPanel({
                 )}
               >
                 {queue.label}
-                <span
+                {!desktopWorkspace || queue.kind !== "history" || active === "history" ? <span
                   className={cx(
-                    "inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold",
+                    "inline-flex items-center justify-center rounded-full py-0.5 text-[11px] font-bold",
+                    desktopWorkspace ? "w-9 shrink-0 px-1 tabular-nums" : "min-w-5 px-1.5",
                     active === queue.id ? "bg-white/90 text-[#2d8f98]" : "bg-slate-100 text-slate-600",
                   )}
                 >
                   {count}
-                </span>
+                </span> : null}
               </button>
             );
           })}
         </div>
+
+        {searchQueue ? <div className="mb-4 flex items-center justify-between gap-3"><label className="flex-1"><span className="sr-only">Search current supply queue</span><input aria-label="Search current supply queue" placeholder="Find doctor, request number or item" value={queueSearch} onChange={event => setQueueSearch(event.target.value)} className="min-h-11 w-full max-w-md rounded-full border border-[#d5e4e1] bg-white px-4 text-sm text-[#173f4a]" /></label><span className="text-xs text-[#5b7379]">{visibleRows.length} of {rows.length} requests</span>{queueSearch ? <button type="button" onClick={() => setQueueSearch("")} className="min-h-11 rounded-full border border-[#d5e4e1] px-4 text-sm text-[#376168]">Clear search</button> : null}</div> : null}
 
         {Number(counts.reconciliation_required || counts.fulfilment_linkage_required || 0) > 0 ? (
           <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -292,9 +305,9 @@ export default function OperatorWorkQueuesPanel({
           <p className="text-sm text-slate-500">Loading queues…</p>
         ) : active === "history" && loading && !history.requests.length ? (
           <p className="text-sm text-slate-500">Loading history…</p>
-        ) : !rows.length ? (
+        ) : !visibleRows.length ? (
           <p className="text-sm text-slate-500">
-            {active === "history"
+            {searchQueue && queueSearch.trim() ? "No requests match your search." : active === "history"
               ? "No archived supply requests yet."
               : Number(counts[active] || 0) > 0
                 ? "Nothing waiting in this queue."
@@ -423,11 +436,12 @@ export default function OperatorWorkQueuesPanel({
                 className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">Dr. {row.doctor_name}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{desktopWorkspace ? `Request #${row.id} · ` : ""}Dr. {row.doctor_name}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Collect {formatSupplyRequestCollectionDay(row.collection_date)}
                     {row.transfer_transaction_id ? ` · Transfer ${row.transfer_transaction_id}` : ""}
                   </p>
+                  {desktopWorkspace ? <p className="supply-items-preview mt-1 text-sm text-[#376168]">{(row.items || []).slice(0,3).map(item => `${item.item_name} × ${item.quantity}`).join(" · ")}{row.items?.length > 3 ? ` · +${row.items.length - 3} more` : ""}</p> : null}
                   <span className="mt-2 inline-flex rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-bold uppercase text-teal-800">
                     {supplyRequestStatusLabel(row.status, user?.role === "admin" ? "admin" : "operator")}
                   </span>
@@ -466,19 +480,21 @@ export default function OperatorWorkQueuesPanel({
           </div>
         ) : (
           <div className="space-y-3">
-            {rows.map((row) => (
-              <div
+            {visibleRows.map((row) => (
+              <article
                 key={row.id}
+                aria-label={`Supply request ${row.id}`}
                 className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">Dr. {row.doctor_name}</p>
+                  <p className="truncate text-sm font-semibold text-slate-900">{desktopWorkspace ? `Request #${row.id} · ` : ""}Dr. {row.doctor_name}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Collect {formatSupplyRequestCollectionDay(row.collection_date)}
                     {` · ${waitingLabel(row.created_at)}`}
                     {` · ${row.item_count} item${row.item_count === 1 ? "" : "s"}`}
                     {row.assigned_to_name ? ` · ${row.assigned_to_name}` : ""}
                   </p>
+                  {desktopWorkspace && row.item_preview?.length ? <p className="supply-items-preview mt-1 text-sm text-[#376168]" title={row.item_search_text}>{row.item_preview.map(item => `${item.item_name} × ${item.quantity}`).join(" · ")}{row.item_count > row.item_preview.length ? ` · +${row.item_count - row.item_preview.length} more` : ""}</p> : null}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {row.overdue ? (
                       <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">
@@ -491,9 +507,9 @@ export default function OperatorWorkQueuesPanel({
                         Shortage
                       </span>
                     ) : null}
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                    {!desktopWorkspace ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
                       {row.next_action}
-                    </span>
+                    </span> : null}
                     {row.reconciliation_required || row.linkage_required ? (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
                         Needs review
@@ -565,7 +581,7 @@ export default function OperatorWorkQueuesPanel({
                     );
                   })()}
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}

@@ -8,6 +8,7 @@ import { useAuth } from "../hooks/useAuth.jsx";
 import { ATP_HELP_TEXT } from "../lib/inventoryStockDisplay.js";
 import { withOperationalOverride } from "../lib/inventoryAccess.js";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
+import "./supply-requests/supplyWorkspace.css";
 
 function qty(value) {
   if (value === null || value === undefined || value === "") return 0;
@@ -28,11 +29,16 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
   const [previewOpen, setPreviewOpen] = useState(false);
   const [reconReason, setReconReason] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadKey, setLoadKey] = useState(0);
 
   useEffect(() => {
     if (!open || !request?.id) return undefined;
     let cancelled = false;
-    api
+    async function loadDetail() {
+    setLoading(true); setLoadError(""); setDetail(null); setLines([]);
+    await api
       .get(`/restock-requests/${request.id}/fulfilment`)
       .then((payload) => {
         if (cancelled) return;
@@ -48,11 +54,14 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
         setPartialApproved(Boolean(fulfilment?.partial_approved));
         setPartialReason(fulfilment?.partial_reason || "");
       })
-      .catch((error) => toast.error(error.message || "Could not load fulfilment."));
+      .catch((error) => { if (!cancelled) setLoadError(error.message || "Could not load fulfilment."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    }
+    void loadDetail();
     return () => {
       cancelled = true;
     };
-  }, [open, request?.id, request?.__overrideReason]);
+  }, [open, request?.id, request?.__overrideReason, loadKey]);
 
   useEffect(() => {
     setUnsavedWork("fulfilment", Boolean(open && request?.id));
@@ -193,7 +202,9 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
           : "Pick reserved stock and lock the pack."
       }
       size="xl"
+      className="supply-preparation-dialog"
     >
+      {loading || (!detail && !loadError) ? <p role="status" className="py-8 text-sm text-slate-600">Loading pack details…</p> : loadError ? <div role="alert" className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-800">{loadError}<button type="button" onClick={() => setLoadKey(value => value + 1)} className="ml-3 min-h-11 rounded-full border border-rose-200 px-4">Retry</button></div> : <>
       {requireOverride ? (
         <div className="mb-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
           <p className="font-semibold">Emergency operational override</p>
@@ -246,10 +257,10 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
               <thead className="bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-3 py-2 text-left">Item</th>
-                  <th className="px-3 py-2 text-right">Req</th>
+                  <th className="px-3 py-2 text-right">Requested</th>
                   <th className="px-3 py-2 text-right">Reserved</th>
                   <th className="px-3 py-2 text-right" title={ATP_HELP_TEXT}>Available</th>
-                  <th className="px-3 py-2 text-right">Short</th>
+                  <th className="px-3 py-2 text-right">Shortage</th>
                   <th className="px-3 py-2 text-right">Picked</th>
                   <th className="px-3 py-2 text-right">Fulfilled</th>
                 </tr>
@@ -272,10 +283,11 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                     <td className="px-3 py-2 text-right tabular-nums">{qty(line.requested_quantity)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{qty(line.reserved_quantity)}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{qty(line.available_to_promise)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-rose-700">{qty(line.shortage_quantity)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${qty(line.shortage_quantity) > 0 ? "text-rose-700" : "text-slate-600"}`}>{qty(line.shortage_quantity)}</td>
                     <td className="px-3 py-2 text-right">
                       <input
                         type="number"
+                        aria-label={`Picked quantity for ${line.item_name}`}
                         min="0"
                         disabled={fulfilmentLocked}
                         className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right disabled:bg-slate-100"
@@ -298,6 +310,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
                     <td className="px-3 py-2 text-right">
                       <input
                         type="number"
+                        aria-label={`Fulfilled quantity for ${line.item_name}`}
                         min="0"
                         disabled={fulfilmentLocked}
                         className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right disabled:bg-slate-100"
@@ -375,6 +388,7 @@ export default function OperatorFulfilmentPanel({ request, open, onClose, onUpda
           )}
         </div>
       )}
+      </>}
     </Modal>
     <Modal
       open={previewOpen}

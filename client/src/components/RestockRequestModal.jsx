@@ -5,6 +5,7 @@ import ConfirmDialog from "./ConfirmDialog.jsx";
 import Modal from "./Modal.jsx";
 import { getValidCollectionDays } from "../lib/collectionDays.js";
 import { setUnsavedWork } from "../lib/unsavedWork.js";
+import "./supply-requests/supplyWorkspace.css";
 
 function catalogAvailable(item) {
   return Number(item?.available_to_use ?? item?.available_to_promise ?? item?.quantity ?? 0);
@@ -123,6 +124,7 @@ export default function RestockRequestModal({
     const query = searchQuery.trim().toLowerCase();
     return (catalogItems || [])
       .filter((item) => {
+        if (item.item_kind === "service") return false;
         const name = String(item.item_name || "").toLowerCase();
         if (!name) return false;
         if (query && !name.includes(query)) return false;
@@ -229,8 +231,10 @@ export default function RestockRequestModal({
             : "Choose stock items and a target collection day. Operators will prepare your pack."
       }
       size="md"
+      className="supply-request-dialog"
     >
-      <div className="flex flex-col gap-4">
+      <div className="supply-compose-body flex flex-col gap-4">
+        <div className="supply-compose-items flex flex-col gap-4">
         <div className="relative">
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
             Add item
@@ -239,6 +243,7 @@ export default function RestockRequestModal({
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
+              aria-label="Search OCS stock by name"
               value={searchQuery}
               onChange={(event) => {
                 setSearchQuery(event.target.value);
@@ -260,8 +265,8 @@ export default function RestockRequestModal({
                   type="button"
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    addItem(catalogItem);
                   }}
+                  onClick={() => addItem(catalogItem)}
                   className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left text-sm transition last:border-b-0 hover:bg-slate-50"
                 >
                   <span className="min-w-0 break-words font-semibold text-slate-800">{catalogItem.item_name}</span>
@@ -273,6 +278,7 @@ export default function RestockRequestModal({
               })}
             </div>
           ) : null}
+          {suggestionsOpen && searchQuery.trim() && !filteredCatalog.length ? <p role="status" className="mt-2 text-xs text-slate-500">No matching stock items. Try another name.</p> : null}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -344,12 +350,14 @@ export default function RestockRequestModal({
             })
           )}
         </div>
-
+        </div>
+        <div className="supply-compose-collection flex flex-col gap-4">
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
             Target collection day
           </label>
           <select
+            aria-label="Target collection day"
             value={collectionDate}
             onChange={(event) => setCollectionDate(event.target.value)}
             className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 focus:border-[#4FB8B3] focus:outline-none"
@@ -367,6 +375,7 @@ export default function RestockRequestModal({
             Note (optional)
           </label>
           <textarea
+            aria-label="Note (optional)"
             value={note}
             onChange={(event) => setNote(event.target.value.slice(0, 500))}
             rows={2}
@@ -380,8 +389,8 @@ export default function RestockRequestModal({
           completed solely for collection on{" "}
           <strong>Mondays, Wednesdays, Fridays, and Saturdays</strong>.
         </div>
-
-        <div className="sticky bottom-0 z-10 flex flex-col-reverse gap-2 bg-white pt-2 sm:flex-row sm:justify-end">
+        </div>
+        <div className="supply-compose-footer sticky bottom-0 z-10 flex flex-col-reverse gap-2 bg-white pt-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={requestClose}

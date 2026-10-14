@@ -163,9 +163,11 @@ function AppShell() {
   const isDoctorCareWorkspace = userRole === "doctor" && ["/visit-requests", "/teleconsultations"].includes(location.pathname);
   const inventoryDoctorMobile = isMobile && isInventory && userRole === "doctor";
   const isInventoryWorkspace = isInventory && ((!isCompactInventory && ["doctor", "operator"].includes(userRole)) || inventoryDoctorMobile);
-  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace;
+  const isDoctorSupplyWorkspace = isSupplyRequests && userRole === "doctor" && !isCompactInventory;
+  const hasOperatorWorkspaceHeader = isOperatorVisitRequests || isOperatorTeleconsultations || isDoctorCareWorkspace || isInventoryWorkspace || isDoctorSupplyWorkspace;
   const alwaysHideTopHeader =
     isDoctorCareWorkspace ||
+    isDoctorSupplyWorkspace ||
     (isDashboard && (userRole === "doctor" || userRole === "operator" || userRole === "admin")) ||
     (isMobile && isPatientsDirectory && userRole === "doctor") ||
     (isMobile && isInventory && userRole === "doctor") ||

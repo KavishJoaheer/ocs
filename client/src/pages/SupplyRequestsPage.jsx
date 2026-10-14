@@ -8,6 +8,8 @@ import RestockRequestModal from "../components/RestockRequestModal.jsx";
 import SupplyRequestDetailDrawer from "../components/SupplyRequestDetailDrawer.jsx";
 import LegacyReconciliationNotice from "../components/LegacyReconciliationNotice.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
+import { useIsMobile } from "../hooks/useIsMobile.js";
+import DoctorDesktopSupplyRequests from "../components/supply-requests/DoctorDesktopSupplyRequests.jsx";
 import { useDoctorSupplyRequests } from "../hooks/useDoctorSupplyRequests.js";
 import { api, ApiError } from "../lib/api.js";
 import { buildInventoryListQuery } from "../lib/inventoryFolders.js";
@@ -90,6 +92,13 @@ export default function SupplyRequestsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const desktopWorkspace = !useIsMobile(1024);
+  const [desktopSearch, setDesktopSearch] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setHistorySearch(desktopSearch.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [desktopSearch]);
   const [tab, setTab] = useState("active");
   const [refreshKey, setRefreshKey] = useState(0);
   const [catalogTick, setCatalogTick] = useState(0);
@@ -116,8 +125,9 @@ export default function SupplyRequestsPage() {
       offset: historyOffset,
       ...(historyFrom ? { from: historyFrom } : {}),
       ...(historyTo ? { to: historyTo } : {}),
+      ...(desktopWorkspace && historySearch ? /^#?\d+$/.test(historySearch) ? { request_id: historySearch.replace(/^#/, "") } : { item: historySearch } : {}),
     }),
-    [historyOffset, historyFrom, historyTo],
+    [historyOffset, historyFrom, historyTo, desktopWorkspace, historySearch],
   );
 
   const {
@@ -290,9 +300,39 @@ export default function SupplyRequestsPage() {
   const historyPage = Math.floor(historyOffset / HISTORY_PAGE_SIZE) + 1;
   const historyPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
 
+  async function exportHistory() {
+    try {
+      const token = window.localStorage.getItem("ocs_medecins_auth_token");
+      const params = new URLSearchParams({ view: "history" });
+      Object.entries(historyParams).forEach(([key, value]) => {
+        if (!["limit", "offset"].includes(key)) params.set(key, String(value));
+      });
+      const response = await fetch(`/api/restock-requests/export?${params}`, { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error("Could not export supply request history.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url; link.download = "my-supply-request-history.csv"; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { toast.error(error.message || "Could not export supply request history."); }
+  }
+
   return (
     <>
-      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-1 py-2 md:max-w-2xl md:px-0 md:py-4">
+      {desktopWorkspace ? <DoctorDesktopSupplyRequests
+        tab={tab} onTabChange={setTab} requests={displayableRequests} history={historyRequests}
+        historyTotal={historyTotal} historyPage={historyPage} historyPages={historyPages}
+        historyCompletedCount={historyCompletedCount} historyCancelledCount={historyCancelledCount} historyItemCounts={historyItemCounts}
+        historyFrom={historyFrom} historyTo={historyTo}
+        onHistoryFrom={value => { setHistoryFrom(value); setHistoryOffset(0); }}
+        onHistoryTo={value => { setHistoryTo(value); setHistoryOffset(0); }}
+        onPrevious={() => setHistoryOffset(value => Math.max(0, value - HISTORY_PAGE_SIZE))}
+        onNext={() => setHistoryOffset(value => value + HISTORY_PAGE_SIZE)} onExport={exportHistory}
+        search={desktopSearch} onSearch={value => { setDesktopSearch(value); setHistoryOffset(0); }}
+        loading={tab === "history" ? historyLoading || historySearch !== desktopSearch.trim() : loading} error={tab === "history" ? historyError : error}
+        catalogLoading={catalogLoading} refreshing={loading || historyLoading || catalogLoading}
+        onRefresh={() => { bumpRefresh(); setCatalogTick(value => value + 1); }}
+        newRequestRef={newRequestButtonRef} onCreate={() => openCreateModal()} onEdit={openEditModal} onAmend={openAmendModal}
+        onCancel={request => setConfirmAction({ type: "cancel", request })} onDetails={setDetailRequestId} updatingId={updatingId}
+      /> : <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col gap-3.5 bg-slate-50 px-1 py-2 md:max-w-2xl md:px-0 md:py-4">
         <div className="mb-1 flex items-center gap-2 px-1">
           <button
             type="button"
@@ -755,7 +795,7 @@ export default function SupplyRequestsPage() {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
       <RestockRequestModal
         open={modalOpen}

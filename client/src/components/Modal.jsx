@@ -28,6 +28,7 @@ function Modal({
   /** When false, children manage their own scroll (e.g. sticky footer inside form). */
   innerScroll = true,
   labelledBy,
+  className,
 }) {
   const panelRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -114,6 +115,7 @@ function Modal({
         className={cx(
           "relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-1.5rem))] max-h-[min(92dvh,100dvh-1.5rem)] flex-col overflow-x-hidden rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:rounded-[34px] sm:p-6 md:border-transparent md:bg-white md:shadow-md",
           sizeClass,
+          className,
         )}
       >
         <div className="mb-4 flex shrink-0 items-start justify-between gap-4 sm:mb-6">

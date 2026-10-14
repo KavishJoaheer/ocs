@@ -2285,6 +2285,21 @@ function workQueues() {
   const awaitingOpen = awaiting.filter((row) => !linkageIds.has(Number(row.id)));
   const pickTodayOpen = pickToday.filter((row) => !linkageIds.has(Number(row.id)));
 
+  // Read item previews together so queue search does not need a request-detail
+  // fetch for every row (or a separate item-count query per queue entry).
+  const queueItems = new Map();
+  for (const item of db.prepare(`
+    SELECT ri.request_id, ri.item_name, ri.quantity
+    FROM restock_request_items ri
+    JOIN restock_requests r ON r.id = ri.request_id
+    WHERE r.status IN ('pending', 'accepted', 'ready')
+    ORDER BY ri.request_id, ri.id
+  `).all()) {
+    const rows = queueItems.get(Number(item.request_id)) || [];
+    rows.push({ item_name: item.item_name, quantity: item.quantity });
+    queueItems.set(Number(item.request_id), rows);
+  }
+
   function decorate(rows, nextAction, extra = {}) {
     return rows.map((row) => ({
       id: row.id,
@@ -2295,10 +2310,9 @@ function workQueues() {
       status: row.status,
       assigned_to_user_id: row.assigned_to_user_id,
       assigned_to_name: row.assigned_to_name || null,
-      item_count: Number(
-        db.prepare("SELECT COUNT(*) AS count FROM restock_request_items WHERE request_id = ?").get(row.id)
-          ?.count || 0,
-      ),
+      item_count: (queueItems.get(Number(row.id)) || []).length,
+      item_preview: (queueItems.get(Number(row.id)) || []).slice(0, 3),
+      item_search_text: (queueItems.get(Number(row.id)) || []).map(item => item.item_name).join(" · "),
       has_shortage: Boolean(
         db.prepare(`
           SELECT has_shortage FROM restock_request_fulfillments

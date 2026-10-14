@@ -1079,9 +1079,9 @@ test.describe("Inventory workflow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${STAFF_BASE}/supply-requests`);
     await page.getByRole("button", { name: /^History/ }).click();
-    await expect(page.getByText(/requests ·/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/requests · \d+ completed/)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("Most requested items")).toBeVisible();
-    await expect(page.getByText(item.item_name, { exact: true })).toBeVisible();
+    await expect(page.getByRole("article", { name: `Supply request ${requestId}`, exact: true })).toContainText(item.item_name);
     await expect(page.getByRole("button", { name: "Export CSV" })).toBeVisible();
     const csvBox = await page.getByRole("button", { name: "Export CSV" }).boundingBox();
     expect(csvBox?.height || 0).toBeGreaterThanOrEqual(44);

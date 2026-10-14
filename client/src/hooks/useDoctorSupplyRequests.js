@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../lib/api.js";
 import {
   fetchDoctorSupplyRequests,
@@ -31,6 +31,7 @@ export function useDoctorSupplyRequests({
   const [error, setError] = useState(null);
   const [historyError, setHistoryError] = useState(null);
   const historyQueryKey = JSON.stringify(historyParams || {});
+  const historyLoadId = useRef(0);
 
   const displayableRequests = useMemo(
     () => filterDisplayableSupplyRequests(requests),
@@ -68,7 +69,9 @@ export function useDoctorSupplyRequests({
   }, [enabled]);
 
   const reloadHistory = useCallback(async () => {
+    const loadId = ++historyLoadId.current;
     if (!enabled || !includeHistory) {
+      setHistoryLoading(false);
       return null;
     }
 
@@ -77,16 +80,18 @@ export function useDoctorSupplyRequests({
     setHistoryError(null);
     try {
       const payload = await fetchSupplyRequestHistory(params);
+      if (loadId !== historyLoadId.current) return null;
       setHistory(payload);
       return payload;
     } catch (err) {
+      if (loadId !== historyLoadId.current) return null;
       const message =
         err instanceof ApiError ? err.message : "Could not load supply request history.";
       setHistoryError(message);
       setHistory({ requests: [], total: 0, doctor_counts: [], item_counts: [], completed_count: 0, cancelled_count: 0, request_count: 0 });
       return null;
     } finally {
-      setHistoryLoading(false);
+      if (loadId === historyLoadId.current) setHistoryLoading(false);
     }
   }, [enabled, includeHistory, historyQueryKey]);
 
