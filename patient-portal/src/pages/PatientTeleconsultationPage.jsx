@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronRight, Clock3, Copy, Phone, ShieldCheck, Stethoscope, Video } from "lucide-react";
 import toast from "react-hot-toast";
 import { api } from "../lib/api.js";
@@ -67,6 +67,8 @@ function CompletedConsultation({ request }) {
 }
 
 function TeleconsultationContent({ isPrimary }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -90,6 +92,16 @@ function TeleconsultationContent({ isPrimary }) {
   }, [load, refreshKey]);
   const active = data?.requests.find(request => ACTIVE.includes(request.status));
   const activeId = active?.id;
+  // Remember the case on this history entry, so refresh keeps its completion screen.
+  // A fresh entry from Home has no case and must start with hotline triage.
+  const trackedRequestId = location.state?.teleconsultationRequestId;
+  useEffect(() => {
+    if (activeId && activeId !== trackedRequestId) {
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true, state: { ...location.state, teleconsultationRequestId: activeId },
+      });
+    }
+  }, [activeId, trackedRequestId, location, navigate]);
   useEffect(() => {
     topRef.current?.focus({ preventScroll: true });
     topRef.current?.scrollIntoView({ block: "start" });
@@ -119,17 +131,18 @@ function TeleconsultationContent({ isPrimary }) {
       await load();
     } catch (err) { setActionError(err.message); } finally { setBusy(false); }
   }
-  // Show the latest outcome rather than reopening intake when a doctor completes the call.
   const latest = data?.requests[0];
   const eligible = isPrimary && data?.eligible && data?.confirmed_mobile;
-  const completed = !active && !eligible && latest?.status === "completed" ? latest : null;
+  const trackedRequest = data?.requests.find(request => request.id === trackedRequestId);
+  const completed = !active && !eligible && trackedRequest?.status === "completed" ? trackedRequest : null;
   const showForm = data && !active && !completed;
+  const hotlineRequired = showForm && !eligible;
   const nextSteps = !active && latest && ["referred", "cancelled"].includes(latest.status) && (latest.outcome_note || latest.follow_up) ? latest : null;
   const currentConsent = data?.consent_version === form.consent_version;
 
   return <div className="mx-auto max-w-3xl space-y-5 py-3 lg:py-6">
     <Link to="/dashboard" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-dark-grey"><ArrowLeft className="size-4" />{completed ? "Back to dashboard" : "Back to your dashboard"}</Link>
-    {!completed && <>
+    {!completed && !hotlineRequired && <>
       <div ref={topRef} tabIndex={-1} className="care-tele-hero scroll-mt-4 outline-none"><div className="flex items-center gap-3"><span className="rounded-2xl bg-teal-100 p-3 text-teal-800"><Video className="size-6" /></span><div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">OCS remote care</p><h1 className="mt-1 text-2xl font-bold text-brand-dark-grey">Teleconsultation</h1></div></div><p className="mt-4 text-sm leading-relaxed text-slate-600">Speak with an OCS doctor through WhatsApp, after hotline screening.</p></div>
       <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">This service is not for emergencies. Seek urgent care if you have an emergency.</p>
     </>}
@@ -168,9 +181,18 @@ function TeleconsultationContent({ isPrimary }) {
           <button type="button" onClick={() => { setActionError(""); setStep("details"); }} className="min-h-11 w-full text-sm font-semibold text-slate-500">Back to your details</button>
         </fieldset>
       </form>}
-    </div> : <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5"><Phone className="size-6 text-teal-700" /><h2 className="font-semibold text-brand-dark-grey">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h2><p className="text-sm leading-relaxed text-slate-600">{isPrimary ? "Call the hotline before every teleconsultation. Our operator will assess your case and send a new OCS Care link if suitable." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p><a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4" />Call OCS hotline</a></div>)}
+    </div> : <section ref={topRef} tabIndex={-1} className="care-hotline-card scroll-mt-4 space-y-5 rounded-3xl border p-5 outline-none sm:p-6">
+      <div className="flex items-start gap-3">
+        <span aria-hidden="true" className="care-completion-icon grid size-12 shrink-0 place-items-center rounded-2xl"><Phone className="size-6" /></span>
+        <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-amber-900">Teleconsultation</p><h1 className="mt-1 text-xl font-bold leading-snug text-brand-dark-grey sm:text-2xl">{isPrimary ? "Start with a call to OCS" : "Arrange care for your family"}</h1></div>
+      </div>
+      <p className="text-sm leading-relaxed text-brand-dark-grey">{isPrimary ? "Call before every new consultation. Our operator will assess your case and send an OCS Care link if suitable." : "Call OCS to arrange a teleconsultation for a dependent through the verified guardian account."}</p>
+      <a href={CLINIC_TEL_HREF} className={primary}><Phone className="size-4 shrink-0" aria-hidden="true" />Call OCS hotline</a>
+      <p className="text-xs leading-relaxed text-amber-950">For emergencies, seek urgent care.</p>
+    </section>)}
+    {hotlineRequired && <Link to="/health-records" className="flex min-h-12 items-center justify-center gap-2 text-sm font-semibold text-brand-dark-grey">View past consultations<ChevronRight className="size-4 shrink-0" aria-hidden="true" /></Link>}
 
-    {!completed && <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />Ask OCS a question · {CLINIC_TEL_DISPLAY}</a>}
+    {!completed && !hotlineRequired && <a href={CLINIC_TEL_HREF} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-brand-dark-grey"><Phone className="size-4 shrink-0" />Ask OCS a question · {CLINIC_TEL_DISPLAY}</a>}
   </div>;
 }
 

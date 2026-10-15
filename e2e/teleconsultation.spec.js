@@ -286,6 +286,22 @@ test("hotline invitation, patient consent, doctor verification and published car
     await exported.close();
     await carePage.screenshot({ path: testInfo.outputPath("patient-care-plan-mobile.png"), fullPage: true });
     await expect(carePage.getByText(/PRIVATE CLINICAL NOTE/)).toHaveCount(0);
+    // Reopening teleconsultation from Home starts a new enquiry, not the previous outcome.
+    await carePage.goto(`${CARE}/dashboard`);
+    await carePage.getByRole("link", { name: "Teleconsultation", exact: true }).click();
+    await expect(carePage.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toHaveCount(0);
+    await expect(carePage.getByLabel("Reason for consultation", { exact: true })).toHaveCount(0);
+    await expect(carePage.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveAttribute("href", /^tel:/);
+    await carePage.reload();
+    await expect(carePage.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await carePage.screenshot({ path: testInfo.outputPath("patient-new-teleconsultation-hotline-mobile.png"), fullPage: true });
+    await carePage.getByRole("link", { name: "View past consultations", exact: true }).click();
+    await expect(carePage).toHaveURL(`${CARE}/health-records`);
+    await carePage.goto(`${CARE}/health-records/visits/${completed.consultation_id}`);
+    await expect(carePage.getByText("Demonstration prescription instructions", { exact: false }).first()).toBeVisible();
+    const reopenedDetails = carePage.getByRole("button", { name: /Expand visit details/ }).first();
+    if (await reopenedDetails.isVisible()) await reopenedDetails.click();
     await doctorCard.getByRole("link", { name: "Open saved consultation", exact: true }).click();
     await doctorPage.getByRole("button", { name: "Edit consultation", exact: true }).click();
     await doctorPage.getByLabel("Consultation note (not visible to patient)", { exact: true }).fill("PRIVATE CLINICAL NOTE: amended findings and Paracetamol 500mg - considered only");
@@ -329,7 +345,7 @@ test("hotline invitation, patient consent, doctor verification and published car
     await opPage.getByRole("button", { name: "Create 10-minute sign-in link" }).click();
     const nextCaseLink = await opPage.getByLabel("Personal sign-in link").inputValue();
     await carePage.goto(`${CARE}/teleconsultation`);
-    await expect(carePage.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+    await expect(carePage.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
     await expect(carePage.getByLabel("Reason for consultation")).toHaveCount(0);
     await carePage.goto(nextCaseLink.replace(new URL(nextCaseLink).origin, CARE));
     await carePage.getByRole("button", { name: "Continue to OCS Care" }).click();
@@ -356,5 +372,31 @@ test("a referral or staff cancellation gives the patient actionable next steps",
   });
   await page.goto(`${CARE}/teleconsultation`);
   await expect(page.getByText("Call OCS to arrange the assessment today", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: /Ask OCS a question/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toBeVisible();
 });
+
+for (const width of [360, 430, 1440]) {
+  test(`a new teleconsultation enquiry shows hotline triage instead of a historical completion at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route("**/api/**", route => {
+      const path = new URL(route.request().url()).pathname;
+      let json = {};
+      if (path === "/api/patient-auth/me") json = { user: { id: 1, patient_id: 1, full_name: "Test patient", link_status: "verified", has_password: true } };
+      if (path === "/api/patient-portal/dependents") json = { dependents: [] };
+      if (path === "/api/patient-portal/teleconsultations") json = { eligible: false, requests: [{ id: 5, status: "completed", doctor_name: "Previous doctor", consultation_id: 7, patient_summary: "Previous care plan" }] };
+      return route.fulfill({ json });
+    });
+    await page.goto(`${CARE}/teleconsultation`);
+    await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Previous doctor", { exact: false })).toHaveCount(0);
+    await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveAttribute("href", /^tel:/);
+    await expect(page.getByRole("link", { name: "View past consultations", exact: true })).toHaveAttribute("href", "/health-records");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`new-teleconsultation-hotline-${width}.png`), fullPage: true });
+  });
+}

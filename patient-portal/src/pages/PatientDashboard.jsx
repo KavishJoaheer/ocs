@@ -358,7 +358,7 @@ function PatientDashboard() {
     <>
     <Link to="/teleconsultation" aria-label="Teleconsultation" className="care-tele-entry mx-4 my-4 block overflow-hidden rounded-3xl border border-teal-100 bg-white shadow-sm transition active:bg-teal-50 lg:mx-8">
       <div className="flex items-center gap-3 p-4"><span className="shrink-0 rounded-2xl bg-teal-50 p-3 text-teal-800"><Video className="size-6" /></span><div><h2 className="text-base font-bold text-brand-dark-grey">Teleconsultation</h2><p className="mt-1 text-sm leading-relaxed text-slate-500">Speak to an OCS doctor on WhatsApp.</p></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-teal-50 bg-teal-50/40 px-4 py-3"><span className="text-xs text-teal-800">Hotline triage first</span><span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-dark-grey">View consultation<ArrowRight className="size-4" /></span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-teal-50 bg-teal-50/40 px-4 py-3"><span className="text-xs text-teal-800">Hotline triage first</span><span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-dark-grey">Open teleconsultation<ArrowRight className="size-4" /></span></div>
     </Link>
     {activeVisitError ? (
       <ActiveVisitStatusWarning message={activeVisitError} onRetry={handleRetryDashboard} />
