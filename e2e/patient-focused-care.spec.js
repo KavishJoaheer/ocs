@@ -78,14 +78,19 @@ for (const width of [360, 430]) {
     await page.setViewportSize({ width, height: 932 });
     await mockCare(page);
     await page.goto(`${CARE}/teleconsultation`);
-    await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Consultation completed", exact: true })).toHaveCount(0);
     await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
     await expect(page.getByText(/Past consultations/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Request another teleconsultation", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Call OCS hotline", exact: true })).toHaveAttribute("href", /^tel:/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Start with a call to OCS", exact: true })).toBeVisible();
     await expect(page.getByLabel("Reason for consultation")).toHaveCount(0);
-    await page.getByRole("link", { name: "View consultation & prescription", exact: true }).click();
-    await expect(page).toHaveURL(`${CARE}/health-records/visits/30`);
+    await page.getByRole("link", { name: "View past consultations", exact: true }).click();
+    await expect(page).toHaveURL(`${CARE}/health-records`);
+    await expect(page.getByText("Past consultation diagnosis", { exact: true }).filter({ visible: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });
 }
