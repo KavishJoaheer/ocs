@@ -283,7 +283,10 @@ test.describe("OCS smoke", () => {
     await injectStaffSession(page, staff.token);
 
     await page.goto(`${STAFF_BASE}/visit-requests`);
-    await expect(page.getByRole("heading", { name: "Visit requests", exact: true, level: 1 })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Live board", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home Visit Request", exact: true, level: 1 })).toBeVisible();
+    const views = page.getByRole("navigation", { name: "Home visit request views" });
+    await expect(views.getByRole("button", { name: /^Needs attention/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(views.getByRole("button", { name: /^In progress/ })).toBeVisible();
+    await expect(views.getByRole("button", { name: "History", exact: true })).toBeVisible();
   });
 });

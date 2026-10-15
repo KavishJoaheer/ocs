@@ -1240,7 +1240,7 @@ test.describe("Inventory workflow", () => {
       });
     });
     await page.goto(`${STAFF_BASE}/inventory`);
-    await openStockTab(page);
+    await page.getByRole("tab", { name: "Supply requests", exact: true }).click();
     await page.getByRole("button", { name: "View history" }).click();
     const emptyHistory = page.getByText("No archived requests match the current history view.");
     await expect(emptyHistory).toBeVisible();
@@ -1838,6 +1838,12 @@ test.describe("Inventory workflow", () => {
     await page.goto(`${STAFF_BASE}/inventory`);
     await openStockTab(page);
 
+    const itemTypes = page.getByRole("navigation", { name: "Inventory item type" });
+    await expect(itemTypes.getByRole("button", { name: /^Physical stock/ })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
+    await expect(page.getByRole("button", { name: "Show details for IV Lasilix 20mg" })).toHaveCount(0);
+    await itemTypes.getByRole("button", { name: /^Services/ }).click();
+    await expect(itemTypes.getByRole("button", { name: /^Services/ })).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("textbox", { name: "Search stock items" }).fill("IV Lasilix 20mg");
     await expect(page.getByRole("columnheader", { name: "Type" })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Selling price" })).toBeVisible();
