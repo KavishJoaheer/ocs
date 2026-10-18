@@ -431,11 +431,11 @@ function Sidebar() {
         >
           <Menu className="h-6 w-6" strokeWidth={2.25} />
         </button>
-        <BrandMark
+        {user.role === "doctor" && location.pathname === "/" ? <span className="doctor-hub-brand"><BrandMark withWordmark={false} size={32} /><span>OCS <span>Médecins</span></span></span> : <BrandMark
           maxWidth={160}
           size={36}
           logoClassName="max-h-9 w-auto object-contain"
-        />
+        />}
         {["admin", "operator", "doctor"].includes(user.role) ? (
           <button type="button" onClick={() => setDrawerOpen(true)} aria-label={user.role === "admin" ? `Open profile menu for ${user.full_name || user.username}` : `Open profile menu for ${user.full_name || user.username}, ${user.role === "doctor" && user.operation_status === "available" ? "Available" : isOperatorLive(user.operation_status) ? "Active" : "Offline"}`} aria-expanded={drawerOpen} aria-controls="mobile-nav-drawer" className="relative flex size-11 shrink-0 items-center justify-center rounded-full bg-[#def3ef] text-sm font-semibold text-[#376168]">
             {getOperatorInitials(user.role === "doctor" ? { ...user, full_name: String(user.full_name || "").replace(/^dr\.?\s+/i, "") } : user)}

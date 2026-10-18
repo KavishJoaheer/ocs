@@ -49,7 +49,7 @@ async function prepare(page, request) {
   return { actor, headers, visitId, callId, patients };
 }
 
-for (const width of [360, 430, 1440]) {
+for (const width of [320, 360, 430, 1440]) {
   test(`doctor dashboard prioritises assigned care and supports the clinical flow at ${width}px`, async ({ page, request }) => {
     const { headers, visitId, callId } = await prepare(page, request);
     await page.setViewportSize({ width, height: 932 });
@@ -60,7 +60,17 @@ for (const width of [360, 430, 1440]) {
     await expect(visit).toBeVisible();
     await expect(care.getByLabel("2 active assignments", { exact: true })).toHaveText("2");
     await expect(care).toHaveAttribute("data-active", "true");
-    await expect(care).toHaveCSS("border-top-color", "rgb(215, 163, 52)");
+    if (width >= 768) await expect(care).toHaveCSS("border-top-color", "rgb(215, 163, 52)");
+    else {
+      const shortcuts = doctor.getByRole("navigation", { name: "Doctor workspace shortcuts", exact: true });
+      await expect(shortcuts.getByRole("link", { name: "Open home visits", exact: true })).toHaveAttribute("href", "/visit-requests");
+      await expect(shortcuts.getByRole("link", { name: "Open teleconsultations", exact: true })).toHaveAttribute("href", "/teleconsultations");
+      await expect(shortcuts.getByRole("link", { name: "Open patients", exact: true })).toHaveAttribute("href", "/patients");
+      await expect(shortcuts.getByRole("link", { name: "Open doctor bag", exact: true })).toHaveAttribute("href", "/inventory?context=my");
+      for (const label of await shortcuts.locator("strong").all()) expect(await label.evaluate(node => node.scrollWidth <= node.clientWidth)).toBeTruthy();
+      await expect(doctor.locator(".hub-attention-number")).toHaveText("2");
+      await expect(visit.getByRole("list", { name: "Home visit progress", exact: true }).locator('[aria-current="step"]')).toHaveText("Assigned");
+    }
     await expect(care.getByRole("region", { name: "Assigned home visits", exact: true })).toHaveAttribute("data-active", "true");
     await expect(care.getByRole("region", { name: "Assigned teleconsultations", exact: true })).toHaveAttribute("data-active", "true");
     await expect(care.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
@@ -88,6 +98,7 @@ for (const width of [360, 430, 1440]) {
       await expect(doctor.getByRole("combobox", { name: "Availability", exact: true })).toHaveValue("available");
       await bottom.getByRole("link", { name: "Home Visit Request", exact: true }).click();
       await expect(page).toHaveURL(/\/visit-requests$/);
+      await expect(page.locator(".doctor-action-hub-shell")).toHaveCount(0);
       await bottom.getByRole("link", { name: "Home", exact: true }).click();
     } else {
       await doctor.getByRole("button", { name: "Offline", exact: true }).click();
@@ -113,10 +124,12 @@ for (const width of [360, 430, 1440]) {
     await visit.getByRole("button", { name: "I'm on my way", exact: true }).click();
     await expect(page.getByText("Visit update unavailable", { exact: true })).toBeVisible();
     await expect(visit.getByRole("button", { name: "I'm on my way", exact: true })).toBeEnabled();
-    for (const label of ["I'm on my way", "I've arrived", "Start consultation", "Complete visit"]) {
+    for (const [index, label] of ["I'm on my way", "I've arrived", "Start consultation", "Complete visit"].entries()) {
       await visit.getByRole("button", { name: label, exact: true }).click();
+      if (width < 768 && index < 3) await expect(visit.getByRole("list", { name: "Home visit progress", exact: true }).locator('[aria-current="step"]')).toHaveText(["On the way", "Arrived", "Consulting"][index]);
     }
     await expect(page).toHaveURL(/\/consultations\/\d+/);
+    if (width < 768) await expect(page.locator(".doctor-action-hub-shell")).toHaveCount(0);
     const completed = await request.get(`${API}/visit-requests?status=completed`, { headers });
     expect((await completed.json()).visit_requests.some(row => row.id === visitId)).toBeTruthy();
     await page.goto(`${STAFF}/`);
@@ -128,9 +141,10 @@ for (const width of [360, 430, 1440]) {
     expect(closed.ok()).toBeTruthy();
     await expect(care.getByText("Ravi Pillay", { exact: true })).toHaveCount(0, { timeout: 20_000 });
     await expect(care).toHaveAttribute("data-active", "false");
-    await expect(care).toHaveCSS("border-top-color", width < 768 ? "rgb(18, 75, 80)" : "rgb(191, 228, 223)");
+    if (width >= 768) await expect(care).toHaveCSS("border-top-color", "rgb(191, 228, 223)");
     await expect(care.getByLabel("0 active assignments", { exact: true })).toHaveText("0");
     if (width < 768) {
+      await expect(doctor.locator(".hub-attention-number")).toHaveText("0");
       expect((await care.boundingBox()).height).toBeLessThan(activeCareHeight);
       await expect(care.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
       await expect(care.getByRole("link", { name: "View calls", exact: true })).toBeVisible();
@@ -159,9 +173,10 @@ test("doctor dashboard puts assigned calls ahead of calls already in progress", 
   await expect(calls.getByRole("listitem").last()).toHaveAttribute("aria-label", "Teleconsultation for Sarah Noel");
 });
 
-test("doctor dashboard distinguishes unavailable data and respects blocked insurance", async ({ page, request }) => {
+for (const width of [320, 820]) {
+test(`doctor dashboard distinguishes unavailable data and respects blocked insurance at ${width}px`, async ({ page, request }) => {
   await prepare(page, request);
-  await page.setViewportSize({ width: 820, height: 1000 });
+  await page.setViewportSize({ width, height: 1000 });
   await page.route("**/api/teleconsultations", route => route.fulfill({ status: 503, json: { error: "Unavailable" } }));
   await page.route("**/api/inventory?**", route => route.fulfill({ status: 503, json: { error: "Stock unavailable" } }));
   await page.route("**/api/visit-requests?status=active", async route => {
@@ -171,6 +186,10 @@ test("doctor dashboard distinguishes unavailable data and respects blocked insur
   });
   await page.goto(`${STAFF}/`);
   const care = page.getByRole("region", { name: "Assigned care", exact: true });
+  if (width < 768) {
+    await expect(page.locator(".hub-attention")).toContainText("Assignments need refreshing");
+    await expect(page.getByRole("link", { name: "Open teleconsultations", exact: true })).toContainText("Unavailable");
+  }
   await expect(care.getByRole("region", { name: "Assigned teleconsultations", exact: true }).getByRole("alert")).toContainText("Could not refresh teleconsultations");
   await expect(care.getByText("No assigned teleconsultations", { exact: true })).toHaveCount(0);
   await expect(care.getByRole("button", { name: "I'm on my way", exact: true })).toBeDisabled();
@@ -183,9 +202,10 @@ test("doctor dashboard distinguishes unavailable data and respects blocked insur
   await page.unroute("**/api/inventory?**");
   await page.getByRole("button", { name: "Retry bag stock", exact: true }).click();
   await expect(page.getByText("Status unavailable", { exact: true })).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(820);
-  await page.screenshot({ path: "/tmp/ocs-doctor-dashboard-820.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: `/tmp/ocs-doctor-dashboard-error-${width}.png`, fullPage: true });
 });
+}
 
 test("compact doctor update notice keeps reload confirmation for unsaved work", async ({ page, request }) => {
   await prepare(page, request);

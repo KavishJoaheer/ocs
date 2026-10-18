@@ -1,0 +1,76 @@
+@media (max-width: 767px) {
+  .doctor-action-hub-shell { background: #1b2835; }
+  .doctor-action-hub-shell #ocs-mobile-topbar { border-color: #354757; background: #1b2835; backdrop-filter: none; }
+  .doctor-action-hub-shell #ocs-mobile-topbar > button { color: #e7eff5; }
+  .doctor-action-hub-shell #ocs-mobile-topbar > button[aria-label="Open menu"]:hover,
+  .doctor-action-hub-shell #ocs-mobile-topbar > button[aria-label="Open menu"]:active { background: #344351; }
+  .doctor-action-hub-shell #ocs-mobile-topbar > button[aria-label^="Open profile"] { background: #405665; color: #f6ce76; }
+  .doctor-hub-brand { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: #8ee0d2; font-size: 1rem; font-weight: 750; }
+  .doctor-hub-brand > span:last-child > span { color: #edf5f8; font-weight: 450; font-size: .875rem; }
+  .doctor-action-hub-shell #ocs-bottom-nav > div { border: 1px solid #435465; border-radius: 18px; background: #233342; backdrop-filter: none; box-shadow: none; }
+  .doctor-action-hub-shell #ocs-bottom-nav a { border-radius: 12px; color: #b7c9d3; box-shadow: none; }
+  .doctor-action-hub-shell #ocs-bottom-nav a[aria-current="page"] { color: #14383e; background: #8ee0d2; }
+  .doctor-action-hub-shell #ocs-bottom-nav a:hover { background: #344b5b; color: #fff; }
+  .doctor-action-hub { display: flex; flex-direction: column; gap: 22px; padding-block: 4px 12px; color: #f4f7fb; }
+  .doctor-action-hub :is(a,button,select,summary):focus-visible { outline: 2px solid #f3cc70; outline-offset: 3px; }
+  .doctor-action-hub .hub-header { min-width: 0; }
+  .doctor-action-hub .hub-greeting { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .doctor-action-hub .hub-eyebrow { color: #b7c9d3; font-size: .75rem; }
+  .doctor-action-hub h1 { margin-top: 5px; color: #f4f7fb; font-size: 1.5rem; font-weight: 700; line-height: 1.25; letter-spacing: -.025em; }
+  .doctor-action-hub .hub-date { margin-top: 7px; color: #b7c9d3; font-size: .75rem; }
+  .doctor-action-hub .hub-availability { position: relative; display: flex; align-items: center; gap: 7px; width: fit-content; margin-top: 12px; color: #b5e4d6; }
+  .doctor-action-hub .hub-availability select { min-height: 44px; max-width: 100%; padding: 8px 27px 8px 24px; border: 1px solid #435465; border-radius: 10px; background: #293b49; color: #e7f5ef; font-size: 1rem; appearance: none; }
+  .doctor-action-hub .hub-availability > svg { pointer-events: none; position: absolute; right: 8px; }
+  .doctor-action-hub .hub-status-dot { pointer-events: none; position: absolute; left: 10px; width: 6px; height: 6px; border-radius: 50%; background: #a8b8c3; }
+  .doctor-action-hub .hub-status-dot[data-status="available"], .doctor-action-hub .hub-status-dot[data-status="active"] { background: #8ee0d2; }
+  .doctor-action-hub .hub-attention { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 16px; border-radius: 18px; background: #344351; }
+  .doctor-action-hub .hub-attention-number { color: #f5ce76; font-size: 2rem; font-weight: 700; line-height: 1.1; }
+  .doctor-action-hub .hub-attention strong { font-size: .875rem; }
+  .doctor-action-hub .hub-attention p { margin-top: 5px; font-size: .75rem; line-height: 1.5; color: #c1d1da; }
+  .doctor-action-hub h2 { color: #f4f7fb; font-size: 1rem; font-weight: 700; }
+  .doctor-action-hub .hub-shortcuts h2 { margin-bottom: 12px; }
+  .doctor-action-hub .hub-shortcut-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  .doctor-action-hub .hub-shortcut { display: grid; grid-template-columns: 1fr auto; gap: 18px 5px; min-width: 0; min-height: 100px; border-radius: 16px; padding: 14px; background: #2a3a48; color: #f4f7fb; }
+  .doctor-action-hub .hub-shortcut > svg { width: 19px; height: 19px; color: #8ee0d2; }
+  .doctor-action-hub .hub-shortcut > span { align-self: center; color: #b7c9d3; font-size: .6875rem; }
+  .doctor-action-hub .hub-shortcut > .hub-shortcut-arrow { justify-self: end; width: 16px; height: 16px; }
+  .doctor-action-hub .hub-shortcut strong { grid-column: 1 / -1; font-size: clamp(.6875rem, 3.3vw, .8125rem); line-height: 1.4; letter-spacing: -.025em; white-space: nowrap; }
+  .doctor-action-hub .hub-shortcut-teal { color: #14383e; background: #8ee0d2; }
+  .doctor-action-hub .hub-shortcut-teal > :is(svg,span) { color: #14383e; }
+  .doctor-action-hub .hub-shortcut-slate { background: #3c4b60; }
+  .doctor-action-hub .doctor-assigned-care.live-care-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }
+  .doctor-action-hub .doctor-assigned-care .live-care-heading h2 { font-size: 1rem; }
+  .doctor-action-hub .doctor-assigned-care .live-care-group { border-color: #435465; }
+  .doctor-action-hub .doctor-assigned-care .live-care-category { font-size: .8125rem; }
+  .doctor-action-hub .doctor-assigned-care .live-care-open { color: #8ee0d2; }
+  .doctor-action-hub .doctor-assigned-care .live-care-group > ul > li { padding: 16px; border-radius: 18px; background: #2a3a48; }
+  .doctor-action-hub .doctor-care-name { color: #f4f7fb; }
+  .doctor-action-hub .doctor-care-detail, .doctor-action-hub .doctor-care-status { color: #b7c9d3; }
+  .doctor-action-hub .doctor-care-actions { gap: 6px 14px; }
+  .doctor-action-hub .doctor-assigned-care .doctor-care-action { width: 100%; min-height: 46px; border-radius: 12px; background: #f3cc70; color: #263b47; font-size: .875rem; }
+  .doctor-action-hub .doctor-assigned-care .doctor-care-action:hover { background: #ffdc8a; }
+  .doctor-action-hub .doctor-care-link { color: #8ee0d2; }
+  .doctor-action-hub .doctor-care-blocked { border-radius: 10px; padding: 10px; background: #fff2d2; color: #755112; }
+  .doctor-action-hub .doctor-visit-journey { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 4px; margin-top: 16px; list-style: none; }
+  .doctor-action-hub .doctor-visit-journey > li { color: #b7c9d3; font-size: .6875rem; line-height: 1.4; }
+  .doctor-action-hub .doctor-visit-journey > li::before { content: ""; display: block; height: 4px; margin-bottom: 7px; border-radius: 4px; background: #435465; }
+  .doctor-action-hub .doctor-visit-journey > li[data-reached="true"] { color: #8ee0d2; font-weight: 650; }
+  .doctor-action-hub .doctor-visit-journey > li[data-reached="true"]::before { background: #8ee0d2; }
+  .doctor-action-hub .hub-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .doctor-action-hub .hub-section-heading a { display: inline-flex; align-items: center; gap: 3px; min-height: 44px; font-size: .75rem; color: #8ee0d2; }
+  .doctor-action-hub .hub-section-heading svg { width: 15px; height: 15px; }
+  .doctor-action-hub .hub-upcoming > p { color: #b7c9d3; font-size: .8125rem; }
+  .doctor-action-hub .hub-scheduled-visit { display: flex; align-items: center; gap: 12px; min-height: 60px; }
+  .doctor-action-hub .hub-time { padding: 12px; border-radius: 11px; background: #29484e; color: #8ee0d2; font-size: .8125rem; font-weight: 600; }
+  .doctor-action-hub .hub-scheduled-visit strong { color: #f4f7fb; font-size: .875rem; }
+  .doctor-action-hub .hub-scheduled-detail { display: flex; align-items: flex-start; gap: 4px; margin-top: 5px; color: #b7c9d3; font-size: .75rem; }
+  .doctor-action-hub .hub-scheduled-detail svg { width: 14px; height: 14px; flex-shrink: 0; }
+  .doctor-action-hub .hub-support-links { border-top: 1px solid #435465; }
+  .doctor-action-hub .hub-support-links a { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 52px; border-bottom: 1px solid #435465; font-size: .8125rem; }
+  .doctor-action-hub .hub-support-links a > span { display: flex; align-items: center; gap: 8px; }
+  .doctor-action-hub .hub-support-links svg { width: 17px; height: 17px; flex-shrink: 0; color: #8ee0d2; }
+  .doctor-action-hub .hub-support-links strong { color: #f3cc70; font-size: .75rem; text-align: right; }
+  .doctor-action-hub .hub-error { padding: 12px; border-radius: 12px; background: #fff2d2; color: #755112; font-size: .8125rem; }
+  .doctor-action-hub .hub-error button { min-height: 44px; margin-left: 8px; font-weight: 700; text-decoration: underline; }
+  .doctor-action-hub .hub-bulletin { border-radius: 18px; background: #fff; color: #173c48; }
+}
