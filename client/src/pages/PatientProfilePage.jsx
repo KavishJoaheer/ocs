@@ -47,12 +47,14 @@ import { PATIENT_ID_TYPES } from "../lib/patientIdentity.js";
 import PatientLinkhamPolicyBadge from "../components/PatientLinkhamPolicyBadge.jsx";
 import { PatientFormModal } from "../components/PatientIntakeForm.jsx";
 import SectionCard from "../components/SectionCard.jsx";
+import StructuredConsultationFields from "../components/StructuredConsultationFields.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { useAuth } from "../hooks/useAuth.jsx";
 import { useLiveRefreshKey } from "../hooks/useLiveRefreshKey.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 import { api } from "../lib/api.js";
 import { formatVitalInput } from "../lib/consultationVitals.js";
+import { consultationFormValues } from "../lib/consultationForm.js";
 import {
   closePreviewTab,
   openInlinePreviewTab,
@@ -595,6 +597,7 @@ function LabReportAttachmentRow({
 
 function getConsultationDraft(consultation) {
   return {
+    ...(consultation ? consultationFormValues(consultation) : {}),
     doctor_id: consultation?.doctor_id ? String(consultation.doctor_id) : "",
     consultation_date: consultation?.consultation_date ?? dayjs().format("YYYY-MM-DD"),
     doctor_notes: consultation?.doctor_notes ?? "",
@@ -1787,11 +1790,22 @@ function PatientProfilePage() {
   }
 
   async function handleConsultationSave(consultation) {
+    const isStructured = Object.hasOwn(consultationDraft, "clinical_note");
     const doctorNotes = consultationDraft.doctor_notes.trim();
     const consultationDate = String(consultationDraft.consultation_date || "").trim();
     const doctorId = Number(consultationDraft.doctor_id);
 
-    if (!doctorNotes) {
+    if (isStructured && !consultationDraft.clinical_note.trim()) {
+      toast.error("Consultation note cannot be empty.");
+      return;
+    }
+
+    if (isStructured && !consultationDraft.patient_diagnosis.trim()) {
+      toast.error("Patient-facing diagnosis is required.");
+      return;
+    }
+
+    if (!isStructured && !doctorNotes) {
       toast.error("Consultation note cannot be empty.");
       return;
     }
@@ -1812,7 +1826,13 @@ function PatientProfilePage() {
       await api.put(`/consultations/${consultation.id}`, {
         ...(user.role === "admin" ? { doctor_id: doctorId } : {}),
         consultation_date: consultationDate,
-        doctor_notes: doctorNotes,
+        ...(isStructured ? {
+          clinical_note: consultationDraft.clinical_note.trim(),
+          patient_diagnosis: consultationDraft.patient_diagnosis.trim(),
+          patient_prescription: consultationDraft.patient_prescription.trim(),
+          ...(Object.hasOwn(consultationDraft, "patient_summary")
+            ? { patient_summary: consultationDraft.patient_summary.trim() } : {}),
+        } : { doctor_notes: doctorNotes }),
       });
 
       await reloadPatientProfile();
@@ -2119,7 +2139,9 @@ function PatientProfilePage() {
                               </div>
                             )}
 
-                            <textarea
+                            {Object.hasOwn(consultationDraft, "clinical_note") ? (
+                              <StructuredConsultationFields form={consultationDraft} setForm={setConsultationDraft} />
+                            ) : <textarea
                               rows="7"
                               value={consultationDraft.doctor_notes}
                               onChange={(event) =>
@@ -2130,7 +2152,7 @@ function PatientProfilePage() {
                               }
                               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                               placeholder="Update the clinical note for this consultation."
-                            />
+                            />}
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
@@ -2489,7 +2511,9 @@ function PatientProfilePage() {
                                       </div>
                                     ) : null}
 
-                                    <textarea
+                                    {Object.hasOwn(consultationDraft, "clinical_note") ? (
+                                      <StructuredConsultationFields form={consultationDraft} setForm={setConsultationDraft} />
+                                    ) : <textarea
                                       rows="7"
                                       value={consultationDraft.doctor_notes}
                                       onChange={(event) =>
@@ -2500,7 +2524,7 @@ function PatientProfilePage() {
                                       }
                                       className="w-full rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-700 outline-none transition focus:border-sky-400 focus:bg-white md:focus:border-ocs-teal md:focus:ring-2 md:focus:ring-ocs-teal/20"
                                       placeholder="Update the clinical note for this consultation."
-                                    />
+                                    />}
                                     <div className="flex flex-wrap justify-end gap-2">
                                       <button
                                         type="button"
