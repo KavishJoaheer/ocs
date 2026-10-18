@@ -66,6 +66,7 @@ for (const width of [360, 430, 1440]) {
     await expect(care.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
     await expect(care.getByRole("link", { name: "View calls", exact: true })).toBeVisible();
     await expect(care.getByRole("listitem", { name: "Teleconsultation for Ravi Pillay", exact: true })).toBeVisible();
+    const activeCareHeight = (await care.boundingBox()).height;
     await expect(doctor.getByText("Other Doctor Patient", { exact: true })).toHaveCount(0);
     await expect(doctor.getByRole("button", { name: /Accept/ })).toHaveCount(0);
     await expect(doctor.getByText("Closed visit", { exact: true })).toHaveCount(0);
@@ -127,8 +128,14 @@ for (const width of [360, 430, 1440]) {
     expect(closed.ok()).toBeTruthy();
     await expect(care.getByText("Ravi Pillay", { exact: true })).toHaveCount(0, { timeout: 20_000 });
     await expect(care).toHaveAttribute("data-active", "false");
-    await expect(care).toHaveCSS("border-top-color", "rgb(191, 228, 223)");
+    await expect(care).toHaveCSS("border-top-color", width < 768 ? "rgb(18, 75, 80)" : "rgb(191, 228, 223)");
     await expect(care.getByLabel("0 active assignments", { exact: true })).toHaveText("0");
+    if (width < 768) {
+      expect((await care.boundingBox()).height).toBeLessThan(activeCareHeight);
+      await expect(care.getByRole("link", { name: "View requests", exact: true })).toBeVisible();
+      await expect(care.getByRole("link", { name: "View calls", exact: true })).toBeVisible();
+      await care.screenshot({ path: `/tmp/ocs-doctor-assigned-care-empty-${width}.png` });
+    }
   });
 }
 

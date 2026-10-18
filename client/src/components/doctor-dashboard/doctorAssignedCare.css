@@ -1,0 +1,73 @@
+@media (max-width: 767px) {
+  .doctor-assigned-care.live-care-panel {
+    border-radius: 20px;
+    border-color: #124b50;
+    background: #124b50;
+    padding: 18px 16px;
+    color: #f5ffff;
+    box-shadow: none;
+  }
+  .doctor-assigned-care.live-care-panel[data-active="true"] { border-color: #d7a334; }
+  .doctor-assigned-care .live-care-heading {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #f5ffff;
+    box-shadow: none;
+  }
+  .doctor-assigned-care .live-care-heading h2 { flex: 1; font-size: 1.25rem; }
+  .doctor-assigned-care .live-care-heading .live-care-dot { display: none; }
+  .doctor-assigned-care .live-care-heading .live-care-count {
+    min-width: 32px;
+    padding: 5px 9px;
+    border-radius: 9px;
+    background: #f5cb67;
+    color: #29454a;
+    font-size: 1rem;
+  }
+  .doctor-assigned-care .live-care-group { border-color: #39676b; }
+  .doctor-assigned-care .live-care-group[data-active] .live-care-category {
+    gap: 8px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #f5ffff;
+    font-size: .875rem;
+    box-shadow: none;
+  }
+  .doctor-assigned-care .live-care-category-count { background: #295d62; color: #f5ffff; }
+  .doctor-assigned-care .live-care-group[data-active="true"] .live-care-category-count { background: #f5cb67; color: #29454a; }
+  .doctor-assigned-care .live-care-open {
+    padding: 8px 0 8px 8px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #d5f5ef;
+  }
+  .doctor-assigned-care .live-care-open:hover { background: #295d62; }
+  .doctor-assigned-care .live-care-open:focus-visible { outline-color: #f5cb67; }
+  .doctor-assigned-care .live-care-group > p[role="status"],
+  .doctor-assigned-care .live-care-group > p:not([role]) { color: #c6dcdf; font-size: .8125rem; }
+  .doctor-assigned-care .live-care-group > [role="alert"] {
+    border-radius: 12px;
+    padding: 12px;
+    background: #fff;
+    color: #991b1b;
+  }
+  .doctor-assigned-care .live-care-group > ul { max-height: none; overflow: visible; }
+  .doctor-assigned-care .live-care-group > ul > li {
+    margin-top: 10px;
+    padding: 14px;
+    border: 0;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .doctor-assigned-care .doctor-care-action { border-radius: 10px; }
+  .doctor-assigned-care[data-compact="true"] { padding-block: 16px 8px; }
+  .doctor-assigned-care[data-compact="true"] > div:first-child { margin-bottom: 6px; }
+  .doctor-assigned-care[data-compact="true"] .live-care-group { padding-block: 6px; }
+  .doctor-assigned-care[data-compact="true"] .live-care-group > p { padding-block: 0 8px; }
+}

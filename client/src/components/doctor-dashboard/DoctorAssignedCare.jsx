@@ -1,6 +1,7 @@
 import { ChevronRight, MapPin, Navigation, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 import OperatorLiveHeading from "../operator-dashboard/OperatorLiveHeading.jsx";
+import "./doctorAssignedCare.css";
 
 const ACTIONS = { assigned: "I'm on my way", en_route: "I've arrived", arrived: "Start consultation", in_consultation: "Complete visit" };
 
@@ -12,19 +13,19 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
   const orderedCalls = [...calls].sort((a, b) => Number(b.status === "assigned") - Number(a.status === "assigned") || a.id - b.id);
   const hasError = errors.visits || errors.calls;
   const titleClass = "live-care-category inline-flex items-center gap-2 rounded-full bg-[#ddf2ee] px-3 py-1.5 text-xs font-semibold text-[#173f4a]";
-  const actionClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#137b80] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#10696d] disabled:opacity-50";
+  const actionClass = "doctor-care-action inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#137b80] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#10696d] disabled:opacity-50";
 
   function errorMessage(message) {
     return <p role="alert" className="mt-3 text-sm text-red-800">{message}<button type="button" onClick={load} className="ml-2 min-h-11 font-semibold underline">Retry assigned care</button></p>;
   }
 
   return (
-    <section aria-label="Assigned care" data-active={visits.length + calls.length > 0} className="live-care-panel min-w-0 overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-4 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)] sm:px-5">
+    <section aria-label="Assigned care" data-active={visits.length + calls.length > 0} data-compact={!loading && !hasError && visits.length + calls.length === 0} className="doctor-assigned-care live-care-panel min-w-0 overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-4 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)] sm:px-5">
       <div className="mb-4"><OperatorLiveHeading title="Assigned care" active={visits.length + calls.length > 0} count={!loading && !hasError ? visits.length + calls.length : null} countLabel={`${visits.length + calls.length} active assignments`} /></div>
       <div className={`grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] ${!mobile ? "lg:grid-cols-2 lg:divide-x lg:divide-y-0" : ""}`}>
         <section aria-label="Assigned home visits" data-active={visits.length > 0} className={`live-care-group min-w-0 pb-4 ${!mobile ? "lg:pb-0 lg:pr-5" : ""}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 ${mobile ? "" : "min-h-11"}`}>
-            <h3 className={titleClass}>Home Visit Request{!loading && !errors.visits ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
+            <h3 className={titleClass}>{mobile ? "Home visits" : "Home Visit Request"}{!loading && !errors.visits ? <span className="live-care-category-count rounded-full bg-white/70 px-2 py-0.5 tabular-nums">{visits.length}</span> : null}</h3>
             <Link to="/visit-requests" className="live-care-open inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-[#137b80]">View requests<ChevronRight className="size-3.5" aria-hidden="true" /></Link>
           </div>
           {errors.visits ? errorMessage(errors.visits) : null}

@@ -2000,7 +2000,7 @@ function PatientProfilePage() {
 
   return (
     <div className="patient-workspace patient-profile ocs-page w-full min-w-0 max-w-full space-y-3">
-      <PatientWorkspaceHeader title={data.patient.full_name} subtitle={showMobileAddress ? profileAddressLabel : undefined} role={user.role} showUtilities={!isMobile} onRefresh={isMobile ? undefined : reloadPatientProfile} actions={<>
+      <PatientWorkspaceHeader title={data.patient.full_name} subtitle={showMobileAddress ? profileAddressLabel : undefined} leading={isMobile ? <span className="patient-profile-avatar" aria-hidden="true">{data.patient.full_name.split(/\s+/).filter(Boolean).map(part => part[0]).filter((_, index, parts) => index === 0 || index === parts.length - 1).join("").toUpperCase()}</span> : null} role={user.role} showUtilities={!isMobile} onRefresh={isMobile ? undefined : reloadPatientProfile} actions={<>
         <Link className="patient-icon-control" to={location.state?.patientsReturnTo || "/patients"} state={{ directoryContext: location.state?.directoryContext, patientsScrollY: location.state?.patientsScrollY }} aria-label="Back to patients"><ArrowLeft className="size-4" /></Link>
         {canManageConsultations ? <button className="patient-control patient-control-primary" aria-label="Add consultation note" onClick={() => setConsultationComposerOpen(true)}><Plus className="size-4" /><span>{isMobile ? "Add note" : "Add consultation note"}</span></button> : canStartProfileBill ? <Link className="patient-control patient-control-primary" to={`/billing?patientId=${id}&create=1`}><CreditCard className="size-4" />New bill</Link> : null}
         {isOperatorDesktop && canFlagLongTermReviewAccess ? (
@@ -2029,7 +2029,7 @@ function PatientProfilePage() {
       </>}>
         <HighlightStat label="OCS care number" compactLabel="Care no." value={data.patient.patient_identifier || "Not assigned"} prominent primary />
         <HighlightStat className="patient-profile-age" icon={UserRound} label="Age" value={profileAgeLabel} prominent />
-        <StatusBadge value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
+        <StatusBadge className="patient-profile-status" value={data.patient.status} /><PatientLinkhamPolicyBadge patient={data.patient} /><LinkStatusBadge status={data.patient.link_status} />
       </PatientWorkspaceHeader>
       {hasMeaningfulPatientField(data.patient.drug_allergy_history) ? <aside aria-label="Allergy history" className="patient-priority-notice rounded-[24px] border border-amber-200/70 bg-[#fff9ed] px-4 py-3"><p className="flex items-center gap-2 text-sm font-bold text-[#705822]"><ShieldAlert className="size-4" aria-hidden="true" />Allergy history</p><p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{data.patient.drug_allergy_history}</p></aside> : null}
       {isPatientUnderReview(data.patient) ? <LongTermReviewAlertBanner patient={data.patient} actions={longTermReviewLogAction} /> : null}
