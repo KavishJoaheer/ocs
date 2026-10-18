@@ -4,7 +4,6 @@ import OperatorLiveHeading from "../operator-dashboard/OperatorLiveHeading.jsx";
 import "./doctorAssignedCare.css";
 
 const ACTIONS = { assigned: "I'm on my way", en_route: "I've arrived", arrived: "Start consultation", in_consultation: "Complete visit" };
-const VISIT_STEPS = [{ status: "assigned", label: "Assigned" }, { status: "en_route", label: "On the way" }, { status: "arrived", label: "Arrived" }, { status: "in_consultation", label: "Consulting" }];
 
 export default function DoctorAssignedCare({ care, mobile, readOnly }) {
   const { visits, calls, errors, loading, busyId, load, advance } = care;
@@ -22,7 +21,7 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
 
   return (
     <section aria-label="Assigned care" data-active={visits.length + calls.length > 0} data-compact={!loading && !hasError && visits.length + calls.length === 0} className="doctor-assigned-care live-care-panel min-w-0 overflow-hidden rounded-[30px] border border-[#bfe4df] bg-[linear-gradient(135deg,#edf9f7,#f9fdfc)] px-4 py-5 shadow-[0_8px_28px_rgba(26,127,122,0.05)] sm:px-5">
-      <div className="mb-4"><OperatorLiveHeading title={mobile ? "Continue care" : "Assigned care"} active={visits.length + calls.length > 0} count={!loading && !hasError ? visits.length + calls.length : null} countLabel={`${visits.length + calls.length} active assignments`} /></div>
+      <div className="mb-4"><OperatorLiveHeading title="Assigned care" active={visits.length + calls.length > 0} count={!loading && !hasError ? visits.length + calls.length : null} countLabel={`${visits.length + calls.length} active assignments`} /></div>
       <div className={`grid min-w-0 grid-cols-1 divide-y divide-[#cce4e0] ${!mobile ? "lg:grid-cols-2 lg:divide-x lg:divide-y-0" : ""}`}>
         <section aria-label="Assigned home visits" data-active={visits.length > 0} className={`live-care-group min-w-0 pb-4 ${!mobile ? "lg:pb-0 lg:pr-5" : ""}`}>
           <div className={`flex flex-wrap items-center justify-between gap-2 ${mobile ? "" : "min-h-11"}`}>
@@ -36,22 +35,18 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
               const coverageBlocked = visit.insurance_coverage?.is_linkham && visit.insurance_coverage.allowed !== true && ["assigned", "en_route"].includes(visit.status);
               return <li key={visit.id} className="py-3" aria-label={`Home visit for ${visit.patient_name}`}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link to={`/patients/${visit.patient_id}`} className="doctor-care-name break-words text-base font-bold text-[#173f4a] hover:underline">{visit.patient_name}</Link>
+                  <Link to={`/patients/${visit.patient_id}`} className="break-words text-base font-bold text-[#173f4a] hover:underline">{visit.patient_name}</Link>
                   {visit.urgency !== "routine" ? <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold capitalize ${visit.urgency === "emergency" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}>{visit.urgency}</span> : null}
                 </div>
-                <p className="doctor-care-detail mt-1 break-words text-[13px] leading-5 text-[#485e65]">{visit.reason || "No reason provided"}</p>
-                <p className="doctor-care-detail mt-2 flex items-start gap-1.5 text-[13px] text-[#485e65]"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{visit.address || "Address not provided"}</span></p>
-                <p className="doctor-care-status mt-1.5 text-xs font-medium text-[#376168]">{visit.status_label || "Doctor assigned"}{visit.eta_minutes != null ? ` · ETA ${visit.eta_minutes} min` : ""}</p>
-                {mobile ? <ol className="doctor-visit-journey" aria-label="Home visit progress">{VISIT_STEPS.map((step, index) => {
-                  const current = VISIT_STEPS.findIndex(item => item.status === visit.status);
-                  return <li key={step.status} aria-current={index === current ? "step" : undefined} data-reached={index <= current}>{step.label}</li>;
-                })}</ol> : null}
-                <div className="doctor-care-actions mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="mt-1 break-words text-[13px] leading-5 text-[#485e65]">{visit.reason || "No reason provided"}</p>
+                <p className="mt-2 flex items-start gap-1.5 text-[13px] text-[#485e65]"><MapPin className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" /><span className="break-words">{visit.address || "Address not provided"}</span></p>
+                <p className="mt-1.5 text-xs font-medium text-[#376168]">{visit.status_label || "Doctor assigned"}{visit.eta_minutes != null ? ` · ETA ${visit.eta_minutes} min` : ""}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
                   {!readOnly && ACTIONS[visit.status] ? <button type="button" disabled={busyId !== null || coverageBlocked} onClick={() => advance(visit)} className={actionClass}>{busyId === visit.id ? "Updating visit…" : ACTIONS[visit.status]}</button> : null}
-                  {visit.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.address)}`} target="_blank" rel="noopener noreferrer" className="doctor-care-link inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]"><Navigation className="size-3.5" aria-hidden="true" />Directions</a> : null}
-                  {visit.patient_contact_number ? <a href={`tel:${visit.patient_contact_number}`} aria-label={`Call ${visit.patient_name}`} className="doctor-care-link inline-flex min-h-11 min-w-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]"><Phone className="size-3.5" aria-hidden="true" />Call</a> : null}
+                  {visit.address ? <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.address)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]"><Navigation className="size-3.5" aria-hidden="true" />Directions</a> : null}
+                  {visit.patient_contact_number ? <a href={`tel:${visit.patient_contact_number}`} aria-label={`Call ${visit.patient_name}`} className="inline-flex min-h-11 min-w-11 items-center gap-1.5 text-xs font-semibold text-[#137b80]"><Phone className="size-3.5" aria-hidden="true" />Call</a> : null}
                 </div>
-                {coverageBlocked ? <p className="doctor-care-blocked mt-1 text-xs leading-5 text-red-800">Contact dispatch to confirm insurance coverage before continuing.</p> : null}
+                {coverageBlocked ? <p className="mt-1 text-xs leading-5 text-red-800">Contact dispatch to confirm insurance coverage before continuing.</p> : null}
               </li>;
             })}
           </ul> : null}
@@ -65,9 +60,9 @@ export default function DoctorAssignedCare({ care, mobile, readOnly }) {
           {loading ? <p role="status" className="py-3 text-sm text-[#485e65]">Loading teleconsultations…</p> : !errors.calls && !calls.length ? <p className="py-3 text-sm text-[#485e65]">No assigned teleconsultations</p> : null}
           {calls.length > 0 ? <ul className="max-h-80 divide-y divide-[#d6e9e6] overflow-y-auto overscroll-contain">
             {orderedCalls.map(call => <li key={call.id} className="py-3" aria-label={`Teleconsultation for ${call.patient_name}`}>
-              <Link to={`/patients/${call.patient_id}`} className="doctor-care-name break-words text-base font-bold text-[#173f4a] hover:underline">{call.patient_name}</Link>
-              <p className="doctor-care-detail mt-1 break-words text-[13px] leading-5 text-[#485e65]">{call.reason}</p>
-              <p className="doctor-care-status mt-2 text-xs font-medium text-[#376168]">{call.status === "in_consultation" ? "In consultation" : "Assigned to you"}</p>
+              <Link to={`/patients/${call.patient_id}`} className="break-words text-base font-bold text-[#173f4a] hover:underline">{call.patient_name}</Link>
+              <p className="mt-1 break-words text-[13px] leading-5 text-[#485e65]">{call.reason}</p>
+              <p className="mt-2 text-xs font-medium text-[#376168]">{call.status === "in_consultation" ? "In consultation" : "Assigned to you"}</p>
               <Link to={`/teleconsultations?request=${call.id}`} aria-label={`Open call for ${call.patient_name}`} className={`${actionClass} mt-3`}>Open call<ChevronRight className="size-3.5" aria-hidden="true" /></Link>
             </li>)}
           </ul> : null}

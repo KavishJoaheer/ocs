@@ -283,7 +283,7 @@ function AppShell() {
       className={
         isLinkhamPortal
           ? "min-h-svh w-full min-w-0 max-w-[100vw] overflow-x-hidden overscroll-x-none bg-transparent text-slate-900"
-          : `${isMobile && isDashboard && userRole === "doctor" ? "doctor-action-hub-shell " : ""}min-h-svh w-full min-w-0 max-w-[100vw] ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none bg-transparent text-slate-900`
+          : `min-h-svh w-full min-w-0 max-w-[100vw] ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} overscroll-x-none bg-transparent text-slate-900`
       }
     >
       <div className={`mx-auto flex min-h-svh w-full min-w-0 max-w-[1600px] flex-col ${inventoryDoctorMobile ? "overflow-x-clip" : "overflow-x-hidden"} lg:flex-row`}>

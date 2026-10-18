@@ -12,7 +12,6 @@ import { formatReviewAppointmentTime } from "../../lib/patientReview.js";
 import { getTimeOfDayGreeting } from "../operator-dashboard/operatorDashboardCopy.js";
 import { cx } from "../../lib/utils.js";
 import DoctorAssignedCare from "./DoctorAssignedCare.jsx";
-import DoctorMobileActionHub from "./DoctorMobileActionHub.jsx";
 import OperationStatusSelector from "../OperationStatusSelector.jsx";
 import PushNotificationBanner from "../PushNotificationBanner.jsx";
 import AppUpdateBanner from "../AppUpdateBanner.jsx";
@@ -55,8 +54,6 @@ export default function DoctorDashboard({ user, dashboard, mobile = false, onSta
       <span className={cx("rounded-full px-2.5 py-1 text-xs font-medium", bag.readiness.attention && !bag.error ? "bg-amber-100 text-amber-900" : "bg-[#edf6f3] text-[#376168]")}>{bag.loading ? "Checking stock…" : bag.error ? "Status unavailable" : bag.readiness.label}</span>
     </div>
   );
-
-  if (mobile) return <DoctorMobileActionHub user={user} firstName={firstName} now={now} care={care} bag={bag} supply={supply} schedule={schedule} followUps={followUps} onStatusChange={onStatusChange} isSavingStatus={isSavingStatus} latestHcmPost={latestHcmPost} />;
 
   return (
     <section aria-label="Doctor dashboard" className={cx("doctor-dashboard-root mx-auto w-full min-w-0 space-y-5", mobile ? "max-w-md pb-4 pt-2" : "ocs-cc")}>
