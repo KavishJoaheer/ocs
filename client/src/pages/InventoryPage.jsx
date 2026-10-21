@@ -2804,6 +2804,7 @@ function MobileDoctorBagActions({
 
 function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentation = false }) {
   const isService = item.item_kind === "service";
+  const attributes = String(item.attributes ?? "").trim();
   const sellingPrice = Number(item.selling_price || 0);
   const hasSellingPrice = Number.isFinite(sellingPrice) && sellingPrice > 0;
   const low = isLowStock ?? isAtOrBelowPar(item);
@@ -2828,6 +2829,11 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
           <p className="break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
             {item.item_name}
           </p>
+          {!isService && attributes ? (
+            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-snug text-slate-500 [overflow-wrap:anywhere]">
+              {attributes}
+            </p>
+          ) : null}
           <InventoryStatusChips item={item} hideCost />
           {!isService ? (
             <div className={cx("mt-1", qtyTone)}>
