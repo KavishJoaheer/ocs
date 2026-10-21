@@ -20,8 +20,8 @@ for (const width of [390, 1280]) {
     const catalogue = await (await request.get(`${API}/inventory`, { headers })).json();
     await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), operator.token);
     for (const [name, ingredient, adultLabel, paediatricLabel, warningText] of [
-      ["Tramadol 100mg/2ml", "Tramadol hydrochloride", "Post-operative loading · monitored protocol only", "Adolescents older than 12 years · UK injection reference", "Under 12 years"],
-      ["Valium", "Diazepam", "Delirium tremens", "Seizures · 1 month–11 years · IV", "Neonates: no routine quick-card dose"],
+      ["IM Tramadol 100mg/2ml", "Tramadol hydrochloride", "Post-operative loading · monitored protocol only", "Adolescents older than 12 years · UK injection reference", "Under 12 years"],
+      ["IM Valium", "Diazepam", "Delirium tremens", "Seizures · 1 month–11 years · IV", "Neonates: no routine quick-card dose"],
     ]) {
       if (!catalogue.ocs_stock.some(row => row.item_name === name)) {
         const created = await request.post(`${API}/inventory/items`, { headers, data: {
@@ -46,12 +46,12 @@ for (const width of [390, 1280]) {
       const warning = guide.getByRole("region", { name: "Critical safety warnings", exact: true });
       await expect(warning).toContainText(warningText);
       expect((await warning.boundingBox()).y).toBeLessThan((await guide.getByRole("region", { name: "Dosing reference", exact: true }).boundingBox()).y);
-      if (name === "Valium") {
+      if (name === "IM Valium") {
         await expect(guide).toContainText("this injection card does not supply rectal dosing");
         await expect(guide).toContainText("Flumazenil is not routine rescue");
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      await guide.screenshot({ path: `/tmp/ocs-${name === "Valium" ? "diazepam" : "tramadol"}-paediatric-guide-${width}.png` });
+      await guide.screenshot({ path: `/tmp/ocs-${name === "IM Valium" ? "diazepam" : "tramadol"}-paediatric-guide-${width}.png` });
       await guide.getByRole("button", { name: "Adults", exact: true }).click();
       await expect(guide.getByRole("region", { name: adultLabel, exact: true })).toBeVisible();
       await expect(guide.getByRole("region", { name: paediatricLabel, exact: true })).toHaveCount(0);

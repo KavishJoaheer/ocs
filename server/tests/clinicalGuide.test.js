@@ -109,6 +109,8 @@ test("known Phenergan injections supply missing ingredients without replacing cu
 test("tramadol injection aliases keep adolescent restrictions separate from adult loading and elderly adjustments", () => {
   for (const item_name of TRAMADOL_INJECTION_NAMES) assert.equal(getClinicalGuideForItem({ item_name }), TRAMADOL_IM_IV);
   assert.equal(getClinicalGuideForItem({ item_name: " Tramadol 100 mg / 2 ml " }), TRAMADOL_IM_IV);
+  assert.equal(getClinicalGuideForItem({ item_name: " IM Tramadol 100 mg / 2 ml ", folder_name: "IM Drugs" }), TRAMADOL_IM_IV);
+  assert.equal(getInventoryItemAttributes({ item_name: "IM Tramadol 100mg/2ml", attributes: "" }), "Tramadol hydrochloride");
   assert.match(TRAMADOL_IM_IV.dose_limits, /including any loading doses/);
   assert.match(TRAMADOL_IM_IV.dose_limits, /does not specify a universal 300 mg\/day cap/);
   assert.match(TRAMADOL_IM_IV.administration, /over 2–3 minutes/);
@@ -127,6 +129,8 @@ test("tramadol injection aliases keep adolescent restrictions separate from adul
 
 test("diazepam injection matching requires a named injectable product or the imported Valium injectable folder", () => {
   for (const item_name of DIAZEPAM_INJECTION_NAMES) assert.equal(getClinicalGuideForItem({ item_name }), DIAZEPAM_IM_IV);
+  assert.equal(getClinicalGuideForItem({ item_name: "IM Valium", folder_name: "IM Drugs" }), DIAZEPAM_IM_IV);
+  assert.equal(getInventoryItemAttributes({ item_name: "IM Valium", attributes: "" }), "Diazepam");
   for (const folder_name of ["IM Drugs", "IV Drugs"]) {
     assert.equal(getClinicalGuideForItem({ item_name: " Valium ", folder_name }), DIAZEPAM_IM_IV);
     assert.equal(getInventoryItemAttributes({ item_name: "Valium", folder_name, attributes: "N/A" }), "Diazepam");
@@ -149,6 +153,7 @@ test("diazepam injection matching requires a named injectable product or the imp
 
 test("new injection guides reject oral, rectal, combination, unknown-strength and service items", () => {
   for (const item_name of ["Tramadol", "Tramadol 50mg tablets", "Tramadol 100mg capsules", "Tramadol 200mg/2ml (IM/IV)", "Tramadol 100mg/2ml + Other",
+    "IM Tramadol 200mg/2ml", "IM Tramadol 100mg/2ml + Other", "IM Valium tablets", "IM Valium + Other",
     "Tab Valium 10mg", "Valium 10mg tablets", "Diazepam", "Diazepam 10mg rectal solution", "Diazepam 5mg/ml Oral Solution", "Diazepam 20mg/2ml (IM/IV)", "Valium + Other"]) {
     assert.equal(getClinicalGuideForItem({ item_name, folder_name: "IM Drugs" }), null, item_name);
   }

@@ -192,6 +192,7 @@ const TRAMADOL_IM_IV = Object.freeze({
 });
 
 const TRAMADOL_INJECTION_NAMES = Object.freeze([
+  "IM Tramadol 100mg/2ml", // Live catalogue name.
   "Tramadol 100mg/2ml", // Exact imported injectable catalogue entry.
   "Tramadol 100mg/2ml (IM/IV)",
   "Tramadol 100mg/2ml (IV/IM)",
@@ -249,6 +250,7 @@ const DIAZEPAM_IM_IV = Object.freeze({
 });
 
 const DIAZEPAM_INJECTION_NAMES = Object.freeze([
+  "IM Valium", // Live catalogue name; verify ampoule strength before use.
   "Valium 10mg/2ml Ampoule",
   "Valium 10mg/2ml (IM/IV)",
   "Valium 10mg/2ml (IV/IM)",
