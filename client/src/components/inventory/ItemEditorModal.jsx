@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Modal from "../Modal.jsx";
 import { cx } from "../../lib/utils.js";
+import ClinicalGuideFields from "./ClinicalGuideFields.jsx";
+import { clinicalGuideValues, serializeClinicalGuide } from "../../lib/clinicalGuide.js";
 
 const FIELD = (locked) =>
   cx(
@@ -15,6 +17,7 @@ function catalogueFormState(item, folders = []) {
     item_name: item?.item_name ?? "",
     folder_id: String(direct?.id || byName?.id || item?.folder_id || ""),
     attributes: item?.attributes ?? "",
+    clinical_guide: clinicalGuideValues(item?.moa_notes),
     minimum_quantity: String(item?.minimum_quantity ?? 0),
     unit: item?.unit ?? "unit",
     cost_price: String(item?.cost_price ?? 0),
@@ -95,6 +98,8 @@ export default function ItemEditorModal({
             item_name: form.item_name,
             folder_id: Number(form.folder_id || 0),
             attributes: isService ? "" : form.attributes,
+            moa_notes: isService ? "" : JSON.stringify(form.clinical_guide) === JSON.stringify(baseline.clinical_guide)
+              ? item?.moa_notes || "" : serializeClinicalGuide(form.clinical_guide),
             minimum_quantity: isService ? 0 : Number(form.minimum_quantity || 0),
             unit: isService ? "service" : form.unit,
             cost_price: isService ? 0 : Number(form.cost_price || 0),
@@ -125,6 +130,7 @@ export default function ItemEditorModal({
                   { id: "definition", label: "Definition" },
                   ...(!isService ? [{ id: "policy", label: "Stock policy" }] : []),
                   { id: "pricing", label: "Pricing" },
+                  ...(!isService ? [{ id: "guide", label: "Clinical guide" }] : []),
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -223,6 +229,12 @@ export default function ItemEditorModal({
                   </p>
                 </div>
               ) : null}
+
+              {section === "guide" ? <ClinicalGuideFields
+                value={form.clinical_guide}
+                onChange={clinical_guide => setForm(current => ({ ...current, clinical_guide }))}
+                readOnly={masterReadOnly || item?.stock_scope === "doctor"}
+              /> : null}
 
               {section === "pricing" ? (
                 <div className="space-y-4">

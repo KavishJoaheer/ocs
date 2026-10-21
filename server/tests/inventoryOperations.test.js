@@ -919,6 +919,38 @@ test("admin can change a service selling price while cost and stock fields stay 
   assert.equal(servicePayload.cost_price, null);
 });
 
+test("clinical guides sync to doctor bags without stock changes and preserve unrelated legacy notes", async () => {
+  const name = `Clinical guide ${Date.now()}`;
+  const masterId = insertOcsItem({ name, qty: 0 });
+  const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);
+  const edit = (id, notes, token = operatorToken) => api("PUT", `/api/inventory/items/${id}${id === bagId && token !== doctorToken ? `?doctorId=${doctorId}` : ""}`, { token, body: { expected_version: db.prepare("SELECT row_version FROM inventory WHERE id=?").get(id).row_version, ...notes } });
+  const untouched = await edit(masterId, { minimum_quantity: 2 });
+  assert.equal(untouched.status, 200, JSON.stringify(untouched.data));
+  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "Existing bag notes");
+  const guide = JSON.stringify({ format: "ocs-clinical-guide-v1", dose: "Reference dose", population: "Reference group", administration: "Reference cautions", source_url: "https://example.test/product" });
+  const updated = await edit(masterId, { moa_notes: guide });
+  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+  const bag = db.prepare("SELECT quantity,moa_notes FROM inventory WHERE id=?").get(bagId);
+  assert.equal(bag.quantity, 3);
+  assert.equal(bag.moa_notes, guide);
+  const seen = await api("GET", "/api/inventory?context=my", { token: doctorToken });
+  assert.equal(seen.status, 200);
+  assert.equal(seen.data.my_stock.find(item => item.id === bagId).moa_notes, guide);
+  for (const actor of [adminToken, operatorToken, doctorToken]) {
+    const rejected = await edit(bagId, { moa_notes: "Local replacement" }, actor);
+    assert.equal(rejected.status, 409, JSON.stringify(rejected.data));
+  }
+  const unsafe = await edit(masterId, { moa_notes: JSON.stringify({ format: "ocs-clinical-guide-v1", source_url: "javascript:alert(1)" }) });
+  assert.equal(unsafe.status, 400);
+  const oversized = await edit(masterId, { moa_notes: "x".repeat(50001) });
+  assert.equal(oversized.status, 400);
+  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(masterId).moa_notes, guide);
+  const cleared = await edit(masterId, { moa_notes: "" });
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.data));
+  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM inventory_audit_logs WHERE item_id=? AND action_type='update_clinical_guide'").get(masterId).n, 2);
+});
+
 test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {
   const itemId = insertOcsItem({ name: `Versioned catalogue ${Date.now()}`, qty: 0 });
   const original = db.prepare("SELECT row_version FROM inventory WHERE id = ?").get(itemId);

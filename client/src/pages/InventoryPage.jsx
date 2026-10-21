@@ -4,6 +4,7 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useS
 import { createPortal } from "react-dom";
 import {
   Calendar,
+  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -42,6 +43,7 @@ import MobileDoctorInventory from "../components/inventory/MobileDoctorInventory
 import "../components/inventory/inventoryWorkspace.css";
 import InventoryTabSummaries from "../components/inventory/InventoryTabSummaries.jsx";
 import ItemEditorModal from "../components/inventory/ItemEditorModal.jsx";
+import ClinicalGuide from "../components/inventory/ClinicalGuide.jsx";
 import TransferReceiptModal from "../components/inventory/TransferReceiptModal.jsx";
 import WriteOffStockModal from "../components/inventory/WriteOffStockModal.jsx";
 import {
@@ -2802,7 +2804,7 @@ function MobileDoctorBagActions({
   );
 }
 
-function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentation = false }) {
+function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentation = false, onOpenGuide }) {
   const isService = item.item_kind === "service";
   const attributes = String(item.attributes ?? "").trim();
   const sellingPrice = Number(item.selling_price || 0);
@@ -2814,6 +2816,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
   const out = isOutOfStock(item);
   const problem = !isService && (low || out || expired || quarantined);
   const qtyTone = problem ? "text-rose-700" : "text-slate-900";
+  const TitleContainer = !isService && onOpenGuide ? "button" : "div";
 
   return (
     <div className={cx("flex flex-col gap-3 rounded-2xl bg-white p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]", doctorPresentation && "doctor-inventory-card rounded-[26px] border border-[#d5e9e3]")}>
@@ -2826,14 +2829,13 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
           aria-hidden
         />
         <div className="min-w-0 flex-1">
-          <p className="break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">
-            {item.item_name}
-          </p>
-          {!isService && attributes ? (
-            <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-snug text-slate-500 [overflow-wrap:anywhere]">
-              {attributes}
-            </p>
-          ) : null}
+          <TitleContainer {...(!isService && onOpenGuide ? { type: "button", onClick: () => onOpenGuide(item), "aria-label": `Clinical guide for ${item.item_name}` } : {})} className="flex w-full items-start gap-2 rounded-xl text-left">
+            <span className="min-w-0 flex-1">
+              <span className="block break-words text-[15px] font-bold leading-snug tracking-wide text-slate-800 [overflow-wrap:anywhere]">{item.item_name}</span>
+              {!isService && attributes ? <span className="mt-1 block whitespace-pre-wrap break-words text-xs leading-snug text-slate-500 [overflow-wrap:anywhere]">{attributes}</span> : null}
+            </span>
+            {!isService && onOpenGuide ? <span className="flex min-h-11 min-w-11 shrink-0 flex-col items-center justify-center gap-1 text-[#137b80]"><BookOpen className="size-4" aria-hidden="true" /><span className="text-[11px] font-medium">Guide</span></span> : null}
+          </TitleContainer>
           <InventoryStatusChips item={item} hideCost />
           {!isService ? (
             <div className={cx("mt-1", qtyTone)}>
@@ -2865,6 +2867,7 @@ function MobileInventoryStockCard({ item, isLowStock, actions, doctorPresentatio
 function MobileDoctorBagLayout({
   mobileBagItems, hasMore = false, remainingCount = 0, onShowMore,
   onOpenDeduct, onOpenRequest, onOpenRestock, doctorViewIsOcs,
+  onOpenGuide,
   showScopeLoading, scopeLoadFailed, onRetryScope, backgroundRefreshing,
   ...controls
 }) {
@@ -2873,7 +2876,7 @@ function MobileDoctorBagLayout({
     <div className="flex min-w-0 flex-col gap-2.5">
       {backgroundRefreshing && !showScopeLoading ? <p className="text-xs text-[#5b7379]" role="status">Updating stock…</p> : null}
       {showScopeLoading ? <InventoryScopeLoading failed={scopeLoadFailed} onRetry={onRetryScope} /> : mobileBagItems.length ? <>
-        {mobileBagItems.map(item => <MobileInventoryStockCard key={`mobile-bag-${item.id}`} item={item} doctorPresentation actions={services ? null :
+        {mobileBagItems.map(item => <MobileInventoryStockCard key={`mobile-bag-${item.id}`} item={item} doctorPresentation onOpenGuide={onOpenGuide} actions={services ? null :
           <MobileDoctorBagActions requestOnly={doctorViewIsOcs} useDisabled={!onOpenDeduct || Number(item.on_hand_quantity ?? item.quantity ?? 0) < 1} onUse={() => onOpenDeduct?.(item)} onRequest={() => onOpenRequest?.(item)} onEmergencyOverride={!doctorViewIsOcs && onOpenRestock ? () => onOpenRestock(item) : undefined} />
         } />)}
         {hasMore ? <button type="button" onClick={onShowMore} className="min-h-11 w-full rounded-full border border-[#d5e4e1] bg-white text-[#376168]">Show more{remainingCount > 0 ? ` (${remainingCount})` : ""}</button> : null}
@@ -2946,6 +2949,7 @@ function InventoryContent() {
   }, [listRefreshing]);
   const [contextSearch, setContextSearch] = useState("OCS Stock");
   const [editor, setEditor] = useState(null);
+  const [clinicalGuideItem, setClinicalGuideItem] = useState(null);
   const [movement, setMovement] = useState(null);
   const [restock, setRestock] = useState(null);
   const [doctorRestockOpen, setDoctorRestockOpen] = useState(false);
@@ -4636,6 +4640,7 @@ function InventoryContent() {
             onShowMore={() => setMobileBagVisibleCount((count) => count + 20)}
             onOpenDeduct={(item) => setMobileDeductItem(item)}
             onOpenRequest={openDoctorRequestForItem}
+            onOpenGuide={setClinicalGuideItem}
             onOpenRestock={emergencyRestockEnabled ? openMobileDoctorRestock : undefined}
             showScopeLoading={showScopeLoading}
             scopeLoadFailed={scopeLoadFailed}
@@ -5189,6 +5194,7 @@ function InventoryContent() {
                                 >
                                   {item.item_name}
                                 </span>
+                                {!isService ? <button type="button" aria-label={`Clinical guide for ${item.item_name}`} onClick={event => { event.stopPropagation(); setClinicalGuideItem(item); }} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-[#137b80]"><BookOpen className="size-4" aria-hidden="true" /></button> : null}
                               </div>
                               <InventoryStatusChips item={item} />
                             </td>
@@ -5310,6 +5316,7 @@ function InventoryContent() {
                 <MobileInventoryStockCard
                   key={`m-${item.id}`}
                   item={item}
+                  onOpenGuide={setClinicalGuideItem}
                   actions={
                     <InventoryActionButtons
                       item={item}
@@ -5564,6 +5571,7 @@ function InventoryContent() {
         onSubmit={saveItem}
       />
       ) : null}
+      <ClinicalGuide item={clinicalGuideItem} onClose={() => setClinicalGuideItem(null)} />
       <ItemEditorModal
         open={Boolean(editor)}
         item={editor?.item}

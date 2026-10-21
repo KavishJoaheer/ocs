@@ -1,6 +1,7 @@
 const { financialAction, stockFinancials, movementBusinessDateSql, movementRows } = require("../lib/inventoryFinancials");
 const { operationFor } = require("../lib/operationReceipts");
 const { randomUUID } = require("node:crypto");
+const { isClinicalGuide, validateClinicalNotes } = require("../lib/clinicalGuide");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const {
   applyKnownCostToUnpricedDoctorBags,
@@ -2488,6 +2489,10 @@ router.post("/items", (req, res) => {
   const costPrice = roundCurrency(req.body.cost_price);
   const sellingPrice = roundCurrency(req.body.selling_price);
   const attributes = String(req.body.attributes || "").trim();
+  if (Object.hasOwn(req.body, "moa_notes")) {
+    const error = validateClinicalNotes(req.body.moa_notes);
+    if (error) return res.status(400).json({ error });
+  }
   const moaNotes = String(req.body.moa_notes || "").trim();
   const catalogueKey = catalogueKeyForName(itemName);
   const isCostOnly = isUnchargedConsumable({
@@ -2573,6 +2578,15 @@ router.put("/items/:id", (req, res) => {
 
   function fieldChanged(key, current, next) {
     return Object.prototype.hasOwnProperty.call(req.body || {}, key) && String(current ?? "") !== String(next ?? "");
+  }
+
+  if (Object.hasOwn(req.body, "moa_notes")) {
+    const error = validateClinicalNotes(req.body.moa_notes);
+    if (error) return res.status(400).json({ error });
+    if (!isOcsMasterRow && fieldChanged("moa_notes", existing.moa_notes, req.body.moa_notes)
+        && (isClinicalGuide(existing.moa_notes) || isClinicalGuide(req.body.moa_notes))) {
+      return res.status(409).json({ error: "Update the Clinical guide on the OCS warehouse item so all bags share the same reference." });
+    }
   }
 
   if (isDoctor) {
@@ -2734,7 +2748,7 @@ router.put("/items/:id", (req, res) => {
             minimum_quantity = CASE WHEN ? = 'service' THEN 0 ELSE minimum_quantity END,
             expiry_date = CASE WHEN ? = 'service' THEN NULL ELSE expiry_date END,
             attributes = CASE WHEN ? = 'service' THEN '' ELSE attributes END,
-            moa_notes = CASE WHEN ? = 'service' THEN '' ELSE moa_notes END,
+            moa_notes = CASE WHEN ? = 'service' THEN '' WHEN ? THEN ? ELSE moa_notes END,
             row_version = row_version + 1,
             updated_at = CURRENT_TIMESTAMP
           WHERE stock_scope = 'doctor'
@@ -2752,6 +2766,8 @@ router.put("/items/:id", (req, res) => {
           itemKind,
           itemKind,
           itemKind,
+          fieldChanged("moa_notes", existing.moa_notes, req.body.moa_notes) ? 1 : 0,
+          moaNotes,
           itemName,
         );
         updatedBagItemIds.push(...bagRows.map((row) => Number(row.id)));
@@ -2783,6 +2799,15 @@ router.put("/items/:id", (req, res) => {
             selling_price_changed: sellingPriceChanged,
             doctor_bag_rows_updated: updatedBagItemIds.length,
           }),
+        });
+      }
+      if (fieldChanged("moa_notes", existing.moa_notes, req.body.moa_notes)) {
+        recordAudit({
+          actionType: "update_clinical_guide", itemId, itemName, quantity: 0,
+          reason: "Draft clinical reference updated", performedByUserId: req.auth.id,
+          performedByRole: req.auth.role,
+          performedByName: req.auth.full_name || req.auth.username || "",
+          metaJson: JSON.stringify({ previous_notes: existing.moa_notes || "", next_notes: moaNotes }),
         });
       }
     })();

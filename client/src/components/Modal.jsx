@@ -29,6 +29,7 @@ function Modal({
   innerScroll = true,
   labelledBy,
   className,
+  placement = "center",
 }) {
   const panelRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -99,7 +100,7 @@ function Modal({
   }[size] || "max-w-3xl";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-x-hidden overscroll-x-none p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:items-center sm:p-4 sm:py-10">
+    <div className={cx("fixed inset-0 z-50 flex overflow-x-hidden overscroll-x-none", placement === "drawer" ? "items-stretch justify-end" : "items-end justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:items-center sm:p-4 sm:py-10")}>
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-[rgba(34,72,91,0.42)] backdrop-blur-sm md:bg-ocs-slate/50"
@@ -113,8 +114,10 @@ function Modal({
         aria-labelledby={headingId}
         aria-describedby={description ? descriptionId : undefined}
         className={cx(
-          "relative z-10 flex w-full min-w-0 max-w-[min(100%,calc(100vw-1.5rem))] max-h-[min(92dvh,100dvh-1.5rem)] flex-col overflow-x-hidden rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:rounded-[34px] sm:p-6 md:border-transparent md:bg-white md:shadow-md",
-          sizeClass,
+          "relative z-10 flex w-full min-w-0 flex-col overflow-x-hidden",
+          placement === "drawer"
+            ? "h-[100dvh] max-h-[100dvh] max-w-full border-l border-slate-200 bg-[#f4faf8] p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:max-w-lg sm:rounded-l-[28px] sm:p-6"
+            : cx("max-w-[min(100%,calc(100vw-1.5rem))] max-h-[min(92dvh,100dvh-1.5rem)] rounded-[28px] border border-[rgba(65,200,198,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(242,251,250,0.94))] p-4 shadow-[0_40px_120px_rgba(34,72,91,0.18)] sm:rounded-[34px] sm:p-6 md:border-transparent md:bg-white md:shadow-md", sizeClass),
           className,
         )}
       >
