@@ -1,22 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clinicalGuideValues, serializeClinicalGuide, clinicalGuideSourceUrl, CLINICAL_GUIDE_FORMAT } from "./clinicalGuide.js";
+import { clinicalGuideValues, clinicalGuideSourceUrl, CLINICAL_GUIDE_FORMAT } from "./clinicalGuide.js";
 
-test("legacy clinical notes survive editing without interpreting markup or unknown JSON", () => {
-  for (const notes of ["Existing mechanism notes\nKeep these observations.", "<img src=x onerror=alert(1)>", '{"unknown":"format"}']) {
-    assert.equal(clinicalGuideValues(notes).notes, notes);
-    assert.equal(clinicalGuideValues(serializeClinicalGuide(clinicalGuideValues(notes))).notes, notes);
+test("legacy user-editable notes and serialized payloads are not used as backend clinical guides", () => {
+  for (const notes of ["Existing notes", "<img src=x onerror=alert(1)>", '{"format":"ocs-clinical-guide-v1","dose":"Untrusted dose"}', null]) {
+    assert.equal(Object.values(clinicalGuideValues(notes)).some(Boolean), false);
   }
 });
 
 test("structured guides preserve section boundaries and never accept review claims or object fields", () => {
-  const raw = JSON.stringify({ format: CLINICAL_GUIDE_FORMAT, dose: "  Example dose  ", administration: "IV precautions\nIM precautions", reviewed: "Approved", maximum: { unsafe: "object" } });
+  const raw = { format: CLINICAL_GUIDE_FORMAT, dose: "  Example dose  ", administration: "IV precautions\nIM precautions", reviewed: "Approved", maximum: { unsafe: "object" }, source_updated: "5 Jan 2026" };
   const guide = clinicalGuideValues(raw);
   assert.equal(guide.dose, "Example dose");
   assert.equal(guide.administration, "IV precautions\nIM precautions");
   assert.equal(guide.maximum, "");
   assert.equal(Object.hasOwn(guide, "reviewed"), false);
-  assert.equal(serializeClinicalGuide(clinicalGuideValues("")), "");
+  assert.equal(guide.source_updated, "5 Jan 2026");
 });
 
 test("clinical sources allow only HTTPS URLs without credentials", () => {

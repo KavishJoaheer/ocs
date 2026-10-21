@@ -1,21 +1,24 @@
-const FORMAT = "ocs-clinical-guide-v1";
+const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES } = require("../config/clinicalGuides");
 
-function isClinicalGuide(raw) {
-  try { return JSON.parse(raw)?.format === FORMAT; } catch { return false; }
+const nameKey = value => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+const injectionNames = new Set(BUSCOPAN_INJECTION_NAMES.map(nameKey));
+
+function getClinicalGuideForItem(item) {
+  if (!item || item.item_kind === "service") return null;
+  const name = nameKey(item.item_name);
+  // The imported catalogue also has an unqualified name in injectable folders.
+  const importedInjection = name === nameKey("Buscopan (Hyoscine Butylbromide)")
+    && ["imdrugs", "ivdrugs"].includes(nameKey(item.folder_name));
+  return injectionNames.has(name) || importedInjection ? BUSCOPAN_IM_IV : null;
 }
 
-function validateClinicalNotes(raw) {
-  if (typeof raw !== "string" || raw.length > 50000) return "Keep clinical notes to 50,000 characters or fewer.";
-  if (!isClinicalGuide(raw)) return null;
-  const guide = JSON.parse(raw);
-  if (Object.values(guide).some(value => typeof value !== "string")) return "Clinical guide fields must contain text.";
-  if (guide.source_url) {
-    try {
-      const url = new URL(guide.source_url);
-      if (url.protocol !== "https:" || url.username || url.password) throw new Error("Invalid source");
-    } catch { return "Use an HTTPS link without credentials for the clinical source."; }
+function clinicalGuideWriteError(body, existing = null) {
+  if (Object.hasOwn(body, "clinical_guide")) return "Clinical guides are managed by the OCS backend and cannot be edited in the app.";
+  // Permit unchanged values from older clients without allowing writes or clears.
+  if (Object.hasOwn(body, "moa_notes") && body.moa_notes !== (existing?.moa_notes || "")) {
+    return "Clinical guides are managed by the OCS backend and cannot be edited in the app.";
   }
   return null;
 }
 
-module.exports = { isClinicalGuide, validateClinicalNotes };
+module.exports = { getClinicalGuideForItem, clinicalGuideWriteError };

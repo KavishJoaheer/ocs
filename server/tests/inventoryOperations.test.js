@@ -776,7 +776,6 @@ test("doctors cannot change quantity through item editing and operators can edit
       folder_id: operatorFolderId,
       unit: "box",
       attributes: "Operator-managed attributes",
-      moa_notes: "Operator-managed MOA notes",
       adjustment_note: "Supplier price list verified by operator",
     },
   });
@@ -789,7 +788,7 @@ test("doctors cannot change quantity through item editing and operators can edit
   assert.equal(operatorEdited.cost_price, 6);
   assert.equal(operatorEdited.selling_price, 12);
   assert.equal(operatorEdited.attributes, "Operator-managed attributes");
-  assert.equal(operatorEdited.moa_notes, "Operator-managed MOA notes");
+  assert.equal(operatorEdited.moa_notes, "");
   const priceAudit = db.prepare(`
     SELECT * FROM inventory_audit_logs
     WHERE item_id = ? AND action_type = 'update_catalogue_pricing'
@@ -919,36 +918,37 @@ test("admin can change a service selling price while cost and stock fields stay 
   assert.equal(servicePayload.cost_price, null);
 });
 
-test("clinical guides sync to doctor bags without stock changes and preserve unrelated legacy notes", async () => {
-  const name = `Clinical guide ${Date.now()}`;
+test("backend clinical guides are shared read-only across inventory scopes and preserve legacy records", async () => {
+  const name = "Buscopan20mg(IM/IV)";
   const masterId = insertOcsItem({ name, qty: 0 });
   const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);
-  const edit = (id, notes, token = operatorToken) => api("PUT", `/api/inventory/items/${id}${id === bagId && token !== doctorToken ? `?doctorId=${doctorId}` : ""}`, { token, body: { expected_version: db.prepare("SELECT row_version FROM inventory WHERE id=?").get(id).row_version, ...notes } });
+  const edit = (id, notes, token = operatorToken) => api("PUT", `/api/inventory/items/${id}${id === bagId && token !== doctorToken ? `?doctorId=${doctorId}` : id === masterId && token === doctorToken ? "?context=ocs" : ""}`, { token, body: { expected_version: db.prepare("SELECT row_version FROM inventory WHERE id=?").get(id).row_version, ...notes } });
   const untouched = await edit(masterId, { minimum_quantity: 2 });
   assert.equal(untouched.status, 200, JSON.stringify(untouched.data));
   assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "Existing bag notes");
-  const guide = JSON.stringify({ format: "ocs-clinical-guide-v1", dose: "Reference dose", population: "Reference group", administration: "Reference cautions", source_url: "https://example.test/product" });
-  const updated = await edit(masterId, { moa_notes: guide });
-  assert.equal(updated.status, 200, JSON.stringify(updated.data));
+  const guide = untouched.data.ocs_stock.find(item => item.id === masterId).clinical_guide;
+  assert.equal(guide.dose, "20 mg");
   const bag = db.prepare("SELECT quantity,moa_notes FROM inventory WHERE id=?").get(bagId);
   assert.equal(bag.quantity, 3);
-  assert.equal(bag.moa_notes, guide);
+  assert.equal(bag.moa_notes, "Existing bag notes");
   const seen = await api("GET", "/api/inventory?context=my", { token: doctorToken });
   assert.equal(seen.status, 200);
-  assert.equal(seen.data.my_stock.find(item => item.id === bagId).moa_notes, guide);
+  assert.deepEqual(seen.data.my_stock.find(item => item.id === bagId).clinical_guide, guide);
   for (const actor of [adminToken, operatorToken, doctorToken]) {
-    const rejected = await edit(bagId, { moa_notes: "Local replacement" }, actor);
-    assert.equal(rejected.status, 409, JSON.stringify(rejected.data));
+    for (const id of [masterId, bagId]) {
+      for (const input of [{ moa_notes: "Local replacement" }, { clinical_guide: { ...guide, dose: "Unsafe override" } }]) {
+        const rejected = await edit(id, input, actor);
+        assert.equal(rejected.status, 403, JSON.stringify(rejected.data));
+      }
+    }
   }
-  const unsafe = await edit(masterId, { moa_notes: JSON.stringify({ format: "ocs-clinical-guide-v1", source_url: "javascript:alert(1)" }) });
-  assert.equal(unsafe.status, 400);
-  const oversized = await edit(masterId, { moa_notes: "x".repeat(50001) });
-  assert.equal(oversized.status, 400);
-  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(masterId).moa_notes, guide);
-  const cleared = await edit(masterId, { moa_notes: "" });
-  assert.equal(cleared.status, 200, JSON.stringify(cleared.data));
-  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "");
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM inventory_audit_logs WHERE item_id=? AND action_type='update_clinical_guide'").get(masterId).n, 2);
+  const cleared = await edit(bagId, { moa_notes: "" }, doctorToken);
+  assert.equal(cleared.status, 403);
+  const unchanged = await edit(bagId, { moa_notes: "Existing bag notes" }, doctorToken);
+  assert.equal(unchanged.status, 200, JSON.stringify(unchanged.data));
+  assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "Existing bag notes");
+  const attemptedCreate = await api("POST", "/api/inventory/items", { token: operatorToken, body: { item_name: "Guide override", folder_id: folderId, quantity: 0, moa_notes: "Injected guide", cost_price: 0, selling_price: 0 } });
+  assert.equal(attemptedCreate.status, 403, JSON.stringify(attemptedCreate.data));
 });
 
 test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {
