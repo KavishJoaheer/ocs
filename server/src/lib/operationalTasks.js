@@ -1,9 +1,8 @@
 const { db } = require("../db");
-const { createHash } = require("node:crypto");
 
 const DEFAULT_POLICY = {
   dispatch_minutes: 15, urgent_dispatch_minutes: 5, assignment_minutes: 10,
-  start_minutes: 30, escalation_minutes: 30, report_hours: 24,
+  start_minutes: 30, escalation_minutes: 30,
   supply_hours: 4, supervisor_user_id: null,
 };
 const ACTIVE = "is_active=1 AND deleted_at IS NULL";
@@ -75,7 +74,8 @@ function ensureOperationalTaskSchema(database = db) {
 }
 
 function getPolicy(database = db) {
-  return { ...DEFAULT_POLICY, ...JSON.parse(database.prepare("SELECT policy_json FROM operational_task_policy WHERE id=1").get().policy_json) };
+  const saved = JSON.parse(database.prepare("SELECT policy_json FROM operational_task_policy WHERE id=1").get().policy_json);
+  return Object.fromEntries(Object.entries(DEFAULT_POLICY).map(([key, value]) => [key, saved[key] ?? value]));
 }
 function event(database, id, action, actor, note, now) {
   database.prepare("INSERT INTO operational_task_events (task_id,action,actor_user_id,note,created_at) VALUES (?,?,?,?,?)")
@@ -155,19 +155,7 @@ function desiredTasks(database, now) {
       priority: "normal", owner_role: scheduling ? "operator" : "doctor", clinical_owner_id: scheduling ? null : doctor,
       source_version: `${date}:${p.review_assigned_doctor_id || p.assigned_doctor_id || 0}`, acknowledgement_due_at: deadline, due_at: deadline });
   }
-  const rollout = database.prepare("SELECT enabled_at,initial_report_id FROM operational_task_policy WHERE id=1").get();
-  for (const report of database.prepare(`SELECT r.*, COALESCE(c.doctor_id,p.assigned_doctor_id) AS responsible_doctor FROM lab_reports r
-    JOIN patients p ON p.id=r.patient_id LEFT JOIN consultations c ON c.id=r.consultation_id
-    WHERE p.deleted_at IS NULL AND (r.id>? OR EXISTS (SELECT 1 FROM operational_report_enrolments e WHERE e.report_id=r.id)
-      OR (r.updated_at!=r.created_at AND julianday(r.updated_at)>=julianday(?)))`).all(rollout.initial_report_id, rollout.enabled_at)) {
-    const doctor = doctorUser(database, report.responsible_doctor);
-    const attachments = database.prepare("SELECT id,stored_name FROM lab_report_attachments WHERE report_id=? ORDER BY id").all(report.id);
-    add({ kind: "report_review", source_type: "report", source_id: report.id, patient_id: report.patient_id,
-      title: `Report #${report.id} awaits clinical review`, url: `/patients/${report.patient_id}`, priority: "normal",
-      owner_role: doctor ? "doctor" : "lab_tech", clinical_owner_id: doctor,
-      source_version: `${report.updated_at}:${createHash("sha256").update(`${report.report_title}\n${report.report_details}\n${JSON.stringify(attachments)}`).digest("hex")}`,
-      acknowledgement_due_at: after(report.updated_at, policy.report_hours * 60), due_at: after(report.updated_at, policy.report_hours * 60) });
-  }
+  // Reports have already been reviewed before upload, so they create no inbox task.
   for (const r of database.prepare("SELECT * FROM restock_requests WHERE status IN ('pending','accepted') AND archived_at IS NULL").all()) {
     const deadline = r.status === "pending" ? after(r.created_at, policy.supply_hours * 60) : dayEnd(r.collection_date);
     add({ kind: "supply", source_type: "supply", source_id: r.id, title: `Supply request #${r.id} ${r.status === "pending" ? "needs acceptance" : "needs preparation"}`,
@@ -188,7 +176,7 @@ function reconcileOperationalTasks({ database = db, now = Date.now() } = {}) {
       let previous = database.prepare("SELECT * FROM operational_tasks WHERE task_key=?").get(key);
       const clinicalOwner = wanted.clinical_owner_id || null;
       const changed = previous && (previous.source_version !== wanted.source_version || previous.clinical_owner_id !== clinicalOwner
-        || (previous.status === "resolved" && wanted.kind !== "report_review"));
+        || previous.status === "resolved");
       if (previous?.status === "resolved" && !changed) continue;
       const owner = clinicalOwner || (!changed && previous?.manual_owner ? validOwner(database, previous.owner_user_id, wanted.owner_role) : null)
         || validOwner(database, wanted.preferred_owner, wanted.owner_role)
@@ -222,7 +210,9 @@ function reconcileOperationalTasks({ database = db, now = Date.now() } = {}) {
       }
     }
     for (const task of database.prepare("SELECT * FROM operational_tasks WHERE status!='resolved'").all()) {
-      if (!keys.has(task.task_key)) resolveTask(database, task, "Source completed, cancelled, rescheduled or moved to its next stage", now);
+      if (!keys.has(task.task_key)) resolveTask(database, task, task.kind === "report_review"
+        ? "Separate report review step removed: reports are reviewed before upload."
+        : "Source completed, cancelled, rescheduled or moved to its next stage", now);
     }
     return escalateOverdue(database, now);
   })();
@@ -270,7 +260,6 @@ function decorateTask(database, task, actor, now) {
     response_due_at: deadline, can_act: !actor.is_read_only && (actor.role === "admin" || (actor.role === task.owner_role && (!task.owner_user_id || Number(task.owner_user_id) === Number(actor.id)))),
     can_acknowledge: !actor.is_read_only && (!task.clinical_owner_id || Number(task.clinical_owner_id) === Number(actor.id))
       && (actor.role === "admin" || (actor.role === task.owner_role && (!task.owner_user_id || Number(task.owner_user_id) === Number(actor.id)))),
-    can_resolve: task.kind === "report_review" && ["admin", "doctor"].includes(actor.role),
   };
 }
 
@@ -284,10 +273,10 @@ function updateTask(id, actor, body = {}, { database = db, now = Date.now() } = 
     const fail = (status, message) => { const error = new Error(message); error.status = status; throw error; };
     if (!task || !canSeeTask(actor, task)) fail(404, "Action not found.");
     if (actor.is_read_only) fail(403, "Training mode is view only.");
-    if (body.action !== "flag_urgent" && actor.role !== "admin" && actor.role !== task.owner_role) fail(403, "Only the responsible role can act on this task.");
+    if (actor.role !== "admin" && actor.role !== task.owner_role) fail(403, "Only the responsible role can act on this task.");
     if (task.status === "resolved") fail(409, "This action is already resolved. Refresh the inbox.");
     if (!Number.isInteger(body.revision) || body.revision !== task.revision) fail(409, "This action has changed. Refresh the inbox before continuing.");
-    if (body.action !== "flag_urgent" && actor.role !== "admin" && task.owner_user_id && Number(task.owner_user_id) !== Number(actor.id)) fail(409, "This action belongs to another team member. Ask for a handover.");
+    if (actor.role !== "admin" && task.owner_user_id && Number(task.owner_user_id) !== Number(actor.id)) fail(409, "This action belongs to another team member. Ask for a handover.");
     const note = String(body.note || "").trim();
     if (note.length > 2000) fail(400, "Keep the note to 2,000 characters.");
     const action = body.action;
@@ -306,19 +295,8 @@ function updateTask(id, actor, body = {}, { database = db, now = Date.now() } = 
       event(database, id, "handed_over", actor.id, note, now);
       queueDelivery(database, database.prepare("SELECT * FROM operational_tasks WHERE id=?").get(id), next, "handover", now);
       if (task.escalation_level) queueDelivery(database, database.prepare("SELECT * FROM operational_tasks WHERE id=?").get(id), task.supervisor_user_id, `escalation-${task.escalation_level}`, now);
-    } else if (action === "flag_urgent") {
-      if (task.kind !== "report_review" || !["admin", "doctor", "lab_tech"].includes(actor.role)) fail(403, "Only clinical or lab staff can flag a report for urgent review.");
-      if (!note) fail(400, "Record the reason and direct-contact next step for urgent review.");
-      const deadline = after(iso(now), getPolicy(database).urgent_dispatch_minutes);
-      database.prepare("UPDATE operational_tasks SET priority='urgent',status='open',acknowledged_at=NULL,acknowledged_by=NULL,acknowledgement_due_at=?,due_at=?,escalation_level=0,escalated_at=NULL,revision=revision+1,updated_at=? WHERE id=?")
-        .run(deadline, deadline, iso(now), id);
-      event(database, id, "flagged_urgent", actor.id, note, now);
-      queueDelivery(database, database.prepare("SELECT * FROM operational_tasks WHERE id=?").get(id), task.owner_user_id, "urgent", now);
     } else if (action === "resolve") {
-      if (task.kind !== "report_review" || !["admin", "doctor"].includes(actor.role)) fail(400, "Complete or reschedule this action in its source workflow.");
-      if (!note) fail(400, "Record the clinical review outcome and next step before resolving.");
-      resolveTask(database, task, note, now, actor.id);
-      database.prepare("UPDATE operational_tasks SET revision=revision+1 WHERE id=?").run(id);
+      fail(400, "Complete or reschedule this action in its source workflow.");
     } else if (action === "decline") {
       if (task.kind !== "doctor_assignment" || actor.role !== "doctor" || Number(task.clinical_owner_id) !== Number(actor.id)) fail(403, "Only the assigned doctor can decline this assignment.");
       if (!note) fail(400, "Explain why dispatch needs to reassign this request.");
@@ -332,7 +310,7 @@ function updateTask(id, actor, body = {}, { database = db, now = Date.now() } = 
       reconcileOperationalTasks({ database, now });
       const next = database.prepare("SELECT * FROM operational_tasks WHERE source_type=? AND source_id=? AND kind='dispatch' AND status!='resolved'").get(task.source_type, task.source_id);
       if (next) event(database, next.id, "returned_to_dispatch", actor.id, note, now);
-    } else fail(400, "Choose acknowledge, handover or resolve.");
+    } else fail(400, "Choose acknowledge, handover or decline.");
     return database.prepare("SELECT * FROM operational_tasks WHERE id=?").get(id);
   })();
 }
@@ -388,15 +366,10 @@ function startOperationalWorkflow() {
 }
 function reconcileAfterOperationalWrite(req, res, next) {
   const sourcePath = req.path;
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && /^\/(patients|visit-requests|teleconsultations|patient-portal|lab-reports|restock-requests|team-operations|doctors)(\/|$)/.test(sourcePath)) {
-    const attachment = /^\/lab-reports\/attachments\/(\d+)$/.exec(sourcePath);
-    const attachmentReport = attachment ? db.prepare("SELECT report_id FROM lab_report_attachments WHERE id=?").get(Number(attachment[1]))?.report_id : null;
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && /^\/(patients|visit-requests|teleconsultations|patient-portal|restock-requests|team-operations|doctors)(\/|$)/.test(sourcePath)) {
     res.on("finish", () => {
       if (res.statusCode < 400) {
         try {
-          const editedReport = /^\/lab-reports\/(\d+)$/.exec(sourcePath);
-          const reportId = editedReport && req.method === "PUT" ? Number(editedReport[1]) : attachmentReport;
-          if (reportId) db.prepare("INSERT OR IGNORE INTO operational_report_enrolments (report_id) SELECT id FROM lab_reports WHERE id=?").run(reportId);
           reconcileOperationalTasks();
         }
         catch (error) { console.error("[action-inbox] source sync failed:", error); }

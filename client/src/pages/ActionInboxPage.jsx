@@ -12,9 +12,9 @@ import ConfirmDialog from "../components/ConfirmDialog.jsx";
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50";
 const field = "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800";
 const targetLabels = {
-  dispatch_minutes: "Routine dispatch (minutes)", urgent_dispatch_minutes: "Urgent dispatch / report review (minutes)",
+  dispatch_minutes: "Routine dispatch (minutes)", urgent_dispatch_minutes: "Urgent dispatch (minutes)",
   assignment_minutes: "Doctor acknowledgement (minutes)", start_minutes: "Dispatch assignment / consultation start (minutes)",
-  escalation_minutes: "Further escalation after (minutes)", report_hours: "Routine report review (hours)", supply_hours: "Supply request acceptance (hours)",
+  escalation_minutes: "Further escalation after (minutes)", supply_hours: "Supply request acceptance (hours)",
 };
 function formatTime(value) {
   return value ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Indian/Mauritius" }).format(new Date(value)) : "—";
@@ -158,9 +158,9 @@ export default function ActionInboxPage() {
       </form>
     </details>}
     <ConfirmDialog open={Boolean(dialog)} onClose={() => !busy && setDialog(null)} busy={busy} tone="normal"
-      title={dialog?.action === "handover" ? "Hand over responsibility" : dialog?.action === "decline" ? "Return assignment to dispatch" : dialog?.action === "flag_urgent" ? "Flag this report for urgent review" : "Record clinical review outcome"}
-      description={dialog?.action === "resolve" ? "Record what was reviewed, the outcome, and who owns any next step." : dialog?.action === "flag_urgent" ? "Record why review is urgent and the direct contact or escalation needed. OCS does not classify report values automatically." : "Explain the handover so the next person can continue the work."}
-      confirmLabel={dialog?.action === "resolve" ? "Save outcome and resolve" : dialog?.action === "decline" ? "Return to dispatch" : dialog?.action === "flag_urgent" ? "Flag urgent review" : "Confirm handover"}
+      title={dialog?.action === "decline" ? "Return assignment to dispatch" : "Hand over responsibility"}
+      description="Explain the handover so the next person can continue the work."
+      confirmLabel={dialog?.action === "decline" ? "Return to dispatch" : "Confirm handover"}
       confirmDisabled={!note.trim() || (dialog?.action === "handover" && !nextOwner)}
       onConfirm={() => act(dialog.task, dialog.action, { note, owner_user_id: Number(nextOwner) || undefined })}>
       {dialog?.action === "handover" && <label className="block text-sm font-medium">Next owner<select className={`${field} mt-1`} value={nextOwner} onChange={event => setNextOwner(event.target.value)}><option value="">Select a team member</option>{(data?.owners || []).filter(owner => [dialog.task.owner_role, "admin"].includes(owner.role) && owner.id !== dialog.task.owner_user_id).map(owner => <option key={owner.id} value={owner.id}>{owner.full_name}</option>)}</select></label>}

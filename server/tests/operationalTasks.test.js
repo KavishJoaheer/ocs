@@ -136,21 +136,67 @@ test("due reviews use Mauritius dates, retain overdue deadlines and close after 
   workflow.reconcileOperationalTasks({ now }); assert.equal(db.prepare("SELECT status FROM operational_tasks WHERE id=?").get(review.id).status, "resolved");
 });
 
-test("new reports appear even within rollout's first second; clinical resolution requires an outcome and edits reopen review", async () => {
-  db.prepare("UPDATE patients SET assigned_doctor_id=? WHERE id=?").run(doctorId, patientId);
-  const reportId = Number(db.prepare("INSERT INTO lab_reports (patient_id,report_title,report_date,report_details) VALUES (?,'Test report','2030-01-01','Routine result')").run(patientId).lastInsertRowid);
+test("uploading, editing and removing report attachments never creates review tasks or pushes", async () => {
+  const headers = { Authorization: `Bearer ${actors.admin.token}` };
+  const payload = { patient_id: String(patientId), report_title: "Already reviewed report", report_date: "2026-10-14", report_details: "Reviewed before upload." };
+  const form = new FormData();
+  for (const [key, value] of Object.entries(payload)) form.append(key, value);
+  form.append("attachments", new Blob(["%PDF-1.4\nTest report"], { type: "application/pdf" }), "reviewed-report.pdf");
+  const uploaded = await fetch(`${base}/api/lab-reports`, { method: "POST", headers, body: form });
+  assert.equal(uploaded.status, 201);
+  const report = await uploaded.json();
+  assert.equal(report.attachments.length, 1);
+  async function assertNoReportTasks() {
+    const inbox = await api("GET", "/", actors.admin);
+    assert.equal(inbox.status, 200);
+    assert.ok(!inbox.data.tasks.some(row => row.source_type === "report"));
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM operational_tasks WHERE kind='report_review'").get().n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM operational_task_deliveries").get().n, 0);
+  }
+  await assertNoReportTasks();
+  const edited = await fetch(`${base}/api/lab-reports/${report.id}`, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, report_details: "Updated report, already reviewed." }) });
+  assert.equal(edited.status, 200);
+  assert.equal((await edited.json()).attachments.length, 1);
+  await assertNoReportTasks();
+  const downloaded = await fetch(`${base}/api/lab-reports/attachments/${report.attachments[0].id}/download`, { headers });
+  assert.equal(downloaded.status, 200);
+  assert.equal(await downloaded.text(), "%PDF-1.4\nTest report");
+  const removed = await fetch(`${base}/api/lab-reports/attachments/${report.attachments[0].id}`, { method: "DELETE", headers });
+  assert.equal(removed.status, 204);
+  await assertNoReportTasks();
+  assert.equal(db.prepare("SELECT report_details FROM lab_reports WHERE id=?").get(report.id).report_details, "Updated report, already reviewed.");
+  db.prepare("DELETE FROM lab_reports WHERE id=?").run(report.id);
+});
+
+test("existing report review reminders close once, keep their history and cancel unsent alerts", async () => {
+  const reportId = Number(db.prepare("INSERT INTO lab_reports (patient_id,report_title,report_date,report_details) VALUES (?,'Reviewed report','2026-10-14','Reviewed before upload')").run(patientId).lastInsertRowid);
+  // Recreate a task left by the previous report-review workflow.
+  const visitId = visit(); workflow.reconcileOperationalTasks(); const legacy = task(visitId, "dispatch");
+  db.prepare("UPDATE operational_tasks SET task_key=?,source_type='report',source_id=?,kind='report_review',title=?,owner_role='doctor',owner_user_id=?,clinical_owner_id=? WHERE id=?")
+    .run(`report:${reportId}:report_review`, reportId, `Report #${reportId} awaits clinical review`, actors.doctor.id, actors.doctor.id, legacy.id);
+  db.prepare("DELETE FROM visit_requests WHERE id=?").run(visitId);
+  const inbox = await api("GET", "/", actors.admin);
+  assert.equal(inbox.data.counts.open, 0); assert.equal(inbox.data.counts.overdue, 0); assert.equal(inbox.data.counts.escalated, 0);
+  const retired = db.prepare("SELECT * FROM operational_tasks WHERE id=?").get(legacy.id);
+  assert.equal(retired.status, "resolved");
+  assert.match(retired.resolution_note, /step removed/);
+  assert.ok(db.prepare("SELECT 1 FROM operational_task_events WHERE task_id=? AND action='created'").get(legacy.id));
+  assert.equal(db.prepare("SELECT status FROM operational_task_deliveries WHERE task_id=?").get(legacy.id).status, "cancelled");
+  const sent = []; await workflow.deliverOperationalPush({ send: async (...args) => { sent.push(args); return { ok: true }; } });
+  assert.equal(sent.length, 0);
+  const resolved = await api("GET", "/?status=resolved", actors.admin);
+  assert.ok(resolved.data.tasks.some(row => row.id === legacy.id));
+  const history = await api("GET", `/${legacy.id}/events`, actors.doctor);
+  assert.match(history.data.events.find(row => row.action === "resolved").note, /step removed/);
+  for (const action of ["acknowledge", "resolve", "flag_urgent"]) {
+    assert.equal((await api("PATCH", `/${legacy.id}`, actors.admin, { action, revision: retired.revision, note: "Stale browser" })).status, 409);
+  }
+  db.prepare("UPDATE lab_reports SET report_details='Updated after removal' WHERE id=?").run(reportId);
   workflow.reconcileOperationalTasks();
-  let report = db.prepare("SELECT * FROM operational_tasks WHERE kind='report_review' AND source_id=?").get(reportId); assert.ok(report);
-  assert.equal((await api("PATCH", `/${report.id}`, actors.doctor, { action: "resolve", revision: report.revision })).status, 400);
-  const result = await api("PATCH", `/${report.id}`, actors.doctor, { action: "resolve", revision: report.revision, note: "Reviewed; patient contacted and next appointment agreed." });
-  assert.equal(result.status, 200); workflow.reconcileOperationalTasks(); assert.equal(db.prepare("SELECT status FROM operational_tasks WHERE id=?").get(report.id).status, "resolved");
-  const labHistory = await api("GET", `/${report.id}/events`, actors.lab);
-  assert.equal(labHistory.data.events.find(entry => entry.action === "resolved").note, "");
-  db.prepare("UPDATE lab_reports SET report_details='Corrected result' WHERE id=?").run(reportId); workflow.reconcileOperationalTasks();
-  report = db.prepare("SELECT * FROM operational_tasks WHERE id=?").get(report.id); assert.equal(report.status, "open"); assert.equal(report.resolution_note, "");
-  assert.equal((await api("PATCH", `/${report.id}`, actors.operator, { action: "flag_urgent", revision: report.revision, note: "Attempt" })).status, 404);
-  assert.equal((await api("PATCH", `/${report.id}`, actors.lab, { action: "flag_urgent", revision: report.revision, note: "Urgent review requested; contact responsible doctor directly." })).status, 200);
-  workflow.reconcileOperationalTasks(); assert.equal(db.prepare("SELECT priority FROM operational_tasks WHERE id=?").get(report.id).priority, "urgent");
+  assert.equal(db.prepare("SELECT status FROM operational_tasks WHERE id=?").get(legacy.id).status, "resolved");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM operational_task_events WHERE task_id=? AND action='resolved'").get(legacy.id).n, 1);
+  assert.equal(db.prepare("SELECT report_details FROM lab_reports WHERE id=?").get(reportId).report_details, "Updated after removal");
   db.prepare("DELETE FROM lab_reports WHERE id=?").run(reportId);
 });
 
@@ -183,20 +229,14 @@ test("anonymous and finance callers cannot access operational or clinical action
   assert.throws(() => workflow.updateTask(original.id, training, { action: "acknowledge", revision: original.revision }), error => error.status === 403);
 });
 
-test("editing a historical report enrols it for review without notifying every historical report", async () => {
-  const rollout = db.prepare("SELECT initial_report_id FROM operational_task_policy WHERE id=1").get();
-  const report = db.prepare("SELECT * FROM lab_reports WHERE id<=? ORDER BY id LIMIT 1").get(rollout.initial_report_id);
-  assert.ok(report);
-  const response = await fetch(`${base}/api/lab-reports/${report.id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${actors.admin.token}` },
-    body: JSON.stringify({ patient_id: patientId, consultation_id: null, report_title: "Corrected historical report", report_date: "2026-10-14", report_details: "Correction requires clinical review." }),
-  });
-  assert.equal(response.status, 200, await response.text());
-  assert.ok(db.prepare("SELECT 1 FROM operational_report_enrolments WHERE report_id=?").get(report.id));
-  assert.ok(db.prepare("SELECT 1 FROM operational_tasks WHERE kind='report_review' AND source_id=?").get(report.id));
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM operational_tasks WHERE kind='report_review'").get().n, 1);
-  db.prepare("DELETE FROM operational_report_enrolments WHERE report_id=?").run(report.id);
-  db.prepare("UPDATE lab_reports SET patient_id=?,consultation_id=?,report_title=?,report_date=?,report_details=?,updated_at=? WHERE id=?")
-    .run(report.patient_id, report.consultation_id, report.report_title, report.report_date, report.report_details, report.updated_at, report.id);
+test("legacy report review response targets are no longer exposed or accepted", async () => {
+  db.prepare("UPDATE operational_task_policy SET policy_json=? WHERE id=1").run(JSON.stringify({ ...workflow.DEFAULT_POLICY, report_hours: 24 }));
+  const result = await api("GET", "/policy", actors.admin);
+  assert.equal(result.status, 200);
+  assert.ok(!Object.hasOwn(result.data.policy, "report_hours"));
+  assert.ok(!Object.hasOwn(result.data.defaults, "report_hours"));
+  assert.equal((await api("PUT", "/policy", actors.admin, result.data.policy)).status, 200);
+  assert.equal((await api("PUT", "/policy", actors.admin, { report_hours: 24 })).status, 400);
 });
 
 test("acknowledging overdue work keeps the supervisor's escalation deliverable", async () => {
