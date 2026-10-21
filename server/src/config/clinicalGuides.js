@@ -148,4 +148,116 @@ const PHENERGAN_INJECTION_NAMES = Object.freeze([
   "Promethazine 50mg/2ml Ampoule",
 ]);
 
-module.exports = { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES };
+const TRAMADOL_SHARED = Object.freeze({
+  format: "ocs-clinical-guide-v1",
+  presentation: "50 mg/mL injection · 100 mg / 2 mL ampoule; verify local product",
+  contraindications: "Tramadol/excipient allergy; acute intoxication with alcohol, opioids or other CNS depressants; uncontrolled epilepsy; MAO inhibitors now or within 14 days. Not for opioid-withdrawal treatment.",
+  precautions: "Seizures can occur at therapeutic doses. Serotonin syndrome risk with SSRIs, SNRIs, TCAs and other serotonergic medicines.\nOpioids plus benzodiazepines (including diazepam), alcohol or other sedatives can cause profound sedation, respiratory depression, coma or death. Monitor respiration and consciousness.",
+  side_effects: "Nausea, dizziness, vomiting, drowsiness, dry mouth, sweating and constipation. Serious risks include seizures, serotonin syndrome, respiratory depression and dependence.",
+  pharmacology: "Centrally acting opioid analgesic: mu-opioid receptor activity plus inhibition of noradrenaline and serotonin reuptake. CYP2D6 forms the active M1 metabolite; ultra-rapid metabolism can cause opioid toxicity.",
+  indications: "Moderate to severe pain.",
+  source_title: "Tramadol injection (Zydol) · UK SmPC",
+  source_url: "https://www.medicines.org.uk/emc/product/82/smpc",
+  source_updated: "21 Feb 2025",
+});
+
+const TRAMADOL_PAEDIATRIC = Object.freeze({
+  ...TRAMADOL_SHARED,
+  population: "Paediatrics",
+  routes: "Slow IV / IM · age and product restrictions apply",
+  critical_warning: "Under 12 years: the linked Zydol injection is not suitable; no dose supplied here. Paediatric licensing differs between injection products and countries.\nPost-tonsillectomy/adenoidectomy: life-threatening respiratory events have occurred. Avoid routine use in children; obtain specialist guidance. Tramadol is not recommended with compromised respiratory function.",
+  dose_sections: Object.freeze([
+    Object.freeze({ label: "Adolescents older than 12 years · UK injection reference", dose: "50–100 mg", detail: "Slow IV or IM, every 4–6 hours if prescribed. Confirm the exact product's age licence; younger children need a separate specialist protocol." }),
+  ]),
+  dose_limits: "Maximum 400 mg total / 24 h. Use the lowest effective dose. No paediatric post-operative loading regimen is supplied. Renal/hepatic impairment requires individual interval adjustment.",
+  administration: "IV: give over 2–3 minutes. Verify concentration and volume. Monitor respiratory rate, sedation and oxygenation; watch for shallow breathing, small pupils or excessive drowsiness.\nDo not mix in one syringe with diazepam, diclofenac, indomethacin, midazolam or piroxicam: precipitation risk.",
+  notes: "Age restrictions are product-specific; this card follows the linked Zydol UK injection reference. Use the actual local product information and paediatric protocol. CYP2D6 ultra-rapid metabolisers are at particular risk even at usual doses.",
+  additional_source_title: "Alternative UK injection licence · compare product-specific paediatric restrictions",
+  additional_source_url: "https://www.medicines.org.uk/emc/product/13177/smpc",
+});
+
+const TRAMADOL_IM_IV = Object.freeze({
+  ...TRAMADOL_SHARED,
+  population: "Adults",
+  routes: "Slow IV / IM",
+  critical_warning: "Tramadol lowers the seizure threshold and can cause respiratory depression. Combining with diazepam or other sedatives substantially increases risk; use only when alternatives are unsuitable, with close monitoring.",
+  dose_sections: Object.freeze([
+    Object.freeze({ label: "Usual adult analgesia", dose: "50–100 mg", detail: "Slow IV or deep IM · 1–2 mL at 50 mg/mL. Repeat every 4–6 hours according to pain and response." }),
+    Object.freeze({ label: "Post-operative loading · monitored protocol only", dose: "100 mg initially", detail: "Further 50 mg doses every 10–20 minutes if required, up to 250 mg total in the first hour INCLUDING the initial dose. Follow the prescribed monitored regimen; IV doses remain slow." }),
+  ]),
+  dose_limits: "Usual maximum 400 mg total / 24 h, including any loading doses.\nOver 75 years: extend the interval as needed; this UK injection SmPC does not specify a universal 300 mg/day cap.\nRenal/hepatic impairment: consider longer intervals individually; do not apply a blanket 12-hour schedule.",
+  administration: "IV: administer over 2–3 minutes; avoid rapid injection.\nDo not mix in one syringe with diazepam, diclofenac, indomethacin, midazolam or piroxicam: precipitation risk. Infusion dilution must follow the actual product information.",
+  notes: "Use the lowest effective dose for the shortest necessary duration, with a stopping plan. Confirm the local injection licence, particularly age restrictions and severe organ impairment.",
+  paediatric: TRAMADOL_PAEDIATRIC,
+});
+
+const TRAMADOL_INJECTION_NAMES = Object.freeze([
+  "Tramadol 100mg/2ml", // Exact imported injectable catalogue entry.
+  "Tramadol 100mg/2ml (IM/IV)",
+  "Tramadol 100mg/2ml (IV/IM)",
+  "Tramadol 100mg/2ml Ampoule",
+  "Tramadol 50mg/ml Injection",
+  "Tramal 100mg/2ml Ampoule (Box of 5)",
+]);
+
+const DIAZEPAM_SHARED = Object.freeze({
+  format: "ocs-clinical-guide-v1",
+  presentation: "Injection reference: 5 mg/mL · 10 mg / 2 mL; verify ampoule and excipients",
+  contraindications: "Benzodiazepine/excipient allergy; severe respiratory insufficiency or respiratory depression; sleep apnoea; marked neuromuscular respiratory weakness including unstable myasthenia gravis; severe hepatic impairment; acute porphyria. Check the full product contraindications, including pregnancy restrictions.",
+  precautions: "Opioids (including tramadol), alcohol and other sedatives increase respiratory-depression risk. Repeated doses can accumulate. Monitor breathing, oxygenation, blood pressure and consciousness; airway support, bag-valve-mask and suction must be available.",
+  side_effects: "Drowsiness, ataxia, confusion, muscle weakness, hypotension and injection-site irritation. Apnoea, respiratory arrest and paradoxical agitation can occur.",
+  pharmacology: "Long-acting benzodiazepine; positive allosteric modulator of GABA-A receptors, with anticonvulsant, anxiolytic, sedative and muscle-relaxant effects.",
+  source_title: "Diazepam Injection BP · UK SmPC (hameln)",
+  source_url: "https://www.medicines.org.uk/emc/product/6274/smpc",
+  source_updated: "26 Nov 2025",
+});
+
+const DIAZEPAM_PAEDIATRIC = Object.freeze({
+  ...DIAZEPAM_SHARED,
+  population: "Paediatrics",
+  routes: "Slow IV · rectal rescue uses a separate formulation",
+  critical_warning: "Neonates: no routine quick-card dose supplied; specialist assessment is essential. Propylene glycol/ethanol exposure is particularly hazardous in neonates and young children.\nRepeat benzodiazepines can cause apnoea. Count doses already given by family or ambulance staff and follow the seizure escalation plan.",
+  dose_sections: Object.freeze([
+    Object.freeze({ label: "Seizures · 1 month–11 years · IV", dose: "0.3–0.4 mg/kg", detail: "Maximum 10 mg per dose. Give over 3–5 minutes, no faster than 2 mg/min (10 mg requires at least 5 minutes). May repeat once after 10 minutes if required under the seizure protocol." }),
+    Object.freeze({ label: "Seizures · 12–17 years · IV", dose: "10 mg", detail: "Give over at least 5 minutes. May repeat once after 10 minutes if required under the seizure protocol." }),
+  ]),
+  dose_limits: "Use current weight in kg and verify calculated volume. In children under 5, treatment may exceed excipient exposure limits: assess benefit/risk and monitor closely. Ongoing seizures after two benzodiazepine doses need urgent escalation rather than repeated unplanned doses.",
+  administration: "IV injection: use undiluted into a large vein; do not mix with other drugs. Avoid routine IM seizure treatment because absorption is unreliable.\nNo IV access: follow the individual rescue plan using the prescribed buccal or rectal medicine. Rectal solution/gel has its own strength, weight/age limits and instructions; this injection card does not supply rectal dosing.",
+  indications: "Acute convulsions/status epilepticus and prolonged febrile seizures. Tetanus and procedural use require their own specialist dosing protocol.",
+  notes: "Flumazenil is not routine rescue for respiratory depression after seizure treatment; support airway/ventilation. It is contraindicated when benzodiazepines control a life-threatening condition such as status epilepticus, and can precipitate seizures in dependent patients or mixed overdose. Specialist decision only.",
+  additional_source_title: "Flumazenil · UK SmPC contraindications and seizure risks",
+  additional_source_url: "https://www.medicines.org.uk/emc/product/6300/smpc",
+});
+
+const DIAZEPAM_IM_IV = Object.freeze({
+  ...DIAZEPAM_SHARED,
+  population: "Adults",
+  routes: "Slow IV · IM only if IV is not possible",
+  critical_warning: "Rapid IV diazepam can cause apnoea, hypotension or cardiac arrest. Resuscitation equipment and trained assistance must be available. Combining with opioids such as tramadol can be fatal.",
+  dose_sections: Object.freeze([
+    Object.freeze({ label: "Status epilepticus / acute convulsions", dose: "10 mg IV", detail: "Slow injection; may repeat after 10 minutes if required. Persistent seizures need the emergency escalation protocol." }),
+    Object.freeze({ label: "Severe acute anxiety/agitation or acute muscle spasm", dose: "10 mg", detail: "Slow IV, or IM if IV is not possible; may repeat after 4 hours if required. Individualise to response." }),
+    Object.freeze({ label: "Delirium tremens", dose: "10–20 mg", detail: "IV or IM under a monitored withdrawal protocol. Further titration requires clinical supervision." }),
+  ]),
+  dose_limits: "Elderly/debilitated patients: no more than half the usual adult dose. Lower doses may be needed with chronic respiratory insufficiency or hepatic disease. Higher/repeated doses and renal/hepatic impairment require excipient-toxicity assessment; no single daily maximum covers every indication.",
+  administration: "Slow IV injection into a large vein: no faster than 5 mg/min (1 mL/min at 5 mg/mL); a 10 mg dose takes at least 2 minutes. Monitor and keep the patient supine.\nDo not dilute for direct IV/IM injection or mix with other drugs. IV infusion has separate product-specific dilution instructions. IM absorption is variable and is reserved for when IV is not possible.",
+  indications: "Acute convulsions/status epilepticus; severe acute anxiety/agitation; delirium tremens; acute muscle spasm. Tetanus and procedural sedation require separate prescribed regimens.",
+  notes: "Observe under medical supervision for at least one hour after injection, longer if required. Flumazenil is not a routine substitute for airway support and may provoke seizures; use only after specialist assessment.",
+  additional_source_title: "Flumazenil · UK SmPC contraindications and seizure risks",
+  additional_source_url: "https://www.medicines.org.uk/emc/product/6300/smpc",
+  paediatric: DIAZEPAM_PAEDIATRIC,
+});
+
+const DIAZEPAM_INJECTION_NAMES = Object.freeze([
+  "Valium 10mg/2ml Ampoule",
+  "Valium 10mg/2ml (IM/IV)",
+  "Valium 10mg/2ml (IV/IM)",
+  "Valium 5mg/ml Injection",
+  "Diazepam 10mg/2ml Ampoule",
+  "Diazepam 10mg/2ml (IM/IV)",
+  "Diazepam 10mg/2ml (IV/IM)",
+  "Diazepam 5mg/ml Injection",
+]);
+
+module.exports = { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES,
+  TRAMADOL_IM_IV, TRAMADOL_INJECTION_NAMES, DIAZEPAM_IM_IV, DIAZEPAM_INJECTION_NAMES };

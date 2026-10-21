@@ -1,15 +1,23 @@
-const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES } = require("../config/clinicalGuides");
+const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES,
+  TRAMADOL_IM_IV, TRAMADOL_INJECTION_NAMES, DIAZEPAM_IM_IV, DIAZEPAM_INJECTION_NAMES } = require("../config/clinicalGuides");
 
 const nameKey = value => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
 const injectionNames = new Set(BUSCOPAN_INJECTION_NAMES.map(nameKey));
 const ondansetronNames = new Set(ONDANSETRON_INJECTION_NAMES.map(nameKey));
 const phenerganNames = new Set(PHENERGAN_INJECTION_NAMES.map(nameKey));
+const tramadolNames = new Set(TRAMADOL_INJECTION_NAMES.map(nameKey));
+const diazepamNames = new Set(DIAZEPAM_INJECTION_NAMES.map(nameKey));
 
 function getClinicalGuideForItem(item) {
   if (!item || item.item_kind === "service") return null;
   const name = nameKey(item.item_name);
   if (ondansetronNames.has(name)) return ONDANSETRON_IM_IV;
   if (phenerganNames.has(name)) return PHENERGAN_IM_IV;
+  if (tramadolNames.has(name)) return TRAMADOL_IM_IV;
+  if (diazepamNames.has(name)) return DIAZEPAM_IM_IV;
+  // The imported "Valium" entry has no route or strength in its name.
+  // Only its injectable folder establishes that this is an injection reference.
+  if (name === "valium" && ["imdrugs", "ivdrugs"].includes(nameKey(item.folder_name))) return DIAZEPAM_IM_IV;
   // The imported catalogue also has an unqualified name in injectable folders.
   const importedInjection = name === nameKey("Buscopan (Hyoscine Butylbromide)")
     && ["imdrugs", "ivdrugs"].includes(nameKey(item.folder_name));
@@ -20,8 +28,12 @@ function getInventoryItemAttributes(item) {
   const attributes = String(item?.attributes ?? "");
   // Fill missing catalogue metadata for known injections in both stock scopes.
   // Preserve meaningful custom attributes and never infer from a partial name.
-  if ((!attributes.trim() || /^n\s*\/\s*a$/i.test(attributes.trim()))
-    && getClinicalGuideForItem(item) === PHENERGAN_IM_IV) return "Promethazine";
+  if (!attributes.trim() || /^n\s*\/\s*a$/i.test(attributes.trim())) {
+    const guide = getClinicalGuideForItem(item);
+    if (guide === PHENERGAN_IM_IV) return "Promethazine";
+    if (guide === TRAMADOL_IM_IV) return "Tramadol hydrochloride";
+    if (guide === DIAZEPAM_IM_IV) return "Diazepam";
+  }
   return attributes;
 }
 

@@ -11,6 +11,56 @@ async function login(request, username) {
 }
 
 for (const width of [390, 1280]) {
+  test(`Tramadol and Valium guides keep adult and paediatric instructions separate at ${width}px`, async ({ page, request }) => {
+    // Keep screenshot capture independent of external font-service availability.
+    await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
+    await page.setViewportSize({ width, height: 900 });
+    const operator = await login(request, "operator01");
+    const headers = { Authorization: `Bearer ${operator.token}` };
+    const catalogue = await (await request.get(`${API}/inventory`, { headers })).json();
+    await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), operator.token);
+    for (const [name, ingredient, adultLabel, paediatricLabel, warningText] of [
+      ["Tramadol 100mg/2ml", "Tramadol hydrochloride", "Post-operative loading · monitored protocol only", "Adolescents older than 12 years · UK injection reference", "Under 12 years"],
+      ["Valium", "Diazepam", "Delirium tremens", "Seizures · 1 month–11 years · IV", "Neonates: no routine quick-card dose"],
+    ]) {
+      if (!catalogue.ocs_stock.some(row => row.item_name === name)) {
+        const created = await request.post(`${API}/inventory/items`, { headers, data: {
+          item_name: name, attributes: "", folder_id: catalogue.folders.find(row => row.name === "IM Drugs").id,
+          quantity: 0, minimum_quantity: 1, unit: "ampoule", cost_price: 5, selling_price: 10,
+        } });
+        expect(created.ok(), await created.text()).toBeTruthy();
+      }
+      await page.goto(`${STAFF}/inventory?tab=stock`);
+      if (width < 1024) await page.getByRole("combobox", { name: "Inventory section", exact: true }).selectOption("stock");
+      else await page.getByRole("tab", { name: "Stock", exact: true }).click();
+      await page.getByRole("textbox", { name: "Search stock items", exact: true }).fill(name);
+      await page.getByRole("button", { name: `Clinical guide for ${name}`, exact: true }).click();
+      const guide = page.getByRole("dialog", { name: "Clinical guide", exact: true });
+      await expect(guide.getByText(ingredient, { exact: true })).toBeVisible();
+      await expect(guide.getByRole("region", { name: adultLabel, exact: true })).toBeVisible();
+      await expect(guide.getByRole("textbox")).toHaveCount(0);
+      await expect(guide).toContainText("Draft · clinical review pending");
+      await guide.getByRole("button", { name: "Paediatrics", exact: true }).click();
+      await expect(guide.getByRole("region", { name: adultLabel, exact: true })).toHaveCount(0);
+      await expect(guide.getByRole("region", { name: paediatricLabel, exact: true })).toBeVisible();
+      const warning = guide.getByRole("region", { name: "Critical safety warnings", exact: true });
+      await expect(warning).toContainText(warningText);
+      expect((await warning.boundingBox()).y).toBeLessThan((await guide.getByRole("region", { name: "Dosing reference", exact: true }).boundingBox()).y);
+      if (name === "Valium") {
+        await expect(guide).toContainText("this injection card does not supply rectal dosing");
+        await expect(guide).toContainText("Flumazenil is not routine rescue");
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await guide.screenshot({ path: `/tmp/ocs-${name === "Valium" ? "diazepam" : "tramadol"}-paediatric-guide-${width}.png` });
+      await guide.getByRole("button", { name: "Adults", exact: true }).click();
+      await expect(guide.getByRole("region", { name: adultLabel, exact: true })).toBeVisible();
+      await expect(guide.getByRole("region", { name: paediatricLabel, exact: true })).toHaveCount(0);
+      await guide.getByRole("button", { name: "Close dialog", exact: true }).click();
+    }
+  });
+}
+
+for (const width of [390, 1280]) {
   test(`Phenergan guide shows UK dosing and critical warnings before dosing at ${width}px`, async ({ page, request, browser }) => {
     await page.setViewportSize({ width, height: 900 });
     const operator = await login(request, "operator01");

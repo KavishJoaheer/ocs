@@ -1,7 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { getClinicalGuideForItem, getInventoryItemAttributes, clinicalGuideWriteError } = require("../src/lib/clinicalGuide");
-const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES } = require("../src/config/clinicalGuides");
+const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES,
+  TRAMADOL_IM_IV, TRAMADOL_INJECTION_NAMES, DIAZEPAM_IM_IV, DIAZEPAM_INJECTION_NAMES } = require("../src/config/clinicalGuides");
 
 test("backend Buscopan guide matches the specified injection and catalogue aliases", () => {
   for (const item_name of BUSCOPAN_INJECTION_NAMES) {
@@ -103,4 +104,59 @@ test("known Phenergan injections supply missing ingredients without replacing cu
     assert.equal(getInventoryItemAttributes({ item_name, attributes: "" }), "");
   }
   assert.equal(getInventoryItemAttributes({ item_name: "Phenergan 50mg/2ml (IM/IV)", item_kind: "service", attributes: "" }), "");
+});
+
+test("tramadol injection aliases keep adolescent restrictions separate from adult loading and elderly adjustments", () => {
+  for (const item_name of TRAMADOL_INJECTION_NAMES) assert.equal(getClinicalGuideForItem({ item_name }), TRAMADOL_IM_IV);
+  assert.equal(getClinicalGuideForItem({ item_name: " Tramadol 100 mg / 2 ml " }), TRAMADOL_IM_IV);
+  assert.match(TRAMADOL_IM_IV.dose_limits, /including any loading doses/);
+  assert.match(TRAMADOL_IM_IV.dose_limits, /does not specify a universal 300 mg\/day cap/);
+  assert.match(TRAMADOL_IM_IV.administration, /over 2–3 minutes/);
+  assert.match(TRAMADOL_IM_IV.administration, /diazepam.*midazolam/);
+  const paediatric = TRAMADOL_IM_IV.paediatric;
+  assert.equal(paediatric.population, "Paediatrics");
+  assert.equal(paediatric.dose_sections.length, 1);
+  assert.match(paediatric.dose_sections[0].label, /older than 12 years/);
+  assert.match(paediatric.critical_warning, /licensing differs between injection products/);
+  assert.match(paediatric.critical_warning, /tonsillectomy/);
+  assert.match(paediatric.dose_limits, /No paediatric post-operative loading regimen/);
+  assert.doesNotMatch(JSON.stringify(paediatric), /250 mg|100 mg initially/);
+  assert.ok(Object.isFrozen(paediatric.dose_sections[0]));
+  assert.ok(Object.isFrozen(TRAMADOL_IM_IV));
+});
+
+test("diazepam injection matching requires a named injectable product or the imported Valium injectable folder", () => {
+  for (const item_name of DIAZEPAM_INJECTION_NAMES) assert.equal(getClinicalGuideForItem({ item_name }), DIAZEPAM_IM_IV);
+  for (const folder_name of ["IM Drugs", "IV Drugs"]) {
+    assert.equal(getClinicalGuideForItem({ item_name: " Valium ", folder_name }), DIAZEPAM_IM_IV);
+    assert.equal(getInventoryItemAttributes({ item_name: "Valium", folder_name, attributes: "N/A" }), "Diazepam");
+  }
+  for (const folder_name of [undefined, "Oral Drugs", "Consumable", "Pediatric Drugs"]) {
+    assert.equal(getClinicalGuideForItem({ item_name: "Valium", folder_name }), null);
+    assert.equal(getInventoryItemAttributes({ item_name: "Valium", folder_name, attributes: "" }), "");
+  }
+  assert.match(DIAZEPAM_IM_IV.administration, /Do not dilute for direct IV\/IM injection/);
+  const paediatric = DIAZEPAM_IM_IV.paediatric;
+  assert.deepEqual(paediatric.dose_sections.map(section => section.dose), ["0.3–0.4 mg/kg", "10 mg"]);
+  assert.match(paediatric.dose_sections[0].detail, /Maximum 10 mg per dose/);
+  assert.match(paediatric.critical_warning, /Neonates: no routine quick-card dose/);
+  assert.match(paediatric.administration, /does not supply rectal dosing/);
+  assert.match(paediatric.notes, /Flumazenil is not routine rescue/);
+  assert.match(paediatric.notes, /contraindicated.*status epilepticus/);
+  assert.doesNotMatch(JSON.stringify(paediatric), /Delirium tremens|10–20 mg|half the usual adult dose/);
+  assert.ok(Object.isFrozen(paediatric.dose_sections[0]));
+});
+
+test("new injection guides reject oral, rectal, combination, unknown-strength and service items", () => {
+  for (const item_name of ["Tramadol", "Tramadol 50mg tablets", "Tramadol 100mg capsules", "Tramadol 200mg/2ml (IM/IV)", "Tramadol 100mg/2ml + Other",
+    "Tab Valium 10mg", "Valium 10mg tablets", "Diazepam", "Diazepam 10mg rectal solution", "Diazepam 5mg/ml Oral Solution", "Diazepam 20mg/2ml (IM/IV)", "Valium + Other"]) {
+    assert.equal(getClinicalGuideForItem({ item_name, folder_name: "IM Drugs" }), null, item_name);
+  }
+  for (const item_name of [...TRAMADOL_INJECTION_NAMES, ...DIAZEPAM_INJECTION_NAMES, "Valium"]) {
+    assert.equal(getClinicalGuideForItem({ item_name, folder_name: "IM Drugs", item_kind: "service" }), null);
+  }
+  for (const [item_name, expected] of [["Tramadol 100mg/2ml", "Tramadol hydrochloride"], ["Valium 10mg/2ml Ampoule", "Diazepam"]]) {
+    for (const attributes of [undefined, null, "", " N/A "]) assert.equal(getInventoryItemAttributes({ item_name, attributes }), expected);
+    assert.equal(getInventoryItemAttributes({ item_name, attributes: "Verified local formulation" }), "Verified local formulation");
+  }
 });
