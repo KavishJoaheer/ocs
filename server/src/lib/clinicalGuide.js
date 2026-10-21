@@ -16,6 +16,15 @@ function getClinicalGuideForItem(item) {
   return injectionNames.has(name) || importedInjection ? BUSCOPAN_IM_IV : null;
 }
 
+function getInventoryItemAttributes(item) {
+  const attributes = String(item?.attributes ?? "");
+  // Fill missing catalogue metadata for known injections in both stock scopes.
+  // Preserve meaningful custom attributes and never infer from a partial name.
+  if ((!attributes.trim() || /^n\s*\/\s*a$/i.test(attributes.trim()))
+    && getClinicalGuideForItem(item) === PHENERGAN_IM_IV) return "Promethazine";
+  return attributes;
+}
+
 function clinicalGuideWriteError(body, existing = null) {
   if (Object.hasOwn(body, "clinical_guide")) return "Clinical guides are managed by the OCS backend and cannot be edited in the app.";
   // Permit unchanged values from older clients without allowing writes or clears.
@@ -25,4 +34,4 @@ function clinicalGuideWriteError(body, existing = null) {
   return null;
 }
 
-module.exports = { getClinicalGuideForItem, clinicalGuideWriteError };
+module.exports = { getClinicalGuideForItem, getInventoryItemAttributes, clinicalGuideWriteError };

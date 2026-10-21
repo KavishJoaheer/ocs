@@ -138,6 +138,8 @@ const PHENERGAN_INJECTION_NAMES = Object.freeze([
   "Phenergan inj box of 5",
   "Phenergan 50mg/2ml Ampoule (Box of 10)",
   "Phenergan 50mg/2ml Ampoule",
+  "Phenergan 50mg/2ml (IM/IV)",
+  "Phenergan 50mg/2ml (IV/IM)",
   "Phenergan 25mg/ml Injection",
   "Phenergan 25mg/1ml Ampoule",
   "Phenergan 25mg (IM/IV)",

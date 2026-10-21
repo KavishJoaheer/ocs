@@ -918,10 +918,13 @@ test("admin can change a service selling price while cost and stock fields stay 
   assert.equal(servicePayload.cost_price, null);
 });
 
-for (const { name, dose } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml Ampoule (Box of 10)", dose: "25–50 mg" }]) {
+for (const { name, dose } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml (IM/IV)", dose: "25–50 mg" }]) {
 test(`${name}: backend clinical guides are shared read-only across inventory scopes and preserve legacy records`, async () => {
   const masterId = insertOcsItem({ name, qty: 0 });
   const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);
+  // Reproduce legacy records with missing/placeholder attributes, without reimporting.
+  db.prepare("UPDATE inventory SET attributes = '' WHERE id = ?").run(masterId);
+  db.prepare("UPDATE inventory SET attributes = 'N/A' WHERE id = ?").run(bagId);
   const edit = (id, notes, token = operatorToken) => api("PUT", `/api/inventory/items/${id}${id === bagId && token !== doctorToken ? `?doctorId=${doctorId}` : id === masterId && token === doctorToken ? "?context=ocs" : ""}`, { token, body: { expected_version: db.prepare("SELECT row_version FROM inventory WHERE id=?").get(id).row_version, ...notes } });
   const untouched = await edit(masterId, { minimum_quantity: 2 });
   assert.equal(untouched.status, 200, JSON.stringify(untouched.data));
@@ -934,6 +937,10 @@ test(`${name}: backend clinical guides are shared read-only across inventory sco
   const seen = await api("GET", "/api/inventory?context=my", { token: doctorToken });
   assert.equal(seen.status, 200);
   assert.deepEqual(seen.data.my_stock.find(item => item.id === bagId).clinical_guide, guide);
+  if (name.startsWith("Phenergan")) {
+    assert.equal(untouched.data.ocs_stock.find(item => item.id === masterId).attributes, "Promethazine");
+    assert.equal(seen.data.my_stock.find(item => item.id === bagId).attributes, "Promethazine");
+  }
   for (const actor of [adminToken, operatorToken, doctorToken]) {
     for (const id of [masterId, bagId]) {
       for (const input of [{ moa_notes: "Local replacement" }, { clinical_guide: { ...guide, dose: "Unsafe override" } }]) {

@@ -1,7 +1,7 @@
 const { financialAction, stockFinancials, movementBusinessDateSql, movementRows } = require("../lib/inventoryFinancials");
 const { operationFor } = require("../lib/operationReceipts");
 const { randomUUID } = require("node:crypto");
-const { getClinicalGuideForItem, clinicalGuideWriteError } = require("../lib/clinicalGuide");
+const { getClinicalGuideForItem, getInventoryItemAttributes, clinicalGuideWriteError } = require("../lib/clinicalGuide");
 const { recordMovementAllocations } = require("../lib/inventoryMovementAllocations");
 const {
   applyKnownCostToUnpricedDoctorBags,
@@ -677,6 +677,7 @@ function getItems({ stockScope, doctorId = null }) {
   return decorateInventoryItems(
     rows.map((row) => ({
       ...row,
+      attributes: getInventoryItemAttributes(row),
       quantity: Number(row.quantity || 0),
       minimum_quantity: Number(row.minimum_quantity || 0),
       cost_price: toNumber(row.cost_price, 0),

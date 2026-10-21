@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { getClinicalGuideForItem, clinicalGuideWriteError } = require("../src/lib/clinicalGuide");
+const { getClinicalGuideForItem, getInventoryItemAttributes, clinicalGuideWriteError } = require("../src/lib/clinicalGuide");
 const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES } = require("../src/config/clinicalGuides");
 
 test("backend Buscopan guide matches the specified injection and catalogue aliases", () => {
@@ -70,6 +70,7 @@ test("Phenergan uses the UK injection formulation, age bands and emergency IV di
     assert.equal(getClinicalGuideForItem({ item_name }), PHENERGAN_IM_IV);
   }
   assert.equal(getClinicalGuideForItem({ item_name: "Phenergan 50 mg / 2 ml Ampoule" }), PHENERGAN_IM_IV);
+  assert.equal(getClinicalGuideForItem({ item_name: "Phenergan 50mg/2ml (IM/IV)" }), PHENERGAN_IM_IV);
   assert.equal(PHENERGAN_IM_IV.dose, "25–50 mg");
   assert.equal(PHENERGAN_IM_IV.source_updated, "3 Oct 2025");
   assert.match(PHENERGAN_IM_IV.administration, /10 times the original volume with water for injections/);
@@ -91,4 +92,15 @@ test("Phenergan uses the UK injection formulation, age bands and emergency IV di
     assert.equal(getClinicalGuideForItem({ item_name, folder_name: "IM Drugs" }), null, item_name);
   }
   assert.equal(getClinicalGuideForItem({ item_name: PHENERGAN_INJECTION_NAMES[0], item_kind: "service" }), null);
+});
+
+test("known Phenergan injections supply missing ingredients without replacing custom metadata", () => {
+  for (const attributes of [undefined, null, "", "  ", "N/A", " n / a "]) {
+    assert.equal(getInventoryItemAttributes({ item_name: "Phenergan 50mg/2ml (IM/IV)", attributes }), "Promethazine");
+  }
+  assert.equal(getInventoryItemAttributes({ item_name: "Phenergan 50mg/2ml (IM/IV)", attributes: "Promethazine hydrochloride" }), "Promethazine hydrochloride");
+  for (const item_name of ["Tab Phenergan", "Phenergan 50mg/ml Injection", "Phenergan 25mg + Other (IM/IV)", "Unknown drug"]) {
+    assert.equal(getInventoryItemAttributes({ item_name, attributes: "" }), "");
+  }
+  assert.equal(getInventoryItemAttributes({ item_name: "Phenergan 50mg/2ml (IM/IV)", item_kind: "service", attributes: "" }), "");
 });

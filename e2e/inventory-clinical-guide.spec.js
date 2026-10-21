@@ -17,11 +17,11 @@ for (const width of [390, 1280]) {
     const doctor = await login(request, "arun.dharee");
     const headers = { Authorization: `Bearer ${operator.token}` };
     const catalogue = await (await request.get(`${API}/inventory`, { headers })).json();
-    const name = "Phenergan 50mg/2ml Ampoule (Box of 10)";
+    const name = "Phenergan 50mg/2ml (IM/IV)";
     let item = catalogue.ocs_stock.find(row => row.item_name === name);
     if (!item) {
       const created = await request.post(`${API}/inventory/items`, { headers, data: {
-        item_name: name, attributes: "Promethazine", folder_id: catalogue.folders.find(row => row.name === "Consumable").id,
+        item_name: name, attributes: "", folder_id: catalogue.folders.find(row => row.name === "Consumable").id,
         quantity: 0, minimum_quantity: 1, unit: "ampoule", cost_price: 5, selling_price: 10,
       } });
       expect(created.ok(), await created.text()).toBeTruthy();
@@ -39,8 +39,14 @@ for (const width of [390, 1280]) {
     if (width < 1024) await page.getByRole("combobox", { name: "Inventory section", exact: true }).selectOption("stock");
     else await page.getByRole("tab", { name: "Stock", exact: true }).click();
     await page.getByRole("textbox", { name: "Search stock items", exact: true }).fill(name);
+    if (width < 1024) await expect(page.getByText("Promethazine", { exact: true })).toBeVisible();
+    else {
+      await page.getByRole("button", { name: `Show details for ${name}`, exact: true }).click();
+      await expect(page.getByText("Attributes: Promethazine", { exact: true })).toBeVisible();
+    }
     await page.getByRole("button", { name: `Clinical guide for ${name}`, exact: true }).click();
     const guide = page.getByRole("dialog", { name: "Clinical guide", exact: true });
+    await expect(guide.getByText("Promethazine", { exact: true })).toBeVisible();
     const warning = guide.getByRole("region", { name: "Critical safety warnings", exact: true });
     await expect(warning).toContainText("Stop IV injection immediately if pain occurs");
     await expect(guide.getByText("25–50 mg", { exact: true })).toBeVisible();
@@ -68,6 +74,7 @@ for (const width of [390, 1280]) {
       await bag.getByRole("textbox", { name: width < 1024 ? "Search inventory items" : "Search stock items", exact: true }).fill(name);
       await bag.getByRole("button", { name: `Clinical guide for ${name}`, exact: true }).click();
       const bagGuide = bag.getByRole("dialog", { name: "Clinical guide", exact: true });
+      await expect(bagGuide.getByText("Promethazine", { exact: true })).toBeVisible();
       await expect(bagGuide).toContainText("Severe tissue injury");
       await bagGuide.getByRole("button", { name: "Paediatrics", exact: true }).click();
       await expect(bagGuide).toContainText("Under 2 years: CONTRAINDICATED");
