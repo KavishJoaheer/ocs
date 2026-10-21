@@ -918,8 +918,8 @@ test("admin can change a service selling price while cost and stock fields stay 
   assert.equal(servicePayload.cost_price, null);
 });
 
-test("backend clinical guides are shared read-only across inventory scopes and preserve legacy records", async () => {
-  const name = "Buscopan20mg(IM/IV)";
+for (const { name, dose } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml Ampoule (Box of 10)", dose: "25–50 mg" }]) {
+test(`${name}: backend clinical guides are shared read-only across inventory scopes and preserve legacy records`, async () => {
   const masterId = insertOcsItem({ name, qty: 0 });
   const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);
   const edit = (id, notes, token = operatorToken) => api("PUT", `/api/inventory/items/${id}${id === bagId && token !== doctorToken ? `?doctorId=${doctorId}` : id === masterId && token === doctorToken ? "?context=ocs" : ""}`, { token, body: { expected_version: db.prepare("SELECT row_version FROM inventory WHERE id=?").get(id).row_version, ...notes } });
@@ -927,7 +927,7 @@ test("backend clinical guides are shared read-only across inventory scopes and p
   assert.equal(untouched.status, 200, JSON.stringify(untouched.data));
   assert.equal(db.prepare("SELECT moa_notes FROM inventory WHERE id=?").get(bagId).moa_notes, "Existing bag notes");
   const guide = untouched.data.ocs_stock.find(item => item.id === masterId).clinical_guide;
-  assert.equal(guide.dose, "20 mg");
+  assert.equal(guide.dose || guide.dose_sections?.[0]?.dose, dose);
   const bag = db.prepare("SELECT quantity,moa_notes FROM inventory WHERE id=?").get(bagId);
   assert.equal(bag.quantity, 3);
   assert.equal(bag.moa_notes, "Existing bag notes");
@@ -950,6 +950,7 @@ test("backend clinical guides are shared read-only across inventory scopes and p
   const attemptedCreate = await api("POST", "/api/inventory/items", { token: operatorToken, body: { item_name: "Guide override", folder_id: folderId, quantity: 0, moa_notes: "Injected guide", cost_price: 0, selling_price: 0 } });
   assert.equal(attemptedCreate.status, 403, JSON.stringify(attemptedCreate.data));
 });
+}
 
 test("catalogue edits reject stale row versions instead of overwriting newer changes", async () => {
   const itemId = insertOcsItem({ name: `Versioned catalogue ${Date.now()}`, qty: 0 });
