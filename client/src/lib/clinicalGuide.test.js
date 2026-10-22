@@ -52,3 +52,19 @@ test("population switching never inherits adult dose, maximum, route or administ
   assert.equal(clinicalGuidePopulations({ paediatric: raw.paediatric }).length, 1);
   assert.equal(clinicalGuidePopulations({ ...raw, paediatric: { format: CLINICAL_GUIDE_FORMAT, population: "Paediatrics" } }).length, 1);
 });
+
+test('extra clinical references reject unsafe URLs and malformed entries without leaking adult sources', () => {
+  const references = [
+    { title: ' NICE guideline ', url: 'https://www.nice.org.uk/guidance/ng240', approved: true },
+    { title: 'Unsafe', url: 'javascript:alert(1)' },
+    { title: 'Credentials', url: 'https://user:secret@example.test' },
+    { title: '', url: 'https://example.test' }, null,
+  ];
+  const guide = { format: CLINICAL_GUIDE_FORMAT, dose: 'Adult dose', references, paediatric: {
+    format: CLINICAL_GUIDE_FORMAT, population: 'Paediatrics', dose: 'Child dose',
+  } };
+  assert.deepEqual(clinicalGuideValues(guide).references, [{ title: 'NICE guideline', url: 'https://www.nice.org.uk/guidance/ng240' }]);
+  assert.equal(clinicalGuidePopulations(guide)[1].guide.references, undefined);
+  assert.equal(clinicalGuideValues({ references }).references, undefined);
+  assert.equal(Object.values(clinicalGuideValues({ format: CLINICAL_GUIDE_FORMAT, references: [null] })).some(Boolean), false);
+});

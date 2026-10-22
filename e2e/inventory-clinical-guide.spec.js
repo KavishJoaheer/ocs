@@ -11,6 +11,58 @@ async function login(request, username) {
 }
 
 for (const width of [390, 1280]) {
+  test(`Solu-Cortef, dexamethasone and Chlorohistol guides show UK references at ${width}px`, async ({ page, request }) => {
+    await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
+    await page.setViewportSize({ width, height: 900 });
+    const operator = await login(request, "operator01");
+    const headers = { Authorization: `Bearer ${operator.token}` };
+    const catalogue = await (await request.get(`${API}/inventory`, { headers })).json();
+    await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), operator.token);
+    for (const [name, ingredient, adultText, childLabel, childText, sourceTitle, sourceUrl] of [
+      ["Solu-cortef 100MG IM/IV (Hisone)", "Hydrocortisone", "200 mg / 24 h", "Adrenal crisis · children over 28 days", "2 mg/kg IV", "Adrenal crisis · BSPED consensus guidance", "https://www.bsped.org.uk/adrenal-insufficiency"],
+      ["Dexamethasone 4mg/ Dexona", "Dexamethasone", "8.3 mg base IV initially", "Bacterial meningitis · over 3 months", "0.15 mg/kg IV", "Meningitis dosing · NICE NG240 evidence review G4", "https://www.nice.org.uk/guidance/ng240/evidence/g4-corticosteroids-for-treatment-of-bacterial-meningitis-pdf-481072534206"],
+      ["Chlorohistol 10mg/1ml box of 5 amp", "Chlorphenamine", "40 mg / 24 h", "1 month to under 1 year", "0.25 mg/kg", "Chlorphenamine 10 mg/mL · UK SmPC", "https://www.medicines.org.uk/emc/product/10595/smpc"],
+    ]) {
+      if (!catalogue.ocs_stock.some(row => row.item_name === name)) {
+        const created = await request.post(`${API}/inventory/items`, { headers, data: {
+          item_name: name, attributes: "", folder_id: catalogue.folders.find(row => row.name === "IM Drugs").id,
+          quantity: 0, minimum_quantity: 1, unit: "ampoule", cost_price: 5, selling_price: 10,
+        } });
+        expect(created.ok(), await created.text()).toBeTruthy();
+      }
+      await page.goto(`${STAFF}/inventory?tab=stock`);
+      if (width < 1024) await page.getByRole("combobox", { name: "Inventory section", exact: true }).selectOption("stock");
+      else await page.getByRole("tab", { name: "Stock", exact: true }).click();
+      await page.getByRole("textbox", { name: "Search stock items", exact: true }).fill(name);
+      await page.getByRole("button", { name: `Clinical guide for ${name}`, exact: true }).click();
+      const guide = page.getByRole("dialog", { name: "Clinical guide", exact: true });
+      await expect(guide.getByText(ingredient, { exact: true })).toBeVisible();
+      await expect(guide).toContainText(adultText);
+      await expect(guide.getByRole("textbox")).toHaveCount(0);
+      await expect(guide).toContainText("Draft · clinical review pending");
+      await guide.getByRole("button", { name: "Paediatrics", exact: true }).click();
+      await expect(guide.getByRole("region", { name: childLabel, exact: true })).toContainText(childText);
+      await expect(guide).not.toContainText(adultText);
+      await expect(guide.getByRole("link", { name: `${sourceTitle} ↗`, exact: true })).toHaveAttribute("href", sourceUrl);
+      const warning = guide.getByRole("region", { name: "Critical safety warnings", exact: true });
+      await expect(warning).toContainText("adrenaline");
+      expect((await warning.boundingBox()).y).toBeLessThan((await guide.getByRole("region", { name: "Dosing reference", exact: true }).boundingBox()).y);
+      if (ingredient === "Dexamethasone") {
+        await expect(guide).toContainText("not an IV/IM instruction");
+        await expect(guide).toContainText("NEVER delay antibiotics");
+        await expect(warning).toContainText("base");
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await guide.screenshot({ path: `/tmp/ocs-${ingredient.toLowerCase()}-paediatric-guide-${width}.png` });
+      await guide.getByRole("button", { name: "Adults", exact: true }).click();
+      await expect(guide).toContainText(adultText);
+      await expect(guide.getByRole("region", { name: childLabel, exact: true })).toHaveCount(0);
+      await guide.getByRole("button", { name: "Close dialog", exact: true }).click();
+    }
+  });
+}
+
+for (const width of [390, 1280]) {
   test(`Tramadol and Valium guides keep adult and paediatric instructions separate at ${width}px`, async ({ page, request }) => {
     // Keep screenshot capture independent of external font-service availability.
     await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());

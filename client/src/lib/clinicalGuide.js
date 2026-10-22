@@ -16,6 +16,13 @@ export function clinicalGuideValues(guide) {
     ).map(section => Object.fromEntries(["label", "dose", "detail"].map(key => [key, section[key].trim()])));
     if (sections.length) values.dose_sections = sections;
   }
+  if (guide?.format === CLINICAL_GUIDE_FORMAT && Array.isArray(guide.references)) {
+    const references = guide.references.filter(reference =>
+      typeof reference?.title === "string" && reference.title.trim()
+      && typeof reference.url === "string" && clinicalGuideSourceUrl(reference.url)
+    ).map(reference => ({ title: reference.title.trim(), url: clinicalGuideSourceUrl(reference.url) }));
+    if (references.length) values.references = references;
+  }
   return values;
 }
 

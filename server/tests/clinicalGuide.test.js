@@ -165,3 +165,72 @@ test("new injection guides reject oral, rectal, combination, unknown-strength an
     assert.equal(getInventoryItemAttributes({ item_name, attributes: "Verified local formulation" }), "Verified local formulation");
   }
 });
+
+const {
+  HYDROCORTISONE_IM_IV, HYDROCORTISONE_INJECTION_NAMES,
+  DEXAMETHASONE_IM_IV, DEXAMETHASONE_INJECTION_NAMES,
+  CHLORPHENAMINE_IM_IV, CHLORPHENAMINE_INJECTION_NAMES,
+} = require('../src/config/clinicalGuides');
+
+for (const [guide, aliases, ingredient] of [
+  [HYDROCORTISONE_IM_IV, HYDROCORTISONE_INJECTION_NAMES, 'Hydrocortisone'],
+  [DEXAMETHASONE_IM_IV, DEXAMETHASONE_INJECTION_NAMES, 'Dexamethasone'],
+  [CHLORPHENAMINE_IM_IV, CHLORPHENAMINE_INJECTION_NAMES, 'Chlorphenamine'],
+]) {
+  test(`${ingredient}: exact injection aliases and missing attributes work across catalogue scopes`, () => {
+    for (const item_name of aliases) {
+      assert.equal(getClinicalGuideForItem({ item_name }), guide);
+      for (const attributes of ['', 'N/A', null]) {
+        assert.equal(getInventoryItemAttributes({ item_name, attributes }), ingredient);
+      }
+      assert.equal(getClinicalGuideForItem({ item_name, item_kind: 'service' }), null);
+      assert.equal(getInventoryItemAttributes({ item_name, attributes: 'Verified local formulation' }), 'Verified local formulation');
+      assert.equal(getClinicalGuideForItem({ item_name: `${item_name} + other drug` }), null);
+    }
+    assert.equal(guide.paediatric.population, 'Paediatrics');
+    assert.ok(Object.isFrozen(guide));
+    assert.ok(Object.isFrozen(guide.paediatric.dose_sections));
+    assert.match(guide.critical_warning, /adrenaline/);
+  });
+}
+
+test('steroid and chlorphenamine guides never attach to oral, topical, unknown-strength or bundled service items', () => {
+  for (const item_name of ['Solu-Cortef', 'Hydrocortisone 1% cream', 'Hydrocortisone 10mg tablets', 'Solu-Cortef 500mg Injection',
+    'IV Solu-cortef 100MG (Hisone) (including cannulation)', 'IV N/S + Solucortef',
+    'Dexamethasone', 'Dexona 4mg tablets', 'Dexamethasone 8mg/ml Injection',
+    'Chlorohistol', 'Chlorphenamine 4mg tablets', 'Chlorohistol 2mg/5ml syrup']) {
+    assert.equal(getClinicalGuideForItem({ item_name, folder_name: 'IM Drugs' }), null, item_name);
+    assert.equal(getInventoryItemAttributes({ item_name, attributes: '' }), '', item_name);
+  }
+});
+
+test('hydrocortisone separates initial rescue, maintenance and neonatal regimens', () => {
+  const adult = HYDROCORTISONE_IM_IV;
+  assert.equal(adult.dose_sections[1].dose, '200 mg / 24 h');
+  assert.match(adult.dose_sections[1].detail, /50 mg IV or IM every 6 hours/);
+  assert.match(adult.administration, /sterile water for injections/);
+  const child = adult.paediatric;
+  assert.match(child.dose_sections[0].detail, /6 years and over: 100 mg/);
+  assert.equal(child.dose_sections[1].dose, '2 mg/kg IV');
+  assert.equal(child.dose_sections[2].dose, '4 mg/kg IV');
+  assert.match(child.dose_limits, /Do not routinely repeat the age-based rescue dose/);
+});
+
+test('dexamethasone distinguishes base units, MSCC and oral croup from injectable meningitis treatment', () => {
+  assert.match(DEXAMETHASONE_IM_IV.critical_warning, /3.3 mg dexamethasone base.*4 mg dexamethasone phosphate/);
+  assert.match(DEXAMETHASONE_IM_IV.dose_sections[1].dose, /16 mg oral or equivalent parenteral/);
+  const child = DEXAMETHASONE_IM_IV.paediatric;
+  assert.match(child.dose_sections[0].detail, /Maximum 10 mg per dose/);
+  assert.match(child.dose_sections[1].dose, /orally/);
+  assert.match(child.dose_sections[1].detail, /not an IV\/IM instruction/);
+  assert.match(child.notes, /NEVER delay antibiotics/);
+  assert.match(child.dose_limits, /stop for other identified organisms/);
+});
+
+test('chlorphenamine uses weight-based infant dosing and explicit dilution without a generic repeat schedule', () => {
+  assert.equal(CHLORPHENAMINE_IM_IV.maximum, '40 mg / 24 h');
+  const child = CHLORPHENAMINE_IM_IV.paediatric;
+  assert.equal(child.dose_sections[0].dose, '0.25 mg/kg');
+  assert.match(child.administration, /0.2 mL.*2 mL total.*1 mg\/mL/);
+  assert.match(child.dose_limits, /no blanket four-times-daily/);
+});

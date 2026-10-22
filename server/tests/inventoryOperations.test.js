@@ -918,7 +918,10 @@ test("admin can change a service selling price while cost and stock fields stay 
   assert.equal(servicePayload.cost_price, null);
 });
 
-for (const { name, dose } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml (IM/IV)", dose: "25–50 mg" }]) {
+for (const { name, dose, ingredient } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml (IM/IV)", dose: "25–50 mg" },
+  { name: "Solu-cortef 100MG IM/IV (Hisone)", dose: "100 mg", ingredient: "Hydrocortisone" },
+  { name: "Dexamethasone 4mg/ Dexona", dose: "8.3 mg base IV initially", ingredient: "Dexamethasone" },
+  { name: "Chlorohistol 10mg/1ml box of 5 amp", dose: "10–20 mg", ingredient: "Chlorphenamine" }]) {
 test(`${name}: backend clinical guides are shared read-only across inventory scopes and preserve legacy records`, async () => {
   const masterId = insertOcsItem({ name, qty: 0 });
   const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);
@@ -940,6 +943,11 @@ test(`${name}: backend clinical guides are shared read-only across inventory sco
   if (name.startsWith("Phenergan")) {
     assert.equal(untouched.data.ocs_stock.find(item => item.id === masterId).attributes, "Promethazine");
     assert.equal(seen.data.my_stock.find(item => item.id === bagId).attributes, "Promethazine");
+  }
+  if (ingredient) {
+    assert.equal(untouched.data.ocs_stock.find(item => item.id === masterId).attributes, ingredient);
+    assert.equal(seen.data.my_stock.find(item => item.id === bagId).attributes, ingredient);
+    assert.equal(guide.paediatric.population, "Paediatrics");
   }
   for (const actor of [adminToken, operatorToken, doctorToken]) {
     for (const id of [masterId, bagId]) {
