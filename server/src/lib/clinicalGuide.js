@@ -1,9 +1,11 @@
+const { ACUTE_CARE_GUIDES } = require("../config/acuteCareClinicalGuides");
 const { BUSCOPAN_IM_IV, BUSCOPAN_INJECTION_NAMES, ONDANSETRON_IM_IV, ONDANSETRON_INJECTION_NAMES, PHENERGAN_IM_IV, PHENERGAN_INJECTION_NAMES,
   TRAMADOL_IM_IV, TRAMADOL_INJECTION_NAMES, DIAZEPAM_IM_IV, DIAZEPAM_INJECTION_NAMES,
   HYDROCORTISONE_IM_IV, HYDROCORTISONE_INJECTION_NAMES, DEXAMETHASONE_IM_IV, DEXAMETHASONE_INJECTION_NAMES,
   CHLORPHENAMINE_IM_IV, CHLORPHENAMINE_INJECTION_NAMES } = require("../config/clinicalGuides");
 
 const nameKey = value => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+const acuteCareNames = new Map(ACUTE_CARE_GUIDES.flatMap(entry => entry.names.map(name => [nameKey(name), entry])));
 const injectionNames = new Set(BUSCOPAN_INJECTION_NAMES.map(nameKey));
 const ondansetronNames = new Set(ONDANSETRON_INJECTION_NAMES.map(nameKey));
 const phenerganNames = new Set(PHENERGAN_INJECTION_NAMES.map(nameKey));
@@ -16,6 +18,7 @@ const chlorphenamineNames = new Set(CHLORPHENAMINE_INJECTION_NAMES.map(nameKey))
 function getClinicalGuideForItem(item) {
   if (!item || item.item_kind === "service") return null;
   const name = nameKey(item.item_name);
+  if (acuteCareNames.has(name)) return acuteCareNames.get(name).guide;
   if (ondansetronNames.has(name)) return ONDANSETRON_IM_IV;
   if (phenerganNames.has(name)) return PHENERGAN_IM_IV;
   if (tramadolNames.has(name)) return TRAMADOL_IM_IV;
@@ -38,6 +41,8 @@ function getInventoryItemAttributes(item) {
   // Preserve meaningful custom attributes and never infer from a partial name.
   if (!attributes.trim() || /^n\s*\/\s*a$/i.test(attributes.trim())) {
     const guide = getClinicalGuideForItem(item);
+    const acuteCare = ACUTE_CARE_GUIDES.find(entry => entry.guide === guide);
+    if (acuteCare) return acuteCare.ingredient;
     if (guide === PHENERGAN_IM_IV) return "Promethazine";
     if (guide === TRAMADOL_IM_IV) return "Tramadol hydrochloride";
     if (guide === DIAZEPAM_IM_IV) return "Diazepam";

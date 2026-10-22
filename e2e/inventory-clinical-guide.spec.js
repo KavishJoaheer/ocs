@@ -325,3 +325,58 @@ for (const width of [390, 1280]) {
     expect(after.ocs_stock.find(row => row.id === item.id).quantity).toBe(before.quantity);
   });
 }
+
+for (const width of [390, 1280]) {
+  test(`acute-care guides and withheld dosing remain readable and age-specific at ${width}px`, async ({ page, request }) => {
+    test.setTimeout(120000);
+    await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
+    await page.setViewportSize({ width, height: 900 });
+    const operator = await login(request, "operator01");
+    const headers = { Authorization: `Bearer ${operator.token}` };
+    const catalogue = await (await request.get(`${API}/inventory`, { headers })).json();
+    await page.addInitScript(token => localStorage.setItem("ocs_medecins_auth_token", token), operator.token);
+    const cases = [
+      ["Aciloc box of 5 amp", "Ranitidine", "Confirm local authorisation", "No paediatric or neonatal dose", true],
+      ["Acupan 20mg/2ml box of 5 amp", "Nefopam hydrochloride", "Injectable dose, interval", "No injectable paediatric dose", true],
+      ["Dicynone 250mg/2ml (IM/IV)", "Etamsylate", "Adult injectable dosing", "No paediatric or neonatal dose", true],
+      ["Amoxicillin 500mg (IM/IV)", "Amoxicillin sodium", "750 mg–2 g every 8 h", "20–200 mg/kg/day", false],
+      ["Ceftriaxone 1g/ Triaxone/ Zefone IV/IM", "Ceftriaxone", "1 g IM once", "postmenstrual age of 41 weeks", false],
+      ["IM Adrenaline", "Adrenaline (Epinephrine)", "1 mg (10 mL)", "100–150 micrograms (0.1–0.15 mL)", false],
+      ["IM Atropine", "Atropine sulphate", "500 micrograms IV", "10 micrograms/kg", false],
+    ];
+    for (const [name, ingredient, adultText, childText, withheld] of cases) {
+      if (!catalogue.ocs_stock.some(row => row.item_name === name)) {
+        const created = await request.post(`${API}/inventory/items`, { headers, data: {
+          item_name: name, attributes: "", folder_id: catalogue.folders.find(row => row.name === "IM Drugs").id,
+          quantity: 0, minimum_quantity: 1, unit: "ampoule", cost_price: 5, selling_price: 10,
+        } });
+        expect(created.ok(), await created.text()).toBeTruthy();
+      }
+      await page.goto(`${STAFF}/inventory?tab=stock`);
+      if (width < 1024) await page.getByRole("combobox", { name: "Inventory section", exact: true }).selectOption("stock");
+      else await page.getByRole("tab", { name: "Stock", exact: true }).click();
+      await page.getByRole("textbox", { name: "Search stock items", exact: true }).fill(name);
+      await page.getByRole("button", { name: `Clinical guide for ${name}`, exact: true }).click();
+      const guide = page.getByRole("dialog", { name: "Clinical guide", exact: true });
+      await expect(guide.getByText(ingredient, { exact: true })).toBeVisible();
+      await expect(guide).toContainText(adultText);
+      await expect(guide.getByRole("textbox")).toHaveCount(0);
+      await expect(guide.getByRole("region", { name: "Dosing reference", exact: true })).toHaveCount(withheld ? 0 : 1);
+      await expect(guide.getByRole("region", { name: "Dosing unavailable", exact: true })).toHaveCount(withheld ? 1 : 0);
+      await guide.getByRole("button", { name: "Paediatrics", exact: true }).click();
+      await expect(guide).toContainText(childText);
+      await expect(guide).not.toContainText(adultText);
+      await expect(guide.getByRole("region", { name: "Dosing reference", exact: true })).toHaveCount(withheld ? 0 : 1);
+      await expect(guide.getByRole("region", { name: "Dosing unavailable", exact: true })).toHaveCount(withheld ? 1 : 0);
+      const warning = guide.getByRole("region", { name: "Critical safety warnings", exact: true });
+      const reference = guide.getByRole("region", { name: withheld ? "Dosing unavailable" : "Dosing reference", exact: true });
+      expect((await warning.boundingBox()).y).toBeLessThan((await reference.boundingBox()).y);
+      expect(await guide.getByRole("link").first().getAttribute("href")).toMatch(/^https:\/\//);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      if (["Ranitidine", "Adrenaline (Epinephrine)"].includes(ingredient)) await guide.screenshot({ path: `/tmp/ocs-${ingredient.split(' ')[0]}-guide-${width}.png` });
+      await guide.getByRole("button", { name: "Adults", exact: true }).click();
+      await expect(guide).toContainText(adultText);
+      await guide.getByRole("button", { name: "Close dialog", exact: true }).click();
+    }
+  });
+}

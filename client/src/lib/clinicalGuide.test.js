@@ -68,3 +68,17 @@ test('extra clinical references reject unsafe URLs and malformed entries without
   assert.equal(clinicalGuideValues({ references }).references, undefined);
   assert.equal(Object.values(clinicalGuideValues({ format: CLINICAL_GUIDE_FORMAT, references: [null] })).some(Boolean), false);
 });
+
+test('reference-only notices support both ages and suppress accidental dosing and administration', () => {
+  const raw = { format: CLINICAL_GUIDE_FORMAT, population: 'Adults', dose: 'Adult dose',
+    paediatric: { format: CLINICAL_GUIDE_FORMAT, population: 'Paediatrics', dosing_unavailable: ' UK injection evidence unavailable ',
+      dose: 'Unsafe stale dose', repeat: 'every hour', maximum: 'stale limit', dose_limits: 'stale limits', administration: 'stale infusion',
+      dose_sections: [{ label: 'Stale', dose: '100 mg', detail: 'Stale route' }] } };
+  const groups = clinicalGuidePopulations(raw);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].guide.dose, 'Adult dose');
+  assert.equal(groups[1].guide.dosing_unavailable, 'UK injection evidence unavailable');
+  for (const field of ['dose', 'repeat', 'maximum', 'dose_limits', 'administration']) assert.equal(groups[1].guide[field], '');
+  assert.equal(groups[1].guide.dose_sections, undefined);
+  assert.equal(clinicalGuideValues({ format: CLINICAL_GUIDE_FORMAT, dosing_unavailable: {} }).dosing_unavailable, '');
+});

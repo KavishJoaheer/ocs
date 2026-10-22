@@ -234,3 +234,49 @@ test('chlorphenamine uses weight-based infant dosing and explicit dilution witho
   assert.match(child.administration, /0.2 mL.*2 mL total.*1 mg\/mL/);
   assert.match(child.dose_limits, /no blanket four-times-daily/);
 });
+
+const { ACUTE_CARE_GUIDES, RANITIDINE_IM_IV, NEFOPAM_IM_IV, ETAMSYLATE_IM_IV, AMOXICILLIN_IM_IV, CEFTRIAXONE_IM_IV, ADRENALINE_IM_IV, ATROPINE_IM_IV } = require('../src/config/acuteCareClinicalGuides');
+for (const entry of ACUTE_CARE_GUIDES) {
+  test(`${entry.ingredient}: exact injectable aliases, ingredient fallback and independent age groups`, () => {
+    for (const item_name of entry.names) {
+      assert.equal(getClinicalGuideForItem({ item_name }), entry.guide);
+      assert.equal(getInventoryItemAttributes({ item_name, attributes: 'N/A' }), entry.ingredient);
+      assert.equal(getInventoryItemAttributes({ item_name, attributes: 'Custom metadata' }), 'Custom metadata');
+      assert.equal(getClinicalGuideForItem({ item_name, item_kind: 'service' }), null);
+      assert.equal(getClinicalGuideForItem({ item_name: `${item_name} tablets` }), null);
+    }
+    assert.equal(entry.guide.population, 'Adults');
+    assert.equal(entry.guide.paediatric.population, 'Paediatrics');
+    assert.ok(Object.isFrozen(entry.guide));
+    assert.ok(Object.isFrozen(entry.guide.paediatric));
+    for (const guide of [entry.guide, entry.guide.paediatric]) {
+      assert.match(guide.source_url, /^https:\/\//);
+      assert.ok(guide.dosing_unavailable || guide.dose_sections.length);
+    }
+  });
+}
+test('unverified UK injectable regimens expose notices without prescribing instructions', () => {
+  for (const drug of [RANITIDINE_IM_IV, NEFOPAM_IM_IV, ETAMSYLATE_IM_IV]) {
+    for (const guide of [drug, drug.paediatric]) {
+      assert.ok(guide.dosing_unavailable);
+      for (const field of ['dose', 'dose_sections', 'repeat', 'maximum', 'administration']) assert.equal(guide[field], undefined);
+    }
+  }
+  for (const item_name of ['Aciloc', 'Acupan 30mg tablets', 'Amoxicillin 500mg', 'Co-amoxiclav 500mg Injection', 'Dicynone tablets', 'IM Ceftriaxone 1g + lidocaine']) {
+    assert.equal(getClinicalGuideForItem({ item_name }), null);
+  }
+});
+test('acute-care corrections retain route, concentration, age and daily-total boundaries', () => {
+  assert.match(AMOXICILLIN_IM_IV.administration, /30–60 minutes/);
+  assert.match(AMOXICILLIN_IM_IV.paediatric.dose_sections[0].detail, /daily total, not a single dose/);
+  assert.match(CEFTRIAXONE_IM_IV.administration, /over 5 minutes/);
+  assert.match(CEFTRIAXONE_IM_IV.paediatric.critical_warning, /postmenstrual age of 41 weeks/);
+  assert.match(CEFTRIAXONE_IM_IV.paediatric.critical_warning, /even through separate lines/);
+  assert.equal(CEFTRIAXONE_IM_IV.dose_sections[2].dose, '1 g IM once');
+  assert.match(ADRENALINE_IM_IV.critical_warning, /NEVER give undiluted 1 mg\/mL/);
+  assert.match(ADRENALINE_IM_IV.dose_sections[1].detail, /third shock/);
+  assert.equal(ADRENALINE_IM_IV.paediatric.dose_sections[0].dose, '100–150 micrograms (0.1–0.15 mL)');
+  assert.match(ATROPINE_IM_IV.critical_warning, /IV, not IM/);
+  assert.equal(ATROPINE_IM_IV.paediatric.dose_sections[1].dose, '10 micrograms/kg');
+  assert.match(ATROPINE_IM_IV.paediatric.dose_sections[0].detail, /Maximum 500 micrograms/);
+});

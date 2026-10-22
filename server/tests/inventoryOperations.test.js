@@ -921,7 +921,8 @@ test("admin can change a service selling price while cost and stock fields stay 
 for (const { name, dose, ingredient } of [{ name: "Buscopan20mg(IM/IV)", dose: "20 mg" }, { name: "Emetino 8mg (IM/IV)", dose: "4 mg" }, { name: "Phenergan 50mg/2ml (IM/IV)", dose: "25–50 mg" },
   { name: "Solu-cortef 100MG IM/IV (Hisone)", dose: "100 mg", ingredient: "Hydrocortisone" },
   { name: "Dexamethasone 4mg/ Dexona", dose: "8.3 mg base IV initially", ingredient: "Dexamethasone" },
-  { name: "Chlorohistol 10mg/1ml box of 5 amp", dose: "10–20 mg", ingredient: "Chlorphenamine" }]) {
+  { name: "Chlorohistol 10mg/1ml box of 5 amp", dose: "10–20 mg", ingredient: "Chlorphenamine" },
+  ...require('../src/config/acuteCareClinicalGuides').ACUTE_CARE_GUIDES.map(entry => ({ name: entry.names[0].startsWith("IM ") ? entry.names[1] : entry.names[0], dose: entry.guide.dose_sections?.[0]?.dose, ingredient: entry.ingredient }))]) {
 test(`${name}: backend clinical guides are shared read-only across inventory scopes and preserve legacy records`, async () => {
   const masterId = insertOcsItem({ name, qty: 0 });
   const bagId = Number(db.prepare(`INSERT INTO inventory (item_name,folder_id,quantity,minimum_quantity,unit,cost_price,selling_price,stock_scope,owner_doctor_id,moa_notes) VALUES (?, ?, 3, 1, 'unit', 5, 10, 'doctor', ?, 'Existing bag notes')`).run(name, folderId, doctorId).lastInsertRowid);

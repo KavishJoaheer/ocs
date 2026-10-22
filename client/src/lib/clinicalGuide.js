@@ -2,7 +2,7 @@ export const CLINICAL_GUIDE_FORMAT = "ocs-clinical-guide-v1";
 
 const FIELDS = [
   "presentation", "population", "routes", "dose", "dose_detail", "repeat", "maximum",
-  "critical_warning", "dose_limits", "administration", "contraindications", "precautions", "indications", "side_effects", "pharmacology",
+  "critical_warning", "dosing_unavailable", "dose_limits", "administration", "contraindications", "precautions", "indications", "side_effects", "pharmacology",
   "notes", "source_title", "source_url", "source_updated", "additional_source_title", "additional_source_url",
 ];
 
@@ -23,6 +23,11 @@ export function clinicalGuideValues(guide) {
     ).map(reference => ({ title: reference.title.trim(), url: clinicalGuideSourceUrl(reference.url) }));
     if (references.length) values.references = references;
   }
+  // A reference-only notice takes precedence over any accidentally supplied dosing.
+  if (values.dosing_unavailable) {
+    for (const key of ["dose", "dose_detail", "repeat", "maximum", "dose_limits", "administration"]) values[key] = "";
+    delete values.dose_sections;
+  }
   return values;
 }
 
@@ -31,7 +36,7 @@ export function clinicalGuidePopulations(raw) {
   const populations = [{ id: "primary", label: primary.population || "Adults", guide: primary }];
   const paediatric = clinicalGuideValues(raw?.format === CLINICAL_GUIDE_FORMAT ? raw.paediatric : null);
   // Each population supplies its own dosing, routes and limits. Never inherit adult doses.
-  if (paediatric.population === "Paediatrics" && (paediatric.dose || paediatric.dose_sections?.length)) {
+  if (paediatric.population === "Paediatrics" && (paediatric.dose || paediatric.dose_sections?.length || paediatric.dosing_unavailable)) {
     populations.push({ id: "paediatric", label: "Paediatrics", guide: paediatric });
   }
   return populations;
