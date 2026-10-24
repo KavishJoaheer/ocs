@@ -70,3 +70,44 @@ for (const actor of roles.slice(0, 2)) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   });
 }
+
+test.describe("Android phone menu overflow", () => {
+  test.use({ isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+
+  test("doctor can reach every menu link without the sign-out footer covering it", async ({ page, request }, testInfo) => {
+    await session(page, request, "arun.dharee", 360);
+    for (const viewport of [
+      { width: 360, height: 740 },
+      { width: 320, height: 568 },
+      { width: 640, height: 360 },
+    ]) {
+      await page.setViewportSize(viewport);
+      // Include enlarged phone text and space reserved for Android system bars.
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = "20px";
+        document.documentElement.style.setProperty("--sat", "24px");
+        document.documentElement.style.setProperty("--sab", "24px");
+      });
+      await page.getByRole("button", { name: "Open menu", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Navigation menu", exact: true });
+      const signOut = drawer.getByRole("button", { name: "Sign out", exact: true });
+      const footer = await signOut.boundingBox();
+      expect(footer.y + footer.height).toBeLessThanOrEqual(viewport.height - 24);
+      const links = drawer.getByRole("navigation", { name: "Additional navigation", exact: true }).getByRole("link");
+      for (const link of await links.all()) {
+        await link.scrollIntoViewIfNeeded();
+        const box = await link.boundingBox();
+        expect(box.y + box.height).toBeLessThanOrEqual(footer.y);
+        expect(await link.evaluate(node => {
+          const rect = node.getBoundingClientRect();
+          return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        })).toBeTruthy();
+        expect(await signOut.boundingBox()).toEqual(footer);
+      }
+      await drawer.screenshot({ path: testInfo.outputPath(`android-menu-${viewport.width}x${viewport.height}.png`) });
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeFocused();
+    }
+  });
+});

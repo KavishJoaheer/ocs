@@ -458,10 +458,10 @@ function Sidebar() {
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
-          className="fixed inset-y-0 left-0 z-50 flex h-full w-[280px] flex-col justify-between overflow-y-auto border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)]"
+          className="fixed inset-y-0 left-0 z-50 flex h-full max-h-dvh w-[280px] max-w-full flex-col overflow-hidden border-r border-gray-100 bg-white p-5 shadow-[8px_0_30px_rgba(0,0,0,0.08)]"
           style={{ paddingTop: `max(1.25rem, var(--sat))`, paddingBottom: `max(1.25rem, var(--sab))` }}
         >
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className="mb-4 flex items-center justify-between">
               <BrandMark maxWidth={150} size={36} />
               <button
@@ -488,7 +488,7 @@ function Sidebar() {
             <PushNotificationToggle alwaysShow role={user.role} />
 
             {drawerNavItems.length > 0 ? (
-              <div className="mt-2 min-h-0 flex-1">
+              <div className="mt-2">
                 <SidebarNavigation items={drawerNavItems} drawer
                   onNavigate={() => setDrawerOpen(false)} badgeCount={navBadgeCount} />
               </div>
@@ -498,7 +498,7 @@ function Sidebar() {
           <button
             type="button"
             onClick={() => logout()}
-            className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-ocs-slate px-4 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-ocs-slate/90 active:scale-[0.98]"
+            className="mt-4 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-ocs-slate px-4 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-ocs-slate/90 active:scale-[0.98]"
           >
             <LogOut className="size-4 shrink-0" />
             Sign out
