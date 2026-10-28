@@ -40,10 +40,10 @@ test("withdrawn SKUs are absent from seed catalogues while neighbouring sizes re
   }
 });
 
-test("cleanup deletes only the six exact SKUs and their inventory records, and is repeatable", () => {
+test("cleanup deletes only the withdrawn exact SKUs and their inventory records, and is repeatable", () => {
   db.exec("SAVEPOINT cleanup_test");
   try {
-    for (const name of ["Lovenox 0.4ml", "Tegaderm 9x10cm", "Alcohol 250ml", "Needle Blue box", "White Adhesive Tape", "Staple remover"]) {
+    for (const name of ["Lovenox 0.4ml", "Tegaderm 9x10cm", "Alcohol 250ml", "Needle Blue box", "Needle Yellow box", "White Adhesive Tape", "Staple remover"]) {
       const id = insertItem(name, "ocs", 8);
       db.prepare("INSERT INTO inventory_batches (item_id, quantity_remaining, unit_cost) VALUES (?, 8, 10)").run(id);
     }
@@ -81,7 +81,7 @@ test("cleanup deletes only the six exact SKUs and their inventory records, and i
     const before = snapshot();
     const expected = Object.fromEntries(Object.entries(before).map(([table, rows]) =>
       [table, rows.filter((row) => !deletedIds[table]?.has(row.id))]));
-    assert.deepEqual(removeWithdrawnInventory(db), { removed: 12 });
+    assert.deepEqual(removeWithdrawnInventory(db), { removed: 2 * WITHDRAWN_INVENTORY_NAMES.length });
     assert.deepEqual(snapshot(), expected, "every unrelated row in every table must remain identical");
     assert.deepEqual(removeWithdrawnInventory(db), { removed: 0 });
     assert.deepEqual(snapshot(), expected);

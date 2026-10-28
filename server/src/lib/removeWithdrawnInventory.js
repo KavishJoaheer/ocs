@@ -4,6 +4,7 @@ const WITHDRAWN_INVENTORY_NAMES = Object.freeze([
   "Lovenox 0.2ml",
   "Lovenox 0.6ml",
   "Needle Black box",
+  "Needle Purple box",
   "Adhesive Tape",
   "Alcohol 500ml",
 ]);
