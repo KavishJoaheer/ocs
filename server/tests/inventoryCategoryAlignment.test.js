@@ -942,3 +942,70 @@ test("Sachet Monuril moves from pediatric drugs to oral drugs in the warehouse a
     assert.equal(Number(row.quantity), 0);
   }
 });
+
+test("the four wound procedures move to Services in place without changing other records or prices", () => {
+  alignInventoryCategories();
+  db.exec("SAVEPOINT wound_services_test");
+  try {
+    const names = [
+      "Wound Debridement",
+      "Wound dressing-complex care,1st grade",
+      "Wound dressing-complex care,2nd grade",
+      "Wound Dressing-primary care",
+    ];
+    const woundFolder = Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('Wound procedure test folder')").run().lastInsertRowid);
+    const servicesFolder = db.prepare("SELECT id FROM inventory_folders WHERE name='Services' AND owner_doctor_id IS NULL LIMIT 1").get().id;
+    const doctorId = db.prepare("SELECT id FROM doctors WHERE deleted_at IS NULL ORDER BY id LIMIT 1").get().id;
+    const insert = db.prepare(`INSERT INTO inventory (
+      item_name, item_kind, folder_id, stock_scope, owner_doctor_id,
+      quantity, minimum_quantity, unit, cost_price, selling_price, notes
+    ) VALUES (?, 'stock', ?, ?, ?, 0, 0, 'unit', 0, ?, 'Existing procedure notes')`);
+    const ids = new Set();
+    for (const [index, name] of names.entries()) {
+      for (const [scope, owner] of [["ocs", null], ["doctor", doctorId]]) {
+        const id = Number(insert.run(name, woundFolder, scope, owner, 500 + index * 250).lastInsertRowid);
+        ids.add(id);
+        db.prepare(`INSERT INTO inventory_movements
+          (item_id, movement_type, quantity, previous_quantity, next_quantity, note)
+          VALUES (?, 'out', 1, 1, 0, 'Historical entry to preserve')`).run(id);
+      }
+    }
+    insert.run("Wound dressing material to keep", woundFolder, "ocs", null, 150);
+    insert.run("Diabetic foot care", woundFolder, "ocs", null, 800);
+    const consultation = db.prepare("SELECT id, patient_id FROM consultations ORDER BY id LIMIT 1").get();
+    db.prepare(`INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
+      VALUES (?, ?, ?, 0, 'unpaid')`).run(consultation.id, consultation.patient_id,
+      JSON.stringify([{ inventory_item_id: [...ids][0], description: names[0], quantity: 1, amount: 0 }]));
+
+    function snapshot(convert = false) {
+      return Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({ name }) => {
+        const rows = db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all().map((row) => {
+          if (name !== "inventory" || !ids.has(row.id)) return row;
+          const { row_version, updated_at, ...record } = row;
+          return convert ? { ...record, folder_id: servicesFolder, item_kind: "service", unit: "service" } : record;
+        });
+        return [name, rows];
+      }));
+    }
+    const expected = snapshot(true);
+    const result = alignInventoryCategories();
+    assert.equal(result.inserted, 0, "move the existing entries instead of duplicating them");
+    assert.deepEqual(snapshot(), expected, "only the target entries' category, type and unit may change");
+    for (const id of ids) {
+      const row = db.prepare("SELECT item_kind, folder_id, quantity, minimum_quantity, cost_price, unit, archived_at FROM inventory WHERE id=?").get(id);
+      assert.equal(row.item_kind, "service");
+      assert.equal(row.folder_id, servicesFolder);
+      assert.equal(row.unit, "service");
+      assert.equal(row.quantity, 0);
+      assert.equal(row.minimum_quantity, 0);
+      assert.equal(row.cost_price, 0);
+      assert.equal(row.archived_at, null);
+    }
+    const beforeRetry = db.prepare("SELECT * FROM inventory ORDER BY id").all();
+    assert.equal(alignInventoryCategories().updated, 0);
+    assert.deepEqual(db.prepare("SELECT * FROM inventory ORDER BY id").all(), beforeRetry);
+    assert.deepEqual(db.pragma("foreign_key_check"), []);
+  } finally {
+    db.exec("ROLLBACK TO wound_services_test; RELEASE wound_services_test");
+  }
+});

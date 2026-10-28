@@ -83,6 +83,17 @@ const CATEGORY_RULES = [
     itemKind: "service",
     unit: "service",
   },
+  ...[
+    "Wound Debridement",
+    "Wound dressing-complex care,1st grade",
+    "Wound dressing-complex care,2nd grade",
+    "Wound Dressing-primary care",
+  ].map((itemName) => ({
+    itemName,
+    folderName: "Services",
+    itemKind: "service",
+    unit: "service",
+  })),
 ];
 
 const RETIRED_OCS_CONSUMABLE_SKUS = [
