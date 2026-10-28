@@ -88,6 +88,7 @@ const CATEGORY_RULES = [
     "Wound dressing-complex care,1st grade",
     "Wound dressing-complex care,2nd grade",
     "Wound Dressing-primary care",
+    "Diabetic foot care",
   ].map((itemName) => ({
     itemName,
     folderName: "Services",

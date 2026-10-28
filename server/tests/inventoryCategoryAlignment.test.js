@@ -943,7 +943,7 @@ test("Sachet Monuril moves from pediatric drugs to oral drugs in the warehouse a
   }
 });
 
-test("the four wound procedures move to Services in place without changing other records or prices", () => {
+test("wound and diabetic foot care procedures move to Services in place without changing other records or prices", () => {
   alignInventoryCategories();
   db.exec("SAVEPOINT wound_services_test");
   try {
@@ -952,6 +952,7 @@ test("the four wound procedures move to Services in place without changing other
       "Wound dressing-complex care,1st grade",
       "Wound dressing-complex care,2nd grade",
       "Wound Dressing-primary care",
+      "Diabetic foot care",
     ];
     const woundFolder = Number(db.prepare("INSERT INTO inventory_folders (name) VALUES ('Wound procedure test folder')").run().lastInsertRowid);
     const servicesFolder = db.prepare("SELECT id FROM inventory_folders WHERE name='Services' AND owner_doctor_id IS NULL LIMIT 1").get().id;
@@ -971,11 +972,11 @@ test("the four wound procedures move to Services in place without changing other
       }
     }
     insert.run("Wound dressing material to keep", woundFolder, "ocs", null, 150);
-    insert.run("Diabetic foot care", woundFolder, "ocs", null, 800);
+    insert.run("Diabetic foot dressing supplies", woundFolder, "ocs", null, 800);
     const consultation = db.prepare("SELECT id, patient_id FROM consultations ORDER BY id LIMIT 1").get();
     db.prepare(`INSERT INTO billing (consultation_id, patient_id, items, total_amount, status)
       VALUES (?, ?, ?, 0, 'unpaid')`).run(consultation.id, consultation.patient_id,
-      JSON.stringify([{ inventory_item_id: [...ids][0], description: names[0], quantity: 1, amount: 0 }]));
+      JSON.stringify([...ids].map((id) => ({ inventory_item_id: id, description: "Historical procedure", quantity: 1, amount: 0 }))));
 
     function snapshot(convert = false) {
       return Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({ name }) => {
