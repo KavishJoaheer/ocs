@@ -1265,12 +1265,17 @@ function getLinkhamPatientById(patientId) {
       SELECT
         d.full_name AS doctor_name,
         c.doctor_notes AS raw_text,
+        c.clinical_note,
+        c.patient_diagnosis,
+        c.patient_prescription,
         c.consultation_date AS visit_date
       FROM consultations c
       JOIN doctors d ON d.id = c.doctor_id
       WHERE c.patient_id = ?
-        AND c.doctor_notes IS NOT NULL
-        AND trim(c.doctor_notes) <> ''
+        AND (
+          trim(COALESCE(c.doctor_notes, '')) <> ''
+          OR trim(COALESCE(c.patient_diagnosis, '')) <> ''
+        )
       ORDER BY c.consultation_date ASC, c.id ASC
     `)
     .all(client.id);

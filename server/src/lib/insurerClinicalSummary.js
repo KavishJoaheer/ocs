@@ -1,3 +1,5 @@
+const { hasStructuredConsultationFields } = require("./consultationNotes");
+
 const DIAGNOSIS_PREFIX_REGEX = /^(imp(ression)?\s*:|dx\s*-\s*|dx\s*:|diagnosis\s*:)/i;
 
 function normalizeDiagnosisText(text) {
@@ -47,7 +49,14 @@ function doctorLabelFromName(doctorName) {
 function buildInsurerTreatmentSummaries(consultationRows = []) {
   return (Array.isArray(consultationRows) ? consultationRows : [])
     .map((note, index) => {
-      const diagnosis = extractDiagnosisFromNotes(note?.raw_text);
+      let diagnosis;
+      if (hasStructuredConsultationFields(note)) {
+        // Combined notes include private clinical text; only parse them for legacy records.
+        diagnosis = String(note.patient_diagnosis || "").trim() || "General Assessment";
+        if (diagnosis.length > 140) diagnosis = `${diagnosis.slice(0, 140).trim()}…`;
+      } else {
+        diagnosis = extractDiagnosisFromNotes(note?.raw_text);
+      }
       return {
         sequenceNumber: index + 1,
         visit_date: note?.visit_date || null,

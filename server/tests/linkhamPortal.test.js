@@ -298,6 +298,69 @@ test("insured directory search matches OCS number", async () => {
   assert.ok(response.data.patients.some((row) => row.id === fixture.patientId));
 });
 
+test("insurer patient summaries use shared structured diagnoses and preserve legacy parsing", async (t) => {
+  const visit = seedLinkhamVisitWithBill({
+    name: "Summary Regression",
+    amount: 1000,
+    status: "unpaid",
+  });
+  const cases = [
+    {
+      name: "shared diagnosis takes precedence over private impressions",
+      clinical_note: "Impression: PRIVATE differential diagnosis",
+      patient_diagnosis: "Viral syndrome",
+      patient_prescription: "PRIVATE prescription",
+      doctor_notes: "Impression: PRIVATE differential diagnosis\nViral syndrome\nPrescribed: PRIVATE prescription",
+      expected: "Viral syndrome",
+    },
+    {
+      name: "structured diagnosis is included without combined legacy notes",
+      clinical_note: "",
+      patient_diagnosis: "Viral syndrome",
+      patient_prescription: "",
+      doctor_notes: "",
+      expected: "Viral syndrome",
+    },
+    {
+      name: "missing structured diagnosis does not expose a private impression",
+      clinical_note: "Impression: PRIVATE differential diagnosis",
+      patient_diagnosis: "",
+      patient_prescription: "PRIVATE prescription",
+      doctor_notes: "Impression: PRIVATE differential diagnosis\nPrescribed: PRIVATE prescription",
+      expected: "General Assessment",
+    },
+    {
+      name: "legacy impression remains available",
+      clinical_note: "",
+      patient_diagnosis: "",
+      patient_prescription: "",
+      doctor_notes: "BP 138/88.\nImpression: Seasonal allergic rhinitis\nRx: PRIVATE prescription",
+      expected: "Seasonal allergic rhinitis",
+    },
+  ];
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      db.prepare(`
+        UPDATE consultations
+        SET clinical_note = ?, patient_diagnosis = ?, patient_prescription = ?, doctor_notes = ?
+        WHERE id = ?
+      `).run(item.clinical_note, item.patient_diagnosis, item.patient_prescription, item.doctor_notes, visit.consultationId);
+
+      const response = await api("GET", `/api/linkham/patients/${visit.patientId}`, { token: linkhamToken });
+      assert.equal(response.status, 200, JSON.stringify(response.data));
+      const patient = response.data.patient;
+      assert.equal(patient.treatment_summaries.length, 1);
+      assert.equal(patient.treatment_summaries[0].diagnosis, item.expected);
+      assert.equal(patient.treatment_summaries[0].summaryString, `Diagnosis: ${item.expected}`);
+      assert.equal(JSON.stringify(patient).includes("PRIVATE"), false);
+      assert.equal(patient.clinical_note, undefined);
+      assert.equal(patient.patient_prescription, undefined);
+      assert.equal(patient.doctor_notes, undefined);
+    });
+  }
+});
+
 test("insurer policy flags are matched against both policy number and Mauritius ID", async () => {
   const created = await api("POST", "/api/linkham/policies", {
     token: linkhamToken,
