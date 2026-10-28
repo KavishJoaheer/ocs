@@ -1935,6 +1935,12 @@ function initializeDatabase() {
   ensureUniqueActiveDoctorInventoryItems();
   require("./lib/financialIntegritySchema").ensureFinancialIntegritySchema(db);
   require("./lib/accountingSchema").ensureAccountingSchema(db);
+  try {
+    const cleanup = require("./lib/removeWithdrawnInventory").removeWithdrawnInventory(db);
+    if (cleanup.removed > 0) console.log(`[inventory] Removed ${cleanup.removed} withdrawn inventory row(s).`);
+  } catch (error) {
+    console.warn("[inventory] Withdrawn inventory cleanup deferred:", error.message);
+  }
 }
 
 function ensureUniqueActiveDoctorInventoryItems() {
